@@ -4,6 +4,8 @@ import LeftPanel from './components/LeftPanel'
 import ChatView from './components/ChatView'
 import PreviewPanel from './components/PreviewPanel'
 import StatusBar from './components/StatusBar'
+import Welcome from './screens/Welcome'
+import Settings from './screens/Settings'
 import type { Message, Session } from './types/chat'
 
 const mockSessions: Session[] = [
@@ -14,6 +16,8 @@ const mockSessions: Session[] = [
 ]
 
 export default function App() {
+  const [showWizard, setShowWizard] = useState(false) // Phase 3: read wizardCompleted from config
+  const [showSettings, setShowSettings] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>('s1')
   const [sessions] = useState<Session[]>(mockSessions)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
@@ -50,28 +54,36 @@ export default function App() {
     }, 1500)
   }, [isStreaming])
 
+  // Show welcome wizard on first launch
+  if (showWizard) {
+    return <Welcome onComplete={() => setShowWizard(false)} />
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-[#0F172A] text-[#F1F5F9]">
-      <TopBar currentDir="~/projects/ppt-demo" />
-      <div className="flex flex-1 min-h-0">
-        <LeftPanel
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          onSessionSelect={(id) => setActiveSessionId(id)}
-          collapsed={leftPanelCollapsed}
-          onToggleCollapse={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-        />
-        <ChatView
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          isStreaming={isStreaming}
-        />
-        <PreviewPanel
-          collapsed={rightPanelCollapsed}
-          onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-        />
+    <>
+      <div className="flex flex-col h-screen bg-[#0F172A] text-[#F1F5F9]">
+        <TopBar currentDir="~/projects/ppt-demo" onOpenSettings={() => setShowSettings(true)} />
+        <div className="flex flex-1 min-h-0">
+          <LeftPanel
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSessionSelect={(id) => setActiveSessionId(id)}
+            collapsed={leftPanelCollapsed}
+            onToggleCollapse={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+          />
+          <ChatView
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            isStreaming={isStreaming}
+          />
+          <PreviewPanel
+            collapsed={rightPanelCollapsed}
+            onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          />
+        </div>
+        <StatusBar />
       </div>
-      <StatusBar />
-    </div>
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+    </>
   )
 }
