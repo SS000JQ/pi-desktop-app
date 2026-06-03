@@ -21,6 +21,13 @@ const api: PiDesktopApi = {
     const handler = (_event: unknown, data: unknown) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.AGENT_EVENT, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_EVENT, handler)
+  },
+  providers: {
+    list: () => ipcRenderer.invoke('providers:list'),
+    add: (config, apiKey) => ipcRenderer.invoke('providers:add', config, apiKey),
+    update: (id, updates) => ipcRenderer.invoke('providers:update', id, updates),
+    delete: (id) => ipcRenderer.invoke('providers:delete', id),
+    test: (config) => ipcRenderer.invoke('providers:test', config)
   }
 }
 

@@ -36,5 +36,20 @@ export interface PiDesktopApi {
     search: (query: string) => Promise<IpcResponse<SessionSearchResult[]>>
     switch: (id: string) => Promise<IpcResponse<{ messages: unknown[] }>>
   }
+  providers: {
+    list: () => Promise<IpcResponse>
+    add: (
+      config: {
+        name: string
+        baseUrl: string
+        models: string[]
+        isDefault: boolean
+      },
+      apiKey?: string
+    ) => Promise<IpcResponse>
+    update: (id: string, updates: Record<string, unknown>) => Promise<IpcResponse>
+    delete: (id: string) => Promise<IpcResponse>
+    test: (config: { baseUrl: string; apiKey: string }) => Promise<IpcResponse>
+  }
   onAgentEvent: (callback: (event: unknown) => void) => () => void
 }
