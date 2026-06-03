@@ -107,7 +107,7 @@ body {
 .body-layout { display: flex; flex: 1; min-height: 0; position: relative; }
 
 /* ── Left panel ── */
-.left { min-width: 160px; width: 18%; max-width: 220px; flex-shrink: 0; border-right: 1px solid var(--bd); display: flex; flex-direction: column; }
+.left { flex-shrink: 0; border-right: 1px solid var(--bd); display: flex; flex-direction: column; position: relative; }
 
 .l-section-label { padding: 8px 10px 2px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.1); font-weight: 500; }
 

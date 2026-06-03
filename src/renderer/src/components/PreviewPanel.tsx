@@ -76,6 +76,9 @@ export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, 
       {/* Cowork Sidebar */}
       {view === 'cowork' && (
         <div className="cs">
+          <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'flex-end', padding: '4px 6px' }}>
+            <button onClick={onToggleCollapse} className="pv-op" title="Hide panel" style={{ width: 22, height: 20, fontSize: 10 }}>›</button>
+          </div>
           <div className="c-sec">
             <div className="c-hdr"><span className="c-hl">Progress</span><span className="c-hc">3/5</span></div>
             <div className="c-bd">
