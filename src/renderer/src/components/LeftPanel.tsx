@@ -1,11 +1,5 @@
 import { useState } from 'react'
-
-interface Session {
-  id: string
-  title: string
-  updatedAt: number
-  messages: unknown[]
-}
+import type { Session } from '../types/chat'
 
 interface LeftPanelProps {
   sessions: Session[]
