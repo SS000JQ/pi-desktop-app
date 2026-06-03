@@ -7,9 +7,13 @@ interface LeftPanelProps {
   onSessionSelect: (id: string) => void
   collapsed: boolean
   onToggleCollapse: () => void
+  onOpenFiles?: () => void
+  onOpenTools?: () => void
+  onOpenSkills?: () => void
+  onOpenMemory?: () => void
 }
 
-export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, collapsed, onToggleCollapse }: LeftPanelProps) {
+export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, collapsed, onToggleCollapse, onOpenFiles, onOpenTools, onOpenSkills, onOpenMemory }: LeftPanelProps) {
   const [filter, setFilter] = useState<'all' | 'active'>('all')
 
   if (collapsed) {
@@ -25,14 +29,20 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
   return (
     <div className="w-[140px] flex-shrink-0 bg-[#0F172A] border-r border-[#1E293B] flex flex-col">
       <div className="px-1.5 pt-2 pb-1">
-        {['Files', 'Tools', 'Skills', 'Memory'].map((item, i) => (
+        {[
+          { label: 'Files', onClick: onOpenFiles },
+          { label: 'Tools', onClick: onOpenTools },
+          { label: 'Skills', onClick: onOpenSkills },
+          { label: 'Memory', onClick: onOpenMemory },
+        ].map((item, i) => (
           <div
-            key={item}
+            key={item.label}
+            onClick={item.onClick}
             className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-all ${
               i === 0 ? 'bg-surface text-[#F1F5F9]' : 'text-muted hover:bg-surface hover:text-[#F1F5F9]'
             }`}
           >
-            {item}
+            {item.label}
           </div>
         ))}
       </div>
@@ -45,19 +55,25 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
       </div>
 
       <div className="flex-1 overflow-y-auto px-1.5 pb-1">
-        {sessions.map(s => (
-          <div
-            key={s.id}
-            onClick={() => onSessionSelect(s.id)}
-            className={`px-2 py-1 mb-px rounded text-xs cursor-pointer transition-all truncate ${
-              s.id === activeSessionId
-                ? 'bg-surface text-[#F1F5F9] font-medium'
-                : 'text-muted hover:bg-surface hover:text-[#CBD5E1]'
-            }`}
-          >
-            {s.title}
+        {sessions.length === 0 ? (
+          <div className="text-[10px] text-dim text-center py-4">
+            No sessions yet.
           </div>
-        ))}
+        ) : (
+          sessions.map(s => (
+            <div
+              key={s.id}
+              onClick={() => onSessionSelect(s.id)}
+              className={`px-2 py-1 mb-px rounded text-xs cursor-pointer transition-all truncate ${
+                s.id === activeSessionId
+                  ? 'bg-surface text-[#F1F5F9] font-medium'
+                  : 'text-muted hover:bg-surface hover:text-[#CBD5E1]'
+              }`}
+            >
+              {s.title}
+            </div>
+          ))
+        )}
       </div>
 
       <div className="flex gap-1 px-2 py-1 border-t border-[#1E293B] mt-auto">
