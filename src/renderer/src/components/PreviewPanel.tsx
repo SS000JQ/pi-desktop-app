@@ -10,8 +10,9 @@ export default function PreviewPanel({ collapsed, onToggleCollapse }: PreviewPan
 
   if (collapsed) {
     return (
-      <div className="prev items-start justify-center pt-4">
-        <button onClick={onToggleCollapse} className="ibtn" style={{ width: 'auto', padding: '8px 0', writingMode: 'vertical-lr', letterSpacing: '2px' }}>
+      <div style={{ width: 32, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.04)', background: '#1a1919', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12 }}>
+        <button onClick={onToggleCollapse}
+          style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", padding: '12px 0' }}>
           PREVIEW
         </button>
       </div>
@@ -19,7 +20,8 @@ export default function PreviewPanel({ collapsed, onToggleCollapse }: PreviewPan
   }
 
   return (
-    <div className="prev">
+    <div className="prev" style={{ position: 'relative' }}>
+      <div className="resize-h" style={{ left: -2 }} />
       <div className="pft">
         <button
           onClick={() => setActiveTab('大纲.md')}

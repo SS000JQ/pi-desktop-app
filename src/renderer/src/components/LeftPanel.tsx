@@ -18,8 +18,9 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
 
   if (collapsed) {
     return (
-      <div className="left items-center pt-2">
-        <button onClick={onToggleCollapse} className="ibtn" style={{ writingMode: 'vertical-lr', letterSpacing: '2px', width: 'auto', padding: '8px 0' }}>
+      <div className="relative" style={{ width: 32, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.04)', background: '#1a1919' }}>
+        <button onClick={onToggleCollapse}
+          style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", width: '100%', padding: '12px 0' }}>
           EXPAND
         </button>
       </div>
