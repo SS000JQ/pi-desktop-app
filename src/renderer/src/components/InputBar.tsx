@@ -1,5 +1,6 @@
 import { useState, useRef, KeyboardEvent, useEffect } from 'react'
 import ContextChips from './ContextChips'
+import DropZone from './DropZone'
 
 interface InputBarProps {
   onSendMessage: (text: string) => void
@@ -23,6 +24,7 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
   const [showCommands, setShowCommands] = useState(false)
   const [commandFilter, setCommandFilter] = useState('')
   const [selectedCmdIdx, setSelectedCmdIdx] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const filteredCommands = SLASH_COMMANDS.filter(c =>
@@ -112,8 +114,45 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
     return () => inputEl.removeEventListener('paste', handlePaste)
   }, [])
 
+  // Drag-drop file support
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+      setIsDragging(true)
+    }
+    const handleDragLeave = (e: DragEvent) => {
+      // Only set false if leaving the entire widget
+      const target = e.relatedTarget as Node | null
+      if (!target || !document.querySelector('.inpw')?.contains(target)) {
+        setIsDragging(false)
+      }
+    }
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault()
+      setIsDragging(false)
+      const files = e.dataTransfer?.files
+      if (files && files.length > 0) {
+        const newFiles = Array.from(files).map(f => ({ name: f.name }))
+        setAttachments(prev => [...prev, ...newFiles])
+      }
+    }
+    const el = document.querySelector('.inpw') as HTMLElement | null
+    if (el) {
+      el.addEventListener('dragover', handleDragOver)
+      el.addEventListener('dragleave', handleDragLeave)
+      el.addEventListener('drop', handleDrop)
+      return () => {
+        el.removeEventListener('dragover', handleDragOver)
+        el.removeEventListener('dragleave', handleDragLeave)
+        el.removeEventListener('drop', handleDrop)
+      }
+    }
+  }, [])
+
   return (
     <div className="inpw">
+      <DropZone visible={isDragging} />
       {attachments.length > 0 && (
         <div className="cc" style={{ marginBottom: '6px' }}>
           <ContextChips attachments={attachments} onRemove={(i) => setAttachments(prev => prev.filter((_, idx) => idx !== i))} />
@@ -143,7 +182,7 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Pi... ( / commands · drop files · paste images )"
+          placeholder="Ask Pi... (attach files / paste images / drag & drop)"
           className="inf"
           disabled={isStreaming}
         />
