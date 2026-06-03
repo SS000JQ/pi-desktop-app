@@ -23,7 +23,8 @@ export interface SessionSearchResult {
 
 export interface PiDesktopApi {
   chat: {
-    send: (text: string) => Promise<IpcResponse>
+    send: (text: string, sessionId?: string) => Promise<IpcResponse>
+    abort: (sessionId?: string) => Promise<IpcResponse>
   }
   config: {
     get: (key: string) => Promise<IpcResponse>

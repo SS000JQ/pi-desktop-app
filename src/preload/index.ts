@@ -4,7 +4,9 @@ import type { PiDesktopApi } from './api'
 
 const api: PiDesktopApi = {
   chat: {
-    send: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, { text })
+    send: (text: string, sessionId?: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, { text, sessionId }),
+    abort: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_ABORT, sessionId),
   },
   config: {
     get: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET, key),

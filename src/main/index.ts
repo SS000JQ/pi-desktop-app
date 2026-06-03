@@ -125,12 +125,12 @@ ipcMain.handle('profiles:switch', async (_event, id: string) => {
 })
 
 // Agent streaming IPC handlers
-ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (_event, payload: { text: string; sessionId?: string }) => {
+ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (_event, payload: { text: string; sessionId?: string; modelId?: string }) => {
   const sessionId = payload.sessionId || 'default'
   addUserMessage(sessionId, payload.text)
 
   if (mainWindow) {
-    const stream = streamResponse(sessionId, process.env.OPENAI_API_KEY)
+    const stream = streamResponse(sessionId, payload.modelId || 'openai/gpt-4')
 
     ;(async () => {
       try {
