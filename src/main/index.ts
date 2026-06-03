@@ -20,6 +20,7 @@ import {
   testConnection
 } from './providers'
 import type { ProviderConfig } from './providers'
+import { listProfiles, createProfile, deleteProfile, getActiveProfile, setActiveProfile } from './profiles'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -74,6 +75,28 @@ ipcMain.handle('providers:delete', async (_event, id: string) => {
 
 ipcMain.handle('providers:test', async (_event, config) => {
   return testConnection(config)
+})
+
+// Profile IPC handlers
+ipcMain.handle('profiles:list', async () => {
+  return { success: true, data: listProfiles() }
+})
+
+ipcMain.handle('profiles:create', async (_event, name: string) => {
+  return { success: true, data: createProfile(name) }
+})
+
+ipcMain.handle('profiles:delete', async (_event, id: string) => {
+  return { success: true, data: deleteProfile(id) }
+})
+
+ipcMain.handle('profiles:getActive', async () => {
+  return { success: true, data: getActiveProfile() }
+})
+
+ipcMain.handle('profiles:switch', async (_event, id: string) => {
+  setActiveProfile(id)
+  return { success: true }
 })
 
 // Basic IPC handlers (mock for Phase 1 — Phase 2 gets real session manager)

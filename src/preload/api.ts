@@ -52,4 +52,11 @@ export interface PiDesktopApi {
     test: (config: { baseUrl: string; apiKey: string }) => Promise<IpcResponse>
   }
   onAgentEvent: (callback: (event: unknown) => void) => () => void
+  profiles: {
+    list: () => Promise<IpcResponse>
+    create: (name: string) => Promise<IpcResponse>
+    delete: (id: string) => Promise<IpcResponse>
+    getActive: () => Promise<IpcResponse>
+    switch: (id: string) => Promise<IpcResponse>
+  }
 }

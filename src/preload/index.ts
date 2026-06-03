@@ -28,6 +28,13 @@ const api: PiDesktopApi = {
     update: (id, updates) => ipcRenderer.invoke('providers:update', id, updates),
     delete: (id) => ipcRenderer.invoke('providers:delete', id),
     test: (config) => ipcRenderer.invoke('providers:test', config)
+  },
+  profiles: {
+    list: () => ipcRenderer.invoke('profiles:list'),
+    create: (name) => ipcRenderer.invoke('profiles:create', name),
+    delete: (id) => ipcRenderer.invoke('profiles:delete', id),
+    getActive: () => ipcRenderer.invoke('profiles:getActive'),
+    switch: (id) => ipcRenderer.invoke('profiles:switch', id)
   }
 }
 
