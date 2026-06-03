@@ -31,21 +31,21 @@ const SHORTCUTS = [
 
 export default function Shortcuts({ onClose }: ShortcutsProps) {
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-border rounded-lg w-[480px] max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E293B]">
-          <h2 className="text-sm font-semibold">Keyboard Shortcuts</h2>
-          <button onClick={onClose} className="text-dim hover:text-muted text-sm">✕</button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ width: '460px', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <h2 className="modal-title">Keyboard Shortcuts</h2>
+          <button onClick={onClose} className="modal-x">✕</button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="modal-body">
           {SHORTCUTS.map(group => (
-            <div key={group.category}>
-              <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">{group.category}</h3>
-              <div className="space-y-1.5">
+            <div key={group.category} style={{ marginBottom: '14px' }}>
+              <div className="s-title" style={{ marginBottom: '6px' }}>{group.category}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {group.items.map(item => (
-                  <div key={item.keys} className="flex justify-between items-center py-0.5">
-                    <span className="text-[10px] font-mono text-[#94A3B8] bg-surface px-1.5 py-0.5 rounded">{item.keys}</span>
-                    <span className="text-[11px] text-muted">{item.desc}</span>
+                  <div key={item.keys} className="flex justify-between items-center" style={{ padding: '2px 0' }}>
+                    <span className="sc-key">{item.keys}</span>
+                    <span className="sc-desc">{item.desc}</span>
                   </div>
                 ))}
               </div>

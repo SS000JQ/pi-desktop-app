@@ -81,18 +81,14 @@ export default function App() {
   // Empty state: no provider configured
   if (!hasProvider && !showWizard) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0F172A]">
-        <div className="text-center max-w-sm">
-          <div className="text-3xl mb-3">🚀</div>
-          <h1 className="text-lg font-semibold mb-2">Welcome to Pi Desktop</h1>
-          <p className="text-sm text-muted mb-6">Configure an AI provider to get started.</p>
-          <div className="flex gap-3 justify-center">
-            <button onClick={() => setShowWizard(true)} className="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent-hover">
-              Set Up Provider
-            </button>
-            <button onClick={() => setShowProvider(true)} className="px-4 py-2 text-sm bg-surface text-muted rounded-lg border border-border hover:text-[#F1F5F9]">
-              Advanced Setup
-            </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#151414' }}>
+        <div style={{ textAlign: 'center', maxWidth: '300px' }}>
+          <div style={{ fontSize: '28px', marginBottom: '10px' }}>🚀</div>
+          <h1 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', color: 'rgba(255,255,255,0.7)' }}>Welcome to Pi Desktop</h1>
+          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', marginBottom: '20px' }}>Configure an AI provider to get started.</p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button onClick={() => setShowWizard(true)} className="bp">Set Up Provider</button>
+            <button onClick={() => setShowProvider(true)} className="bs">Advanced Setup</button>
           </div>
           {showWizard && <Welcome onComplete={() => { setShowWizard(false); setHasProvider(true) }} />}
           {showProvider && <ProviderManager onClose={() => setShowProvider(false)} />}
@@ -108,7 +104,7 @@ export default function App() {
 
   return (
     <>
-      <div className="flex flex-col h-screen bg-[#0F172A] text-[#F1F5F9]">
+      <div className="app-shell">
         <TopBar
           currentDir="~/projects/ppt-demo"
           onOpenSettings={() => setShowSettings(true)}
@@ -116,13 +112,13 @@ export default function App() {
         />
 
         {showTokenWarning && (
-          <div className="px-3 py-1 text-[10px] bg-warning/10 text-warning border-b border-warning/20 flex items-center gap-2">
+          <div className="twarn">
             <span>⚠</span>
             <span>Context {tokenPct}% full. Consider /compact or new session.</span>
           </div>
         )}
 
-        <div className="flex flex-1 min-h-0">
+        <div className="body-layout">
           <LeftPanel
             sessions={sessions}
             activeSessionId={activeSessionId}

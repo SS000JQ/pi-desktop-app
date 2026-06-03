@@ -50,43 +50,43 @@ export default function Profile({ onClose }: ProfileProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-border rounded-lg w-[400px] max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E293B]">
-          <h2 className="text-sm font-semibold">Profiles</h2>
-          <button onClick={onClose} className="text-dim hover:text-muted text-sm">✕</button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ width: '380px', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <h2 className="modal-title">Profiles</h2>
+          <button onClick={onClose} className="modal-x">✕</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+        <div className="modal-body">
           {profiles.map(p => (
-            <div key={p.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all ${p.id === activeId ? 'bg-surface border-accent' : 'bg-surface border-border hover:border-muted'}`} onClick={() => handleSwitch(p.id)}>
-              <div className="flex-1 min-w-0">
+            <div key={p.id} className={`ci ${p.id === activeId ? 'active' : ''}`} onClick={() => handleSwitch(p.id)}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{p.name}</span>
-                  {p.id === activeId && <span className="text-[10px] text-success">active</span>}
+                  <span className="cit">{p.name}</span>
+                  {p.id === activeId && <span className="cib">active</span>}
                 </div>
-                <div className="text-[11px] text-muted">Created {new Date(p.createdAt).toLocaleDateString()}</div>
+                <div className="cim">Created {new Date(p.createdAt).toLocaleDateString()}</div>
               </div>
               {p.id !== activeId && (
-                <button onClick={e => { e.stopPropagation(); handleDelete(p.id) }} className="text-dim hover:text-error text-xs px-1">✕</button>
+                <button onClick={e => { e.stopPropagation(); handleDelete(p.id) }} className="cix">✕</button>
               )}
             </div>
           ))}
 
           {showCreate && (
-            <div className="bg-surface border border-border rounded-lg p-3 space-y-2">
-              <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} className="w-full bg-[#0F172A] border border-border rounded px-2 py-1.5 text-xs text-[#F1F5F9] outline-none focus:border-accent" placeholder="Profile name" autoFocus />
-              <div className="flex gap-2">
-                <button onClick={handleCreate} disabled={!newName.trim()} className="px-2 py-1 text-[10px] bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-40">Create</button>
-                <button onClick={() => setShowCreate(false)} className="px-2 py-1 text-[10px] bg-surface text-muted rounded hover:text-[#F1F5F9]">Cancel</button>
+            <div className="ci" style={{ display: 'block', padding: '12px' }}>
+              <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} className="fi" placeholder="Profile name" autoFocus />
+              <div className="flex" style={{ gap: '6px', marginTop: '8px' }}>
+                <button onClick={handleCreate} disabled={!newName.trim()} className="bp">Create</button>
+                <button onClick={() => setShowCreate(false)} className="bs">Cancel</button>
               </div>
             </div>
           )}
         </div>
 
         {!showCreate && (
-          <div className="px-4 py-3 border-t border-[#1E293B]">
-            <button onClick={() => setShowCreate(true)} className="text-xs text-accent hover:text-accent-hover">+ New Profile</button>
+          <div className="modal-ftr">
+            <button onClick={() => setShowCreate(true)} className="bt">+ New Profile</button>
           </div>
         )}
       </div>

@@ -11,30 +11,28 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
   const isUser = message.role === 'user'
 
   return (
-    <div className={`flex flex-col ${isUser ? 'items-end self-end' : 'items-start'} max-w-[85%]`}>
-      <div className="flex items-center gap-2 mb-0.5">
-        <span className={`text-[10px] ${isUser ? 'text-muted' : 'text-success'}`}>
+    <div className={`msg ${isUser ? 'right' : 'left'}`}>
+      <div className="ml">
+        <span style={isUser ? { color: 'rgba(255,255,255,0.15)' } : { color: 'rgba(48,209,88,0.5)' }}>
           {isUser ? 'You' : 'Pi'}
         </span>
         {isUser && onEdit && (
-          <button onClick={onEdit} className="text-[9px] text-dim hover:text-muted">edit</button>
+          <button onClick={onEdit} className="mb-actions" style={{ fontSize: '9px', color: 'rgba(255,255,255,0.12)', background: 'none', border: 'none', cursor: 'pointer', gap: '2px' }}>
+            edit
+          </button>
         )}
       </div>
-      <div className={`px-3 py-2 rounded-lg leading-relaxed text-sm ${
-        isUser
-          ? 'bg-surface text-[#F1F5F9] rounded-br-sm'
-          : 'bg-surface text-[#E2E8F0] rounded-bl-sm'
-      }`}>
-        <div className="whitespace-pre-wrap">{message.content}</div>
+      <div className={`mb ${isUser ? 'right' : 'left'}`}>
+        <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
 
         {message.toolCalls?.map(tc => (
           <ToolCallCard key={tc.id} toolCall={tc} />
         ))}
       </div>
       {!isUser && onRegenerate && (
-        <button onClick={onRegenerate} className="text-[10px] text-dim hover:text-muted mt-0.5 px-1">
-          ⟳ Regenerate
-        </button>
+        <div className="mb-actions" style={{ marginTop: '6px' }}>
+          <button onClick={onRegenerate}>⟳ Regenerate</button>
+        </div>
       )}
     </div>
   )

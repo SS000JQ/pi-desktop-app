@@ -32,7 +32,6 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
   const handleSend = () => {
     if (!text.trim() || isStreaming) return
 
-    // Handle slash commands
     if (text.startsWith('/')) {
       const match = SLASH_COMMANDS.find(c => c.command === text.trim().split(' ')[0])
       if (match) {
@@ -46,7 +45,6 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
   }
 
   const handleSlashCommand = (_command: string) => {
-    // For most commands, just pass the text through
     onSendMessage(text)
     setText('')
     setShowCommands(false)
@@ -81,7 +79,6 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
     }
   }
 
-  // Show command popover when '/' is typed
   useEffect(() => {
     if (text === '/') {
       setShowCommands(true)
@@ -97,29 +94,30 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
   }, [text])
 
   return (
-    <div className="border-t border-[#1E293B] bg-[#0F172A] px-3 py-2 flex-shrink-0 relative">
+    <div className="inpw">
       {attachments.length > 0 && (
-        <ContextChips attachments={attachments} onRemove={(i) => setAttachments(prev => prev.filter((_, idx) => idx !== i))} />
+        <div className="cc" style={{ marginBottom: '6px' }}>
+          <ContextChips attachments={attachments} onRemove={(i) => setAttachments(prev => prev.filter((_, idx) => idx !== i))} />
+        </div>
       )}
 
-      {/* Slash command popover */}
       {showCommands && filteredCommands.length > 0 && (
-        <div className="absolute bottom-full left-3 right-3 mb-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden">
+        <div className="cmd-list">
           {filteredCommands.map((cmd, i) => (
             <button
               key={cmd.command}
               onClick={() => { setText(cmd.command + ' '); setShowCommands(false); inputRef.current?.focus() }}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors ${i === selectedCmdIdx ? 'bg-accent/10 text-[#F1F5F9]' : 'text-muted hover:bg-[#1E293B]'}`}
+              className={`cmd-item ${i === selectedCmdIdx ? 'active' : ''}`}
             >
-              <span className="text-sm">{cmd.icon}</span>
-              <span className="font-medium">{cmd.command}</span>
-              <span className="text-dim ml-1">{cmd.description}</span>
+              <span className="cmd-icon">{cmd.icon}</span>
+              <span className="cmd-name">{cmd.command}</span>
+              <span className="cmd-desc">{cmd.description}</span>
             </button>
           ))}
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 bg-surface border border-border rounded-md px-2 py-1.5 transition-colors focus-within:border-accent">
+      <div className="inr">
         <input
           ref={inputRef}
           type="text"
@@ -127,17 +125,17 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask Pi... ( / commands · drop files · paste images )"
-          className="flex-1 bg-transparent border-none outline-none text-sm text-[#F1F5F9] placeholder-muted"
+          className="inf"
           disabled={isStreaming}
         />
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button title="Attach files" className="text-dim hover:text-muted text-sm px-0.5 rounded transition-colors hover:bg-[#334155]">📎</button>
-          <button title="Paste screenshot" className="text-dim hover:text-muted text-sm px-0.5 rounded transition-colors hover:bg-[#334155]">🖼</button>
-          <span className="text-[#334155] text-[9px] font-mono">⌘⏎</span>
+        <div className="ina">
+          <button title="Attach files" className="inb">📎</button>
+          <button title="Paste screenshot" className="inb">🖼</button>
+          <span className="ikh">⌘⏎</span>
           <button
             onClick={handleSend}
             disabled={isStreaming || !text.trim()}
-            className="bg-accent text-white border-none rounded px-2 py-0.5 text-[10px] font-medium cursor-pointer hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inb" style={{ background: 'var(--accent)', color: 'white', borderColor: 'transparent' }}
           >
             Send
           </button>

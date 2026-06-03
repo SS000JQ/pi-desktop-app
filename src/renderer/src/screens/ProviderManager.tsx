@@ -13,21 +13,16 @@ const BUILTIN_PROVIDERS = [
   { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1' },
   { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
-  {
-    name: 'Google (Gemini)',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta'
-  },
+  { name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
   { name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
-  { name: 'Custom', baseUrl: '' }
+  { name: 'Custom', baseUrl: '' },
 ]
 
 interface ProviderManagerProps {
   onClose: () => void
 }
 
-export default function ProviderManager({
-  onClose
-}: ProviderManagerProps) {
+export default function ProviderManager({ onClose }: ProviderManagerProps) {
   const [providers, setProviders] = useState<ProviderConfig[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -36,14 +31,10 @@ export default function ProviderManager({
   const [formApiKey, setFormApiKey] = useState('')
   const [formModels, setFormModels] = useState('')
   const [formIsDefault, setFormIsDefault] = useState(false)
-  const [testStatus, setTestStatus] = useState<
-    'idle' | 'testing' | 'success' | 'error'
-  >('idle')
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState('')
 
-  useEffect(() => {
-    loadProviders()
-  }, [])
+  useEffect(() => { loadProviders() }, [])
 
   async function loadProviders(): Promise<void> {
     const res = await window.piDesktop.providers.list()
@@ -69,25 +60,19 @@ export default function ProviderManager({
       await window.piDesktop.providers.update(editingId, {
         name: formName,
         baseUrl: formUrl,
-        models: formModels
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
+        models: formModels.split(',').map((s) => s.trim()).filter(Boolean),
         isDefault: formIsDefault,
-        apiKey: formApiKey || undefined
+        apiKey: formApiKey || undefined,
       })
     } else {
       await window.piDesktop.providers.add(
         {
           name: formName,
           baseUrl: formUrl,
-          models: formModels
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-          isDefault: formIsDefault
+          models: formModels.split(',').map((s) => s.trim()).filter(Boolean),
+          isDefault: formIsDefault,
         },
-        formApiKey || undefined
+        formApiKey || undefined,
       )
     }
     setShowAddForm(false)
@@ -97,10 +82,7 @@ export default function ProviderManager({
   async function handleTest(): Promise<void> {
     setTestStatus('testing')
     setTestMessage('')
-    const res = await window.piDesktop.providers.test({
-      baseUrl: formUrl,
-      apiKey: formApiKey
-    })
+    const res = await window.piDesktop.providers.test({ baseUrl: formUrl, apiKey: formApiKey })
     setTestStatus(res.success ? 'success' : 'error')
     setTestMessage(res.error || 'Connection successful')
   }
@@ -111,183 +93,85 @@ export default function ProviderManager({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#0F172A] border border-border rounded-lg w-[560px] max-h-[80vh] flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E293B]">
-          <h2 className="text-sm font-semibold">Provider Manager</h2>
-          <button
-            onClick={onClose}
-            className="text-dim hover:text-muted text-sm"
-          >
-            ✕
-          </button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ width: '540px', maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <h2 className="modal-title">Provider Manager</h2>
+          <button onClick={onClose} className="modal-x">✕</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="modal-body">
           {providers.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-3 bg-surface border border-border rounded-lg px-3 py-2.5"
-            >
-              <div className="flex-1 min-w-0">
+            <div key={p.id} className="ci">
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{p.name}</span>
-                  {p.isDefault && (
-                    <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded">
-                      default
-                    </span>
-                  )}
+                  <span className="cit">{p.name}</span>
+                  {p.isDefault && <span className="cib">default</span>}
                 </div>
-                <div className="text-[11px] text-muted truncate">
-                  {p.baseUrl}
-                </div>
-                {p.models.length > 0 && (
-                  <div className="text-[10px] text-dim mt-0.5">
-                    {p.models.join(', ')}
-                  </div>
-                )}
+                <div className="cim truncate">{p.baseUrl}</div>
+                {p.models.length > 0 && <div className="cim" style={{ marginTop: '2px' }}>{p.models.join(', ')}</div>}
               </div>
-              <button
-                onClick={() => handleDelete(p.id)}
-                className="text-dim hover:text-error text-xs px-1"
-              >
-                ✕
-              </button>
+              <button onClick={() => handleDelete(p.id)} className="cix">✕</button>
             </div>
           ))}
 
           {showAddForm && (
-            <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
-              <div>
-                <label className="text-[11px] text-muted block mb-1">
-                  Provider
-                </label>
-                <div className="flex gap-1 flex-wrap">
+            <div className="ci" style={{ display: 'block', padding: '14px' }}>
+              <div style={{ marginBottom: '10px' }}>
+                <label className="fl">Provider</label>
+                <div className="prov-grid">
                   {BUILTIN_PROVIDERS.map((pr) => (
                     <button
                       key={pr.name}
-                      onClick={() => {
-                        setFormName(pr.name)
-                        setFormUrl(pr.baseUrl)
-                      }}
-                      className={`text-[10px] px-2 py-1 rounded ${
-                        formName === pr.name
-                          ? 'bg-accent text-white'
-                          : 'bg-[#1E293B] text-muted hover:text-[#F1F5F9]'
-                      }`}
+                      onClick={() => { setFormName(pr.name); setFormUrl(pr.baseUrl) }}
+                      className={`prov-pill ${formName === pr.name ? 'active' : ''}`}
                     >
                       {pr.name}
                     </button>
                   ))}
                 </div>
               </div>
-              <div>
-                <label className="text-[11px] text-muted block mb-1">
-                  Name
-                </label>
-                <input
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className="w-full bg-[#0F172A] border border-border rounded px-2 py-1.5 text-sm text-[#F1F5F9] outline-none focus:border-accent"
-                  placeholder="My Provider"
-                />
+              <div style={{ marginBottom: '10px' }}>
+                <label className="fl">Name</label>
+                <input value={formName} onChange={(e) => setFormName(e.target.value)} className="fi" placeholder="My Provider" />
               </div>
-              <div>
-                <label className="text-[11px] text-muted block mb-1">
-                  Base URL
-                </label>
-                <input
-                  value={formUrl}
-                  onChange={(e) => setFormUrl(e.target.value)}
-                  className="w-full bg-[#0F172A] border border-border rounded px-2 py-1.5 text-sm text-[#F1F5F9] outline-none focus:border-accent"
-                  placeholder="https://api.openai.com/v1"
-                />
+              <div style={{ marginBottom: '10px' }}>
+                <label className="fl">Base URL</label>
+                <input value={formUrl} onChange={(e) => setFormUrl(e.target.value)} className="fi" placeholder="https://api.openai.com/v1" />
               </div>
-              <div>
-                <label className="text-[11px] text-muted block mb-1">
-                  API Key
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={formApiKey}
-                    onChange={(e) => setFormApiKey(e.target.value)}
-                    className="flex-1 bg-[#0F172A] border border-border rounded px-2 py-1.5 text-sm text-[#F1F5F9] outline-none focus:border-accent"
-                    placeholder="sk-..."
-                  />
-                  <button
-                    onClick={handleTest}
-                    disabled={
-                      !formUrl || !formApiKey || testStatus === 'testing'
-                    }
-                    className="px-2 py-1.5 text-[10px] bg-surface border border-border rounded text-muted hover:text-[#F1F5F9] disabled:opacity-40"
-                  >
+              <div style={{ marginBottom: '10px' }}>
+                <label className="fl">API Key</label>
+                <div className="flex" style={{ gap: '6px' }}>
+                  <input type="password" value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)} className="fi" style={{ flex: 1 }} placeholder="sk-..." />
+                  <button onClick={handleTest} disabled={!formUrl || !formApiKey || testStatus === 'testing'} className="bs">
                     {testStatus === 'testing' ? '...' : 'Test'}
                   </button>
                 </div>
                 {testStatus !== 'idle' && (
-                  <div
-                    className={`text-[10px] mt-1 ${
-                      testStatus === 'success' ? 'text-success' : 'text-error'
-                    }`}
-                  >
+                  <div className={testStatus === 'success' ? 'ts-success' : 'ts-error'} style={{ fontSize: '10px', marginTop: '4px' }}>
                     {testMessage}
                   </div>
                 )}
               </div>
-              <div>
-                <label className="text-[11px] text-muted block mb-1">
-                  Models (comma separated)
-                </label>
-                <input
-                  value={formModels}
-                  onChange={(e) => setFormModels(e.target.value)}
-                  className="w-full bg-[#0F172A] border border-border rounded px-2 py-1.5 text-sm text-[#F1F5F9] outline-none focus:border-accent"
-                  placeholder="gpt-4, gpt-3.5-turbo"
-                />
+              <div style={{ marginBottom: '10px' }}>
+                <label className="fl">Models (comma separated)</label>
+                <input value={formModels} onChange={(e) => setFormModels(e.target.value)} className="fi" placeholder="gpt-4, gpt-3.5-turbo" />
               </div>
-              <label className="flex items-center gap-2 text-[11px] text-muted cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formIsDefault}
-                  onChange={(e) => setFormIsDefault(e.target.checked)}
-                  className="rounded border-border"
-                />
+              <label className="flex items-center" style={{ gap: '6px', fontSize: '11px', color: 'var(--text2)', cursor: 'pointer', marginBottom: '10px' }}>
+                <input type="checkbox" checked={formIsDefault} onChange={(e) => setFormIsDefault(e.target.checked)} className="fchk" />
                 Set as default provider
               </label>
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={handleSave}
-                  disabled={!formName || !formUrl}
-                  className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:bg-accent-hover disabled:opacity-40"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setShowAddForm(false)}
-                  className="px-3 py-1.5 text-xs bg-surface text-muted rounded hover:text-[#F1F5F9]"
-                >
-                  Cancel
-                </button>
+              <div className="flex" style={{ gap: '6px' }}>
+                <button onClick={handleSave} disabled={!formName || !formUrl} className="bp">Save</button>
+                <button onClick={() => setShowAddForm(false)} className="bs">Cancel</button>
               </div>
             </div>
           )}
         </div>
 
         {!showAddForm && (
-          <div className="px-4 py-3 border-t border-[#1E293B]">
-            <button
-              onClick={() => startAdd()}
-              className="text-xs text-accent hover:text-accent-hover"
-            >
-              + Add Provider
-            </button>
+          <div className="modal-ftr">
+            <button onClick={() => startAdd()} className="bt">+ Add Provider</button>
           </div>
         )}
       </div>

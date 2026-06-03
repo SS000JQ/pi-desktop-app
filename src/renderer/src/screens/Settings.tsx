@@ -32,52 +32,50 @@ export default function Settings({ onClose }: SettingsProps) {
   ] as const
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-border rounded-lg w-[520px] max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E293B]">
-          <h2 className="text-sm font-semibold">Settings</h2>
-          <button onClick={onClose} className="text-dim hover:text-muted text-sm">✕</button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ width: '500px', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <h2 className="modal-title">Settings</h2>
+          <button onClick={onClose} className="modal-x">✕</button>
         </div>
 
-        <div className="flex gap-0 flex-1 min-h-0">
-          {/* Tabs */}
-          <div className="w-28 flex-shrink-0 border-r border-[#1E293B] p-2 space-y-0.5">
+        <div className="flex" style={{ flex: 1, minHeight: 0 }}>
+          <div className="tab-side">
             {tabs.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)} className={`w-full text-left px-2 py-1.5 rounded text-xs ${tab === t.key ? 'bg-surface text-[#F1F5F9]' : 'text-muted hover:text-[#F1F5F9]'}`}>{t.label}</button>
+              <button key={t.key} onClick={() => setTab(t.key)} className={`tab-btn ${tab === t.key ? 'active' : ''}`}>{t.label}</button>
             ))}
           </div>
 
-          {/* Content */}
-          <div className="flex-1 p-4 overflow-y-auto text-sm">
+          <div className="modal-body" style={{ flex: 1 }}>
+            <div className="s-title">{tab}</div>
+
             {tab === 'general' && (
-              <div className="space-y-4">
-                <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">General</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
-                  <label className="text-xs text-muted block mb-1">Working Directory</label>
-                  <div className="flex gap-2">
-                    <input value={workDir} onChange={e => setWorkDir(e.target.value)} className="flex-1 bg-[#0F172A] border border-border rounded px-2 py-1.5 text-xs text-[#F1F5F9] outline-none focus:border-accent" />
-                    <button onClick={saveWorkDir} className="px-2 py-1 text-xs bg-accent text-white rounded hover:bg-accent-hover">Save</button>
+                  <label className="fl">Working Directory</label>
+                  <div className="flex" style={{ gap: '6px' }}>
+                    <input value={workDir} onChange={e => setWorkDir(e.target.value)} className="fi" style={{ flex: 1 }} />
+                    <button onClick={saveWorkDir} className="bp">Save</button>
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-muted block mb-1">Providers</label>
-                  <p className="text-[10px] text-dim">Manage your AI providers from the Provider Manager (⌘P)</p>
+                  <label className="fl">Providers</label>
+                  <p style={{ fontSize: '10px', color: 'var(--text2)' }}>Manage your AI providers from the Provider Manager (⌘P)</p>
                 </div>
               </div>
             )}
 
             {tab === 'appearance' && (
-              <div className="space-y-4">
-                <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Appearance</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs">Dark Mode</span>
-                  <button onClick={toggleTheme} className={`w-10 h-5 rounded-full transition-colors ${theme === 'dark' ? 'bg-accent' : 'bg-[#334155]'} relative`}>
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${theme === 'dark' ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div className="flex justify-between items-center">
+                  <span style={{ fontSize: '11px' }}>Dark Mode</span>
+                  <button onClick={toggleTheme} className={`toggle ${theme === 'dark' ? 'on' : ''}`}>
+                    <span className="toggle-knob" />
                   </button>
                 </div>
                 <div>
-                  <label className="text-xs text-muted block mb-1">Font Size</label>
-                  <select className="w-full bg-[#0F172A] border border-border rounded px-2 py-1.5 text-xs text-[#F1F5F9] outline-none">
+                  <label className="fl">Font Size</label>
+                  <select className="fsel">
                     <option>12px</option>
                     <option selected>13px</option>
                     <option>14px</option>
@@ -89,8 +87,7 @@ export default function Settings({ onClose }: SettingsProps) {
             )}
 
             {tab === 'shortcuts' && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Keyboard Shortcuts</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {[
                   ['⌘⏎ / Ctrl+⏎', 'Send message'],
                   ['⌘K / Ctrl+K', 'Clear chat'],
@@ -100,21 +97,20 @@ export default function Settings({ onClose }: SettingsProps) {
                   ['⌘P / Ctrl+P', 'Open Provider Manager'],
                   ['Esc', 'Close modal'],
                 ].map(([key, desc]) => (
-                  <div key={key} className="flex justify-between items-center py-1">
-                    <span className="text-[10px] font-mono text-[#94A3B8] bg-surface px-1.5 py-0.5 rounded">{key}</span>
-                    <span className="text-[11px] text-muted">{desc}</span>
+                  <div key={key} className="flex justify-between items-center" style={{ padding: '2px 0' }}>
+                    <span className="sc-key">{key}</span>
+                    <span className="sc-desc">{desc}</span>
                   </div>
                 ))}
               </div>
             )}
 
             {tab === 'about' && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">About</h3>
-                <div><span className="text-muted">Pi Desktop</span></div>
-                <div><span className="text-muted">Version:</span> 0.1.0</div>
-                <div><span className="text-muted">Electron:</span> 39</div>
-                <div><span className="text-muted">React:</span> 19</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '11px' }}>
+                <div><span style={{ color: 'var(--text2)' }}>Pi Desktop</span></div>
+                <div><span style={{ color: 'var(--text2)' }}>Version:</span> 0.1.0</div>
+                <div><span style={{ color: 'var(--text2)' }}>Electron:</span> 39</div>
+                <div><span style={{ color: 'var(--text2)' }}>React:</span> 19</div>
               </div>
             )}
           </div>

@@ -18,9 +18,9 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-muted text-sm">
+      <div className="msg-empty">
         <div className="text-center">
-          <div className="text-2xl mb-2">💬</div>
+          <div style={{ fontSize: '20px', marginBottom: '6px' }}>💬</div>
           <div>Ask Pi anything to get started</div>
         </div>
       </div>
@@ -28,7 +28,7 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+    <div className="msgs">
       {messages.map(msg => (
         <MessageRow
           key={msg.id}
@@ -38,8 +38,8 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
         />
       ))}
       {isStreaming && (
-        <div className="flex items-center gap-1.5 text-muted text-xs font-mono ml-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+        <div className="msg-stream">
+          <span className="stream-dot" />
           Pi is thinking...
         </div>
       )}

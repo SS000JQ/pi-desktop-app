@@ -18,8 +18,8 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
 
   if (collapsed) {
     return (
-      <div className="w-12 flex-shrink-0 bg-[#0F172A] border-r border-[#1E293B] flex flex-col items-center pt-2">
-        <button onClick={onToggleCollapse} className="text-[10px] text-dim hover:text-muted mb-4" style={{ writingMode: 'vertical-lr', letterSpacing: '2px' }}>
+      <div className="left items-center pt-2">
+        <button onClick={onToggleCollapse} className="ibtn" style={{ writingMode: 'vertical-lr', letterSpacing: '2px', width: 'auto', padding: '8px 0' }}>
           EXPAND
         </button>
       </div>
@@ -27,8 +27,8 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
   }
 
   return (
-    <div className="w-[140px] flex-shrink-0 bg-[#0F172A] border-r border-[#1E293B] flex flex-col">
-      <div className="px-1.5 pt-2 pb-1">
+    <div className="left">
+      <div className="l-list" style={{ padding: '6px 8px 0' }}>
         {[
           { label: 'Files', onClick: onOpenFiles },
           { label: 'Tools', onClick: onOpenTools },
@@ -38,25 +38,23 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
           <div
             key={item.label}
             onClick={item.onClick}
-            className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-all ${
-              i === 0 ? 'bg-surface text-[#F1F5F9]' : 'text-muted hover:bg-surface hover:text-[#F1F5F9]'
-            }`}
+            className={`l-item ${i === 0 ? 'active' : ''}`}
           >
             {item.label}
           </div>
         ))}
       </div>
 
-      <div className="h-px bg-[#1E293B] mx-2.5 my-1" />
+      <div className="l-div" />
 
-      <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-[9px] uppercase tracking-wider text-dim font-semibold">Sessions</span>
-        <button className="text-dim hover:text-muted text-sm leading-none transition-colors">+</button>
+      <div className="l-hdr">
+        <span className="l-section" style={{ padding: 0 }}>Sessions</span>
+        <button className="l-new">+</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-1.5 pb-1">
+      <div className="l-list">
         {sessions.length === 0 ? (
-          <div className="text-[10px] text-dim text-center py-4">
+          <div className="l-session" style={{ cursor: 'default', textAlign: 'center', color: 'rgba(255,255,255,0.08)' }}>
             No sessions yet.
           </div>
         ) : (
@@ -64,11 +62,7 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
             <div
               key={s.id}
               onClick={() => onSessionSelect(s.id)}
-              className={`px-2 py-1 mb-px rounded text-xs cursor-pointer transition-all truncate ${
-                s.id === activeSessionId
-                  ? 'bg-surface text-[#F1F5F9] font-medium'
-                  : 'text-muted hover:bg-surface hover:text-[#CBD5E1]'
-              }`}
+              className={`l-session ${s.id === activeSessionId ? 'active' : ''}`}
             >
               {s.title}
             </div>
@@ -76,20 +70,20 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
         )}
       </div>
 
-      <div className="flex gap-1 px-2 py-1 border-t border-[#1E293B] mt-auto">
+      <div className="l-fil">
         <button
           onClick={() => setFilter('all')}
-          className={`px-1.5 py-0.5 rounded-full text-[9px] ${filter === 'all' ? 'bg-surface text-[#94A3B8]' : 'text-dim hover:text-muted'}`}
+          className={filter === 'all' ? 'active' : ''}
         >
           All
         </button>
         <button
           onClick={() => setFilter('active')}
-          className={`px-1.5 py-0.5 rounded-full text-[9px] ${filter === 'active' ? 'bg-surface text-[#94A3B8]' : 'text-dim hover:text-muted'}`}
+          className={filter === 'active' ? 'active' : ''}
         >
           Active
         </button>
-        <button onClick={onToggleCollapse} className="ml-auto text-[9px] text-dim hover:text-muted">◀</button>
+        <button onClick={onToggleCollapse} className="l-new" style={{ marginLeft: 'auto', fontSize: '9px' }}>◀</button>
       </div>
     </div>
   )
