@@ -4,11 +4,18 @@ import type { PiDesktopApi } from './api'
 
 const api: PiDesktopApi = {
   chat: {
-    send: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, { text }),
+    send: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, { text })
   },
   config: {
     get: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET, key),
-    set: (key: string, value: unknown) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SET, key, value),
+    set: (key: string, value: unknown) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SET, key, value)
+  },
+  session: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_LIST),
+    create: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_CREATE),
+    delete: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_DELETE, id),
+    search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SEARCH, query),
+    switch: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH, id)
   },
   onAgentEvent: (callback) => {
     const handler = (_event: unknown, data: unknown) => callback(data)

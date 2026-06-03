@@ -2,6 +2,16 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { IPC_CHANNELS, APP_NAME, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT } from '../shared/constants'
+import {
+  initDatabase,
+  createSession,
+  listSessions,
+  searchSessions,
+  deleteSession,
+  updateSessionTitle,
+  closeDatabase
+} from './db'
+import { ensureSessionsDir, appendMessage, readMessages } from './session-store'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -18,7 +28,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false,
+      nodeIntegration: false
     }
   })
 
@@ -50,6 +60,31 @@ ipcMain.handle(IPC_CHANNELS.CONFIG_SET, async (_event, key: string, value: unkno
   return { success: true }
 })
 
+// Session IPC handlers
+ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
+  return { success: true, data: listSessions() }
+})
+
+ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async () => {
+  const id = crypto.randomUUID()
+  createSession(id)
+  return { success: true, data: { id } }
+})
+
+ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (_event, id: string) => {
+  deleteSession(id)
+  return { success: true }
+})
+
+ipcMain.handle(IPC_CHANNELS.SESSION_SEARCH, async (_event, query: string) => {
+  return { success: true, data: searchSessions(query) }
+})
+
+ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, id: string) => {
+  const messages = readMessages(id)
+  return { success: true, data: { messages } }
+})
+
 app.on('web-contents-created', (_, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -60,6 +95,9 @@ app.on('web-contents-created', (_, contents) => {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId(APP_NAME)
   optimizer.watchWindowShortcuts(mainWindow!)
+
+  ensureSessionsDir()
+  initDatabase()
 
   createWindow()
 
@@ -74,4 +112,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  closeDatabase()
 })
