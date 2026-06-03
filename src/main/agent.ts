@@ -1,11 +1,18 @@
-import { streamSimple, getModel } from '@earendil-works/pi-ai'
-import type { Message } from '@earendil-works/pi-ai'
+// Dynamic ESM import for @earendil-works/pi-ai (pure ESM, can't be require'd from CJS)
+let piAi: any = null
+async function getPiAi() {
+  if (!piAi) {
+    piAi = await import('@earendil-works/pi-ai')
+  }
+  return piAi
+}
+
 import { getDecryptedApiKey } from './providers'
 
-const sessions = new Map<string, Message[]>()
+const sessions = new Map<string, any[]>()
 const abortControllers = new Map<string, AbortController>()
 
-export function getSessionMessages(sessionId: string): Message[] {
+export function getSessionMessages(sessionId: string): any[] {
   return sessions.get(sessionId) || []
 }
 
@@ -13,46 +20,40 @@ export function addUserMessage(sessionId: string, text: string): void {
   const msgs = sessions.get(sessionId) || []
   msgs.push({
     role: 'user',
-    content: [{ type: 'text', text: text }],
-  } as Message)
+    content: [{ type: 'text', text }],
+  })
   sessions.set(sessionId, msgs)
 }
 
-export function getMessagesForLlm(sessionId: string): Message[] {
-  return sessions.get(sessionId) || []
-}
-
-// Resolve a provider+model string to pi-ai's Model + API key
-function resolveModel(modelId: string): { model: any; apiKey?: string } | null {
-  // Try pi-ai's built-in model registry first
-  // Format: "provider/modelId" e.g. "openai/gpt-4", "anthropic/claude-sonnet-4-20250514"
+// Resolve model string to pi-ai Model + API key
+async function resolveModel(modelId: string): Promise<{ model: any; apiKey?: string } | null> {
+  const pi = await getPiAi()
   const parts = modelId.split('/')
   if (parts.length === 2) {
     try {
-      const model = getModel(parts[0] as any, parts[1] as any)
-      // Get API key from our provider config
-      const config = require('./providers').loadProviders()
+      const model = pi.getModel(parts[0], parts[1])
+      const { loadProviders } = require('./providers')
+      const config = loadProviders()
       const provider = config.find((p: any) =>
         p.name.toLowerCase() === parts[0].toLowerCase() ||
-        p.baseUrl.includes(parts[0])
+        p.baseUrl?.includes(parts[0])
       )
       if (provider) {
         const apiKey = getDecryptedApiKey(provider.id)
         if (apiKey) return { model, apiKey }
       }
-      // Fallback: try env var
       const envKey = process.env[`${parts[0].toUpperCase()}_API_KEY`] || process.env.OPENAI_API_KEY
       return { model, apiKey: envKey }
     } catch {
-      // Fall through to custom model handling
+      // fall through
     }
   }
 
-  // Custom OpenAI-compatible model (set up in Provider Manager)
-  // Try to find any provider whose models list includes this modelId
-  const config = require('./providers').loadProviders()
+  // Custom OpenAI-compatible model
+  const { loadProviders } = require('./providers')
+  const config = loadProviders()
   const provider = config.find((p: any) =>
-    p.models.includes(modelId) || p.models.some((m: string) => m.includes(modelId))
+    p.models?.includes(modelId) || p.models?.some((m: string) => m.includes(modelId))
   )
   if (provider) {
     const apiKey = getDecryptedApiKey(provider.id)
@@ -84,20 +85,20 @@ export async function* streamResponse(
     return
   }
 
-  const resolved = resolveModel(modelId)
+  const resolved = await resolveModel(modelId)
   if (!resolved) {
-    // Try using modelId as a direct API key for OpenAI-compatible endpoint
-    yield { type: 'error', error: `Model "${modelId}" not configured. Add it in Provider Manager or set OPENAI_API_KEY.` }
+    yield { type: 'error', error: `Model "${modelId}" not configured. Add it in Provider Manager or set OPENAI_API_KEY env var.` }
     return
   }
 
+  const pi = await getPiAi()
   const ac = new AbortController()
   abortControllers.set(sessionId, ac)
 
   let fullResponse = ''
 
   try {
-    const stream = streamSimple(
+    const stream = pi.streamSimple(
       resolved.model,
       { messages },
       { apiKey: resolved.apiKey || undefined, signal: ac.signal },
@@ -109,12 +110,12 @@ export async function* streamResponse(
         yield { type: 'token', text: event.delta }
       } else if (event.type === 'done') {
         const msgs = sessions.get(sessionId) || []
-        msgs.push(event.message as Message)
+        msgs.push(event.message)
         sessions.set(sessionId, msgs)
         yield { type: 'done' }
         return
       } else if (event.type === 'error') {
-        yield { type: 'error', error: event.error.errorMessage || 'Stream error' }
+        yield { type: 'error', error: event.error?.errorMessage || 'Stream error' }
         return
       }
     }
@@ -133,10 +134,7 @@ export async function* streamResponse(
 
 export function abortSession(sessionId: string): void {
   const ac = abortControllers.get(sessionId)
-  if (ac) {
-    ac.abort()
-    abortControllers.delete(sessionId)
-  }
+  if (ac) { ac.abort(); abortControllers.delete(sessionId) }
   sessions.delete(sessionId)
 }
 
