@@ -9,6 +9,7 @@ import Settings from './screens/Settings'
 import Profile from './screens/Profile'
 import ProviderManager from './screens/ProviderManager'
 import Shortcuts from './screens/Shortcuts'
+import Files from './screens/Files'
 import type { Message, Session } from './types/chat'
 import { useChatIPC } from './hooks/useChatIPC'
 
@@ -35,6 +36,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false)
   const [showProvider, setShowProvider] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showFiles, setShowFiles] = useState(false)
   const [hasProvider, setHasProvider] = useState(true) // Phase 3: read from config
 
   const onAssistantMessage = useCallback((msg: Message) => {
@@ -127,7 +129,7 @@ export default function App() {
             onSessionSelect={(id) => setActiveSessionId(id)}
             collapsed={leftPanelCollapsed}
             onToggleCollapse={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-            onOpenFiles={() => {}}
+            onOpenFiles={() => setShowFiles(true)}
             onOpenTools={() => {}}
             onOpenSkills={() => {}}
             onOpenMemory={() => {}}
@@ -154,6 +156,7 @@ export default function App() {
       {showProfile && <Profile onClose={() => setShowProfile(false)} />}
       {showProvider && <ProviderManager onClose={() => setShowProvider(false)} />}
       {showShortcuts && <Shortcuts onClose={() => setShowShortcuts(false)} />}
+      {showFiles && <Files onClose={() => setShowFiles(false)} />}
     </>
   )
 }

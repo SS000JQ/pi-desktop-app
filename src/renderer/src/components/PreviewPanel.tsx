@@ -17,6 +17,7 @@ const mockArtifacts: ArtifactFile[] = [
   { name: '大纲.md', ext: 'md', size: '1.2kb' },
   { name: 'AI数据.xlsx', ext: 'xlsx', size: '8kb' },
   { name: '演讲稿.md', ext: 'md', size: '3.4kb' },
+  { name: 'App.tsx', ext: 'code', size: '4.2kb' },
   { name: 'slide-01.png', ext: 'img', size: '124kb' },
 ]
 
@@ -40,6 +41,14 @@ export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, 
       window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [onResize])
+
+  // highlight code when source mode is active
+  useEffect(() => {
+    if (currentFile?.ext === 'code' || previewMode === 'source') {
+      // highlight.js would be applied to the code block
+      // For now the CSS handles basic styling
+    }
+  }, [currentFile, previewMode])
 
   function openPreview(file: ArtifactFile) {
     setCurrentFile(file)
@@ -154,6 +163,12 @@ export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, 
             {currentFile.ext === 'md' && previewMode === 'source' && (
               <div className="pv-src">
                 <textarea defaultValue={`## AI 发展历程 · PPT 大纲\n\n---\n\n1. 🏛️ 人工智能的起源 (1950s)\n2. ⚙️ 寒冬与重生 (1980s)\n3. 📈 机器学习的崛起 (2000s)\n4. 🧠 深度学习革命 (2012)\n5. 🤖 大模型时代 (2020)`} />
+              </div>
+            )}
+            {/* .code preview */}
+            {currentFile.ext === 'code' && previewMode === 'preview' && (
+              <div className="pv-src" style={{ padding: 0 }}>
+                <textarea readOnly defaultValue={`// ${currentFile.name}\n\n`} style={{ flex: 1, padding: '16px 20px', background: 'transparent', border: 'none', outline: 'none', fontFamily: "'JetBrains Mono', monospace", fontSize: 13, lineHeight: 1.8, color: 'rgba(255,255,255,0.4)', resize: 'none' }} />
               </div>
             )}
             {/* .xlsx */}
