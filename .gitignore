@@ -1,0 +1,26 @@
+# Mockup files (visual companion)
+.superpowers/
+
+# Session data
+.claude/session-data/
+
+# Local settings override
+.claude/settings.local.json
+
+# Build output
+out/
+dist/
+*.exe
+*.dmg
+*.AppImage
+
+# Dependencies
+node_modules/
+
+# Environment secrets
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
