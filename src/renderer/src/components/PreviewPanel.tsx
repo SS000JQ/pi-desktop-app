@@ -1,4 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
+import * as XLSX from 'xlsx'
+import mammoth from 'mammoth'
+import hljs from 'highlight.js'
 
 interface PreviewPanelProps {
   collapsed: boolean
@@ -168,13 +171,43 @@ export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, 
             {/* .code preview */}
             {currentFile.ext === 'code' && previewMode === 'preview' && (
               <div className="pv-src" style={{ padding: 0 }}>
-                <textarea readOnly defaultValue={`// ${currentFile.name}\n\n`} style={{ flex: 1, padding: '16px 20px', background: 'transparent', border: 'none', outline: 'none', fontFamily: "'JetBrains Mono', monospace", fontSize: 13, lineHeight: 1.8, color: 'rgba(255,255,255,0.4)', resize: 'none' }} />
+                <pre style={{ margin: 0, padding: '16px 20px', fontSize: 12, lineHeight: 1.8, color: 'rgba(255,255,255,0.4)', overflow: 'auto', fontFamily: "'JetBrains Mono', monospace" }}>
+                  <code dangerouslySetInnerHTML={{
+                    __html: hljs.highlight(`// ${currentFile.name}
+import { useState } from 'react'
+
+export default function App() {
+  const [count, setCount] = useState(0)
+  return <div>{count}</div>
+}`, { language: 'typescript' }).value
+                  }} />
+                </pre>
               </div>
             )}
             {/* .xlsx */}
             {currentFile.ext === 'xlsx' && (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.15)', fontSize: 12 }}>
-                📊 Sheet1: 12 rows × 5 cols
+              <div className="pv-slides" style={{ justifyContent: 'flex-start', alignItems: 'stretch', display: 'flex' }}>
+                <div style={{ padding: 12 }}>
+                  <div style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11, marginBottom: 8 }}>📊 Sheet preview (first 20 rows)</div>
+                  <table style={{ borderCollapse: 'collapse', fontSize: 11, color: 'rgba(255,255,255,0.35)', width: '100%' }}>
+                    <tbody>
+                      {[
+                        ['Year', 'AI Milestone', 'Impact'],
+                        ['1950', 'Turing Test', 'Foundation'],
+                        ['1956', 'Dartmouth', 'Birth of AI'],
+                        ['2012', 'AlexNet', 'Deep Learning'],
+                        ['2017', 'Transformer', 'Modern LLMs'],
+                        ['2020', 'GPT-3', 'Scaling'],
+                      ].map((row, ri) => (
+                        <tr key={ri} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          {row.map((cell, ci) => (
+                            <td key={ci} style={{ padding: '4px 8px', fontWeight: ri === 0 ? 500 : 400, color: ri === 0 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.18)' }}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             {/* .img */}
@@ -184,9 +217,27 @@ export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, 
             {/* .pptx */}
             {currentFile.ext === 'pptx' && (
               <div className="pv-slides">
-                <div className="pv-slide"><div className="st">📊 数据概览</div><div className="sn">1 / 5</div></div>
-                <div className="pv-slide"><div className="st">🏛️ 人工智能的起源</div><div className="sn">2 / 5</div></div>
-                <div className="pv-slide"><div className="st">⚙️ 寒冬与重生</div><div className="sn">3 / 5</div></div>
+                <div className="pv-slide" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ display: 'inline-block', width: 22, height: 14, background: '#007aff', borderRadius: 2, fontSize: 8, color: 'white', textAlign: 'center', lineHeight: '14px' }}>1</span>
+                    <span className="st">AI 发展历程</span>
+                  </div>
+                  <div className="si">从图灵测试到大模型时代</div>
+                </div>
+                <div className="pv-slide">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ display: 'inline-block', width: 22, height: 14, background: '#007aff', borderRadius: 2, fontSize: 8, color: 'white', textAlign: 'center', lineHeight: '14px' }}>2</span>
+                    <span className="st">🏛️ 人工智能的起源</span>
+                  </div>
+                  <div className="si">1950: 图灵测试 · 1956: 达特茅斯</div>
+                </div>
+                <div className="pv-slide">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ display: 'inline-block', width: 22, height: 14, background: '#007aff', borderRadius: 2, fontSize: 8, color: 'white', textAlign: 'center', lineHeight: '14px' }}>3</span>
+                    <span className="st">⚙️ 寒冬与重生</span>
+                  </div>
+                  <div className="si">专家系统 · 两次 AI 寒冬</div>
+                </div>
               </div>
             )}
           </div>

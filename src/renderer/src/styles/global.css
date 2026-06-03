@@ -562,6 +562,11 @@ body {
 .prov-btn.active { border-color: var(--accent); background: rgba(0,122,255,0.06); }
 .prov-url { color: var(--text2); font-size: 11px; margin-left: 6px; }
 
-/* ── Test status ── */
-.ts-success { color: var(--success); }
-.ts-error { color: rgba(255,94,94,0.6); }
+/* highlight.js overrides for dark theme */
+.hljs { color: rgba(255,255,255,0.45); background: transparent; }
+.hljs-keyword { color: rgba(255,107,107,0.5); }
+.hljs-string { color: rgba(48,209,88,0.45); }
+.hljs-number { color: rgba(0,122,255,0.5); }
+.hljs-title { color: rgba(255,255,255,0.55); }
+.hljs-built_in { color: rgba(255,159,10,0.45); }
+.hljs-comment { color: rgba(255,255,255,0.1); font-style: italic; }
