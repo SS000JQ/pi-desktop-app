@@ -93,6 +93,25 @@ export default function InputBar({ onSendMessage, isStreaming }: InputBarProps) 
     }
   }, [text])
 
+  // Paste image from clipboard (screenshot paste support)
+  useEffect(() => {
+    const inputEl = inputRef.current
+    if (!inputEl) return
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          setAttachments(prev => [...prev, { name: `Screenshot ${prev.length + 1}.png` }])
+          break
+        }
+      }
+    }
+    inputEl.addEventListener('paste', handlePaste)
+    return () => inputEl.removeEventListener('paste', handlePaste)
+  }, [])
+
   return (
     <div className="inpw">
       {attachments.length > 0 && (

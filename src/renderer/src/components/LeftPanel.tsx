@@ -45,10 +45,8 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
         ))}
       </div>
 
-      <div className="l-div" />
-
       <div className="l-hdr">
-        <span className="l-section" style={{ padding: 0 }}>Sessions</span>
+        <span className="l-hdr-label">Sessions</span>
         <button className="l-new">+</button>
       </div>
 
