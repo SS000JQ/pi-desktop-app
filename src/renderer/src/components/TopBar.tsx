@@ -2,19 +2,23 @@ import { useState } from 'react'
 
 interface TopBarProps {
   currentDir: string
+  currentModel?: string
+  onModelChange?: (model: string) => void
   onOpenSettings?: () => void
   onOpenProfile?: () => void
 }
 
-export default function TopBar({ currentDir, onOpenSettings, onOpenProfile }: TopBarProps) {
+export default function TopBar({ currentDir, currentModel = 'Sonnet 4.6', onModelChange, onOpenSettings, onOpenProfile }: TopBarProps) {
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showDirPicker, setShowDirPicker] = useState(false)
-  const [currentModel, setCurrentModel] = useState('Sonnet 4.6')
+
+  // Mock models — Phase 3 reads from Provider Manager
   const models = [
-    { id: '1', name: 'Sonnet 4.6' },
-    { id: '2', name: 'Opus 4.5' },
-    { id: '3', name: 'GPT-4o' },
-    { id: '4', name: 'Claude 3.5 Haiku' },
+    { id: 'openai/gpt-4', name: 'GPT-4' },
+    { id: 'openai/gpt-4o', name: 'GPT-4o' },
+    { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+    { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4' },
+    { id: 'openrouter/anthropic/claude-sonnet-4', name: 'OpenRouter Sonnet' },
   ]
 
   return (
@@ -53,7 +57,7 @@ export default function TopBar({ currentDir, onOpenSettings, onOpenProfile }: To
                 </div>
               ) : models.map(m => (
                 <button key={m.id}
-                  onClick={() => { setCurrentModel(m.name); setShowModelPicker(false) }}
+                  onClick={() => { onModelChange?.(m.id); setShowModelPicker(false) }}
                   style={{
                     display: 'block', width: '100%', padding: '6px 10px', border: 'none',
                     background: m.name === currentModel ? 'rgba(255,255,255,0.06)' : 'transparent',

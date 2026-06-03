@@ -32,6 +32,7 @@ export default function App() {
   const [rightPanelWidth, setRightPanelWidth] = useState(300)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [currentModel, setCurrentModel] = useState('Sonnet 4.6')
 
   // Modal states
   const [showWizard, setShowWizard] = useState(false)
@@ -60,7 +61,7 @@ export default function App() {
   const onStreamStart = useCallback(() => setIsStreaming(true), [])
   const onStreamEnd = useCallback(() => setIsStreaming(false), [])
 
-  const { sendMessage } = useChatIPC({ onAssistantMessage, onStreamStart, onStreamEnd })
+  const { sendMessage } = useChatIPC({ onAssistantMessage, onStreamStart, onStreamEnd, currentModel })
 
   const handleSendMessage = useCallback((text: string) => {
     if (!text.trim() || isStreaming) return
@@ -140,6 +141,8 @@ export default function App() {
       <div className="app-shell">
         <TopBar
           currentDir="~/projects/ppt-demo"
+          currentModel={currentModel}
+          onModelChange={setCurrentModel}
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowProfile(true)}
         />

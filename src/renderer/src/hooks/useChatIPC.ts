@@ -11,7 +11,8 @@ export function useChatIPC({
   onAssistantMessage,
   onStreamStart,
   onStreamEnd,
-}: UseChatIPCOptions) {
+  currentModel = 'openai/gpt-4',
+}: UseChatIPCOptions & { currentModel?: string }) {
   const accumulatedRef = useRef('')
   const msgIdRef = useRef('')
 
@@ -60,7 +61,7 @@ export function useChatIPC({
   const sendMessage = useCallback(
     async (text: string) => {
       try {
-        const response = await window.piDesktop.chat.send(text)
+        const response = await window.piDesktop.chat.send(text, currentModel)
         if (!response.success) {
           onAssistantMessage({
             id: `error-${Date.now()}`,
