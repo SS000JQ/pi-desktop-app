@@ -62,6 +62,20 @@ export default function Settings({ onClose }: SettingsProps) {
                   <label className="fl">Providers</label>
                   <p style={{ fontSize: '10px', color: 'var(--text2)' }}>Manage your AI providers from the Provider Manager (⌘P)</p>
                 </div>
+                <div style={{ marginTop: 16 }}>
+                  <h3 style={{ fontSize: 11, color: 'rgba(255,255,255,0.08)', marginBottom: 6 }}>BACKUP</h3>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={async () => {
+                      const res = await window.piDesktop.config.set('backup', Date.now().toString())
+                      if (res.success) alert('Backup created')
+                    }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 2, fontFamily: 'inherit', fontSize: 11, color: 'rgba(255,255,255,0.25)', cursor: 'pointer' }}>
+                      Create Backup
+                    </button>
+                    <button style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 2, fontFamily: 'inherit', fontSize: 11, color: 'rgba(255,255,255,0.25)', cursor: 'pointer' }}>
+                      Restore
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

@@ -10,6 +10,9 @@ import Profile from './screens/Profile'
 import ProviderManager from './screens/ProviderManager'
 import Shortcuts from './screens/Shortcuts'
 import Files from './screens/Files'
+import Tools from './screens/Tools'
+import Skills from './screens/Skills'
+import Memory from './screens/Memory'
 import type { Message, Session } from './types/chat'
 import { useChatIPC } from './hooks/useChatIPC'
 
@@ -37,6 +40,9 @@ export default function App() {
   const [showProvider, setShowProvider] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showFiles, setShowFiles] = useState(false)
+  const [showTools, setShowTools] = useState(false)
+  const [showSkills, setShowSkills] = useState(false)
+  const [showMemory, setShowMemory] = useState(false)
   const [hasProvider, setHasProvider] = useState(true) // Phase 3: read from config
 
   const onAssistantMessage = useCallback((msg: Message) => {
@@ -130,9 +136,9 @@ export default function App() {
             collapsed={leftPanelCollapsed}
             onToggleCollapse={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
             onOpenFiles={() => setShowFiles(true)}
-            onOpenTools={() => {}}
-            onOpenSkills={() => {}}
-            onOpenMemory={() => {}}
+            onOpenTools={() => setShowTools(true)}
+            onOpenSkills={() => setShowSkills(true)}
+            onOpenMemory={() => setShowMemory(true)}
             panelWidth={leftPanelWidth}
             onResize={setLeftPanelWidth}
           />
@@ -157,6 +163,9 @@ export default function App() {
       {showProvider && <ProviderManager onClose={() => setShowProvider(false)} />}
       {showShortcuts && <Shortcuts onClose={() => setShowShortcuts(false)} />}
       {showFiles && <Files onClose={() => setShowFiles(false)} />}
+      {showTools && <Tools onClose={() => setShowTools(false)} />}
+      {showSkills && <Skills onClose={() => setShowSkills(false)} />}
+      {showMemory && <Memory onClose={() => setShowMemory(false)} />}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeImage } from 'electron'
 import { join, extname } from 'path'
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
@@ -25,6 +25,7 @@ import type { ProviderConfig } from './providers'
 import { listProfiles, createProfile, deleteProfile, getActiveProfile, setActiveProfile } from './profiles'
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -56,6 +57,26 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+function createTray(): void {
+  if (!mainWindow) return
+  // Create a simple 16x16 tray icon
+  const icon = nativeImage.createEmpty()
+  tray = new Tray(icon)
+  tray.setToolTip('Pi Desktop')
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Show Window', click: () => mainWindow?.show() },
+    { label: 'New Session', click: () => mainWindow?.show() },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.quit() } },
+  ])
+  tray.setContextMenu(contextMenu)
+
+  tray.on('click', () => {
+    mainWindow?.show()
+  })
 }
 
 // Provider IPC handlers
@@ -208,14 +229,37 @@ app.on('web-contents-created', (_, contents) => {
   })
 })
 
+// Single instance lock
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId(APP_NAME)
   optimizer.watchWindowShortcuts(mainWindow!)
+
+  // Register global shortcut
+  globalShortcut.register('Alt+Shift+Space', () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide()
+    } else {
+      mainWindow?.show()
+    }
+  })
 
   ensureSessionsDir()
   initDatabase()
 
   createWindow()
+  createTray()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -225,11 +269,16 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  // Don't quit on close — minimize to tray
+  if (mainWindow) {
+    mainWindow.hide()
   }
 })
 
 app.on('before-quit', () => {
   closeDatabase()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
