@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { is } from '@electron-toolkit/utils'
-import { IPC_CHANNELS, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT } from '../shared/constants'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { IPC_CHANNELS, APP_NAME, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT } from '../shared/constants'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -13,7 +13,7 @@ function createWindow(): void {
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     backgroundColor: '#0F172A',
-    title: 'Pi Desktop',
+    title: APP_NAME,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -58,6 +58,9 @@ app.on('web-contents-created', (_, contents) => {
 })
 
 app.whenReady().then(() => {
+  electronApp.setAppUserModelId(APP_NAME)
+  optimizer.watchWindowShortcuts(mainWindow!)
+
   createWindow()
 
   app.on('activate', () => {
