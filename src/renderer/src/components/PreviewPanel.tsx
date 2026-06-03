@@ -7,16 +7,29 @@ interface PreviewPanelProps {
   onResize: (w: number) => void
 }
 
-export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, onResize }: PreviewPanelProps) {
-  const [activeTab, setActiveTab] = useState<string | null>('大纲.md')
+interface ArtifactFile {
+  name: string
+  ext: string // 'md' | 'pptx' | 'xlsx' | 'img' | 'code'
+  size?: string
+}
 
+const mockArtifacts: ArtifactFile[] = [
+  { name: '大纲.md', ext: 'md', size: '1.2kb' },
+  { name: 'AI数据.xlsx', ext: 'xlsx', size: '8kb' },
+  { name: '演讲稿.md', ext: 'md', size: '3.4kb' },
+  { name: 'slide-01.png', ext: 'img', size: '124kb' },
+]
+
+export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, onResize }: PreviewPanelProps) {
+  const [view, setView] = useState<'cowork' | 'preview'>('cowork')
+  const [previewMode, setPreviewMode] = useState<'preview' | 'source'>('preview')
+  const [currentFile, setCurrentFile] = useState<ArtifactFile | null>(null)
   const isDraggingRight = useRef(false)
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRight.current) return
-      const windowW = window.innerWidth
-      const newWidth = Math.min(Math.max(windowW - e.clientX, 150), 500)
+      const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 260), 550)
       onResize(newWidth)
     }
     const handleMouseUp = () => { isDraggingRight.current = false }
@@ -28,64 +41,139 @@ export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, 
     }
   }, [onResize])
 
+  function openPreview(file: ArtifactFile) {
+    setCurrentFile(file)
+    setPreviewMode('preview')
+    setView('preview')
+  }
+
+  function closePreview() {
+    setView('cowork')
+    setCurrentFile(null)
+  }
+
+  function togglePreviewMode() {
+    setPreviewMode(prev => prev === 'preview' ? 'source' : 'preview')
+  }
+
   if (collapsed) {
     return (
       <div style={{ width: 32, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.04)', background: '#1a1919', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12 }}>
-        <button onClick={onToggleCollapse}
-          style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", padding: '12px 0' }}>
+        <button onClick={onToggleCollapse} style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", padding: '12px 0' }}>
           PREVIEW
         </button>
       </div>
     )
   }
 
+  const hasPreviewToggle = currentFile?.ext === 'md'
+
   return (
-    <div className="prev" style={{ width: panelWidth, position: 'relative' }}>
+    <div className="prev" style={{ width: panelWidth, position: 'relative', overflow: 'hidden' }}>
       <div className="resize-h" style={{ left: -2 }}
         onMouseDown={(e) => { e.preventDefault(); isDraggingRight.current = true }} />
-      <div className="pft">
-        <button
-          onClick={() => setActiveTab('大纲.md')}
-          className={`pf ${activeTab === '大纲.md' ? 'active' : ''}`}
-        >
-          <span>📄</span> 大纲.md
-        </button>
-        <button
-          onClick={() => setActiveTab('数据.xlsx')}
-          className={`pf ${activeTab === '数据.xlsx' ? 'active' : ''}`}
-        >
-          <span>📊</span> 数据.xlsx
-        </button>
-      </div>
 
-      <div className="ph">
-        <span className="phl">Preview</span>
-        <span className="phl" style={{ cursor: 'pointer' }}>↗</span>
-      </div>
-
-      <div className="psc">
-        {activeTab === '大纲.md' ? (
-          <div className="ps">
-            <div className="st" style={{ color: 'rgba(48,209,88,0.7)' }}>AI 发展历程 · 大纲</div>
-            <div className="sn" style={{ marginTop: 0, marginBottom: '6px' }}>────────────────</div>
-            <div className="si"><span style={{ color: 'var(--accent)' }}>1.</span> 🏛️ 人工智能的起源</div>
-            <div className="si"><span style={{ color: 'var(--accent)' }}>2.</span> ⚙️ 寒冬与重生</div>
-            <div className="si"><span style={{ color: 'var(--accent)' }}>3.</span> 📈 机器学习的崛起</div>
-            <div className="si"><span style={{ color: 'var(--accent)' }}>4.</span> 🧠 深度学习革命</div>
-            <div className="si"><span style={{ color: 'var(--accent)' }}>5.</span> 🤖 大模型时代</div>
+      {/* Cowork Sidebar */}
+      {view === 'cowork' && (
+        <div className="cs">
+          <div className="c-sec">
+            <div className="c-hdr"><span className="c-hl">Progress</span><span className="c-hc">3/5</span></div>
+            <div className="c-bd">
+              <div className="t-bar"><div className="t-bar-in" style={{ width: '60%' }}></div></div>
+              <div className="t"><span className="s d">✓</span><span className="l d">搜索数据</span></div>
+              <div className="t"><span className="s d">✓</span><span className="l d">整理结构</span></div>
+              <div className="t"><span className="s r">●</span><span className="l r">生成内容</span></div>
+              <div className="t"><span className="s w">○</span><span className="l w">演讲稿</span></div>
+            </div>
           </div>
-        ) : (
-          <div className="ps" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(32,29,29,0.3)' }}>
-            Sheet preview (Phase 3)
+          <div className="c-sec" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div className="c-hdr"><span className="c-hl">Files</span></div>
+            <div className="c-bd" style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
+              <div className="ft ft-dd"><span className="i">📁</span><span className="n">ppt-demo/</span></div>
+              <div className="ft ft-fl ft-in"><span className="i">📄</span><span className="n">大纲.md</span></div>
+              <div className="ft ft-fl ft-in"><span className="i">📊</span><span className="n">数据.xlsx</span></div>
+              <div className="ft ft-dd ft-in"><span className="i">📁</span><span className="n">assets/</span></div>
+            </div>
           </div>
-        )}
-      </div>
+          <div className="c-sec">
+            <div className="c-hdr"><span className="c-hl">Artifacts</span><span className="c-hc">{mockArtifacts.length}</span></div>
+            <div className="c-bd">
+              {mockArtifacts.map(f => (
+                <div key={f.name} className="art" onClick={() => openPreview(f)}>
+                  <span className="i">
+                    {f.ext === 'md' ? '📄' : f.ext === 'xlsx' ? '📊' : f.ext === 'img' ? '🖼' : '📄'}
+                  </span>
+                  <span className="n">{f.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="pa">
-        <button className="pab">📂 Save</button>
-        <button className="pab p">🔗 Open in WPS</button>
-        <button className="pab">📋 Copy</button>
-      </div>
+      {/* Preview Mode */}
+      {view === 'preview' && currentFile && (
+        <div className="cs">
+          <div className="pv-tb">
+            <button className="pv-back" onClick={closePreview}>←</button>
+            <span className="pv-name">{currentFile.name}</span>
+            <span className="pv-tag">{currentFile.ext.toUpperCase()}</span>
+            <div className="pv-ops">
+              {hasPreviewToggle && (
+                <button className="pv-op a" onClick={togglePreviewMode} title="Toggle preview/source">
+                  {previewMode === 'preview' ? '👁' : '📝'}
+                </button>
+              )}
+              {previewMode === 'source' && hasPreviewToggle && (
+                <button className="pv-op a" title="Save">💾</button>
+              )}
+              <button className="pv-op a" title="Copy">📋</button>
+            </div>
+          </div>
+
+          <div className="pv-body">
+            {/* .md preview */}
+            {currentFile.ext === 'md' && previewMode === 'preview' && (
+              <div className="pv-md">
+                <h1>AI 发展历程 · PPT 大纲</h1>
+                <hr/>
+                <p>基于数据分析整理出的核心结构框架。</p>
+                <ol>
+                  <li><strong>🏛️ 人工智能的起源</strong> — 1950s 图灵测试·达特茅斯</li>
+                  <li><strong>⚙️ 寒冬与重生</strong> — 1980s 专家系统·两次 AI 寒冬</li>
+                  <li><strong>📈 机器学习的崛起</strong> — 2000s SVM·Random Forest</li>
+                  <li><strong>🧠 深度学习革命</strong> — 2012 AlexNet·Transformer</li>
+                  <li><strong>🤖 大模型时代</strong> — 2020 GPT·Claude</li>
+                </ol>
+              </div>
+            )}
+            {/* .md source */}
+            {currentFile.ext === 'md' && previewMode === 'source' && (
+              <div className="pv-src">
+                <textarea defaultValue={`## AI 发展历程 · PPT 大纲\n\n---\n\n1. 🏛️ 人工智能的起源 (1950s)\n2. ⚙️ 寒冬与重生 (1980s)\n3. 📈 机器学习的崛起 (2000s)\n4. 🧠 深度学习革命 (2012)\n5. 🤖 大模型时代 (2020)`} />
+              </div>
+            )}
+            {/* .xlsx */}
+            {currentFile.ext === 'xlsx' && (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.15)', fontSize: 12 }}>
+                📊 Sheet1: 12 rows × 5 cols
+              </div>
+            )}
+            {/* .img */}
+            {currentFile.ext === 'img' && (
+              <div className="pv-img">🖼 {currentFile.name}</div>
+            )}
+            {/* .pptx */}
+            {currentFile.ext === 'pptx' && (
+              <div className="pv-slides">
+                <div className="pv-slide"><div className="st">📊 数据概览</div><div className="sn">1 / 5</div></div>
+                <div className="pv-slide"><div className="st">🏛️ 人工智能的起源</div><div className="sn">2 / 5</div></div>
+                <div className="pv-slide"><div className="st">⚙️ 寒冬与重生</div><div className="sn">3 / 5</div></div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
