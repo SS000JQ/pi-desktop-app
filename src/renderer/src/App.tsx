@@ -46,7 +46,15 @@ export default function App() {
   const [hasProvider, setHasProvider] = useState(true) // Phase 3: read from config
 
   const onAssistantMessage = useCallback((msg: Message) => {
-    setMessages(prev => [...prev, msg])
+    setMessages(prev => {
+      const idx = prev.findIndex(m => m.id === msg.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = msg
+        return next
+      }
+      return [...prev, msg]
+    })
   }, [])
 
   const onStreamStart = useCallback(() => setIsStreaming(true), [])
@@ -82,6 +90,21 @@ export default function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  // Auto-collapse panels on window resize
+  useEffect(() => {
+    const handler = () => {
+      const w = window.innerWidth
+      if (w < 700 && !leftPanelCollapsed) {
+        setLeftPanelCollapsed(true)
+      }
+      if (w < 500 && !rightPanelCollapsed) {
+        setRightPanelCollapsed(true)
+      }
+    }
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [leftPanelCollapsed, rightPanelCollapsed])
 
   // Token warning
   const tokenCount = messages.reduce((sum, m) => sum + m.content.length / 4, 0)

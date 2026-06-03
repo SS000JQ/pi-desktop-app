@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeImage } from 'electron'
 import { join, extname } from 'path'
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
+import { readFileSync, readdirSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { openInExternalEditor } from './file-bridge'
 import { IPC_CHANNELS, APP_NAME, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT } from '../shared/constants'
@@ -23,9 +23,11 @@ import {
 } from './providers'
 import type { ProviderConfig } from './providers'
 import { listProfiles, createProfile, deleteProfile, getActiveProfile, setActiveProfile } from './profiles'
+import { addUserMessage, streamResponse, abortSession } from './agent'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+const fileWatchers = new Map<string, import('fs').FSWatcher>()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -122,8 +124,51 @@ ipcMain.handle('profiles:switch', async (_event, id: string) => {
   return { success: true }
 })
 
-// Basic IPC handlers (mock for Phase 1 — Phase 2 gets real session manager)
-ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (_event, payload: { text: string }) => {
+// Agent streaming IPC handlers
+ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (_event, payload: { text: string; sessionId?: string }) => {
+  const sessionId = payload.sessionId || 'default'
+  addUserMessage(sessionId, payload.text)
+
+  if (mainWindow) {
+    const stream = streamResponse(sessionId, process.env.OPENAI_API_KEY)
+
+    ;(async () => {
+      try {
+        for await (const event of stream) {
+          if (event.type === 'token') {
+            mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+              type: 'token',
+              text: event.text,
+              sessionId,
+            })
+          } else if (event.type === 'done') {
+            mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+              type: 'done',
+              sessionId,
+            })
+          } else if (event.type === 'error') {
+            mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+              type: 'error',
+              error: event.error,
+              sessionId,
+            })
+          }
+        }
+      } catch (err) {
+        mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+          type: 'error',
+          error: err instanceof Error ? err.message : 'Unknown error',
+          sessionId,
+        })
+      }
+    })()
+  }
+
+  return { success: true, data: { sessionId } }
+})
+
+ipcMain.handle(IPC_CHANNELS.CHAT_ABORT, async (_event, sessionId?: string) => {
+  abortSession(sessionId || 'default')
   return { success: true }
 })
 
@@ -158,6 +203,10 @@ ipcMain.handle(IPC_CHANNELS.SESSION_SEARCH, async (_event, query: string) => {
 ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, id: string) => {
   const messages = readMessages(id)
   return { success: true, data: { messages } }
+})
+
+ipcMain.handle('session:getActive', async () => {
+  return { success: true, data: getActiveSession() }
 })
 
 // File system IPC handlers
@@ -222,6 +271,32 @@ ipcMain.handle('files:open', async (_event, filePath: string) => {
   return { success: true }
 })
 
+ipcMain.handle('files:watch', async (_event, filePath: string) => {
+  try {
+    if (!existsSync(filePath)) return { success: false, error: 'File not found' }
+    if (fileWatchers.has(filePath)) return { success: true }
+
+    const watcher = watch(filePath, (eventType) => {
+      if (eventType === 'change') {
+        mainWindow?.webContents.send('files:changed', filePath)
+      }
+    })
+    fileWatchers.set(filePath, watcher)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('files:unwatch', async (_event, filePath: string) => {
+  const watcher = fileWatchers.get(filePath)
+  if (watcher) {
+    watcher.close()
+    fileWatchers.delete(filePath)
+  }
+  return { success: true }
+})
+
 app.on('web-contents-created', (_, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -240,6 +315,24 @@ if (!gotTheLock) {
       mainWindow.focus()
     }
   })
+}
+
+const RECOVERY_PATH = join(app.getPath('userData'), 'pi-desktop', 'active-session.json')
+
+function saveActiveSession(sessionId: string): void {
+  try {
+    const dir = join(app.getPath('userData'), 'pi-desktop')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    writeFileSync(RECOVERY_PATH, JSON.stringify({ id: sessionId, timestamp: new Date().toISOString() }), 'utf-8')
+  } catch { /* skip */ }
+}
+
+function getActiveSession(): string | null {
+  try {
+    if (!existsSync(RECOVERY_PATH)) return null
+    const data = JSON.parse(readFileSync(RECOVERY_PATH, 'utf-8'))
+    return data.id || null
+  } catch { return null }
 }
 
 app.whenReady().then(() => {

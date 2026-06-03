@@ -8,6 +8,7 @@ interface TopBarProps {
 
 export default function TopBar({ currentDir, onOpenSettings, onOpenProfile }: TopBarProps) {
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const [showDirPicker, setShowDirPicker] = useState(false)
   const [currentModel, setCurrentModel] = useState('Sonnet 4.6')
   const models = [
     { id: '1', name: 'Sonnet 4.6' },
@@ -19,7 +20,22 @@ export default function TopBar({ currentDir, onOpenSettings, onOpenProfile }: To
   return (
     <div className="topbar drag-region">
       <span className="topbar-title">Pi Desktop</span>
-      <span className="topbar-path">{currentDir}</span>
+      <div style={{ position: 'relative' }}>
+        <button onClick={() => setShowDirPicker(!showDirPicker)}
+          style={{ border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 14, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', padding: 0 }}>
+          {currentDir}
+        </button>
+        {showDirPicker && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#1a1919', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 3, minWidth: 200, zIndex: 20, padding: 4 }}>
+            {['~/projects/ppt-demo', '~/projects/pi', '~/Desktop'].map(dir => (
+              <button key={dir} onClick={() => { /* TODO: switch dir */ setShowDirPicker(false) }}
+                style={{ display: 'block', width: '100%', padding: '5px 8px', border: 'none', background: dir === currentDir ? 'rgba(255,255,255,0.06)' : 'transparent', color: dir === currentDir ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)', fontFamily: 'inherit', fontSize: 12, textAlign: 'left', cursor: 'pointer', borderRadius: 2 }}>
+                {dir}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="topbar-right no-drag">
         <div className="relative">
           <div className="mbadge" onClick={() => setShowModelPicker(!showModelPicker)}>
