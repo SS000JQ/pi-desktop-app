@@ -1,11 +1,3 @@
-// Dynamic import to handle missing native module at runtime
-let Database: any = null
-try {
-  Database = require('better-sqlite3')
-} catch {
-  // Native module not available — SQLite features disabled
-}
-
 import { join } from 'path'
 import { app } from 'electron'
 import { mkdirSync, writeFileSync } from 'fs'
@@ -13,98 +5,107 @@ import { mkdirSync, writeFileSync } from 'fs'
 const DB_DIR = join(app.getPath('userData'), 'pi-desktop')
 const DB_PATH = join(DB_DIR, 'sessions.db')
 
-let db: any
+let db: any = null
+let DB_READY = false
 
-export function initDatabase(): void {
+export async function initDatabase(): Promise<void> {
   try {
     mkdirSync(DB_DIR, { recursive: true })
-    db = new Database(DB_PATH)
-    db.pragma('journal_mode = WAL')
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        model TEXT,
-        token_count INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        profile_id TEXT DEFAULT 'default'
-      );
-      CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
-        title, content='sessions', content_rowid='rowid'
-      );
-      CREATE TRIGGER IF NOT EXISTS sessions_ai AFTER INSERT ON sessions BEGIN
-        INSERT INTO sessions_fts(rowid, title) VALUES (new.rowid, new.title);
-      END;
-      CREATE TRIGGER IF NOT EXISTS sessions_ad AFTER DELETE ON sessions BEGIN
-        INSERT INTO sessions_fts(sessions_fts, rowid, title) VALUES('delete', old.rowid, old.title);
-      END;
-      CREATE TRIGGER IF NOT EXISTS sessions_au AFTER UPDATE ON sessions BEGIN
-        INSERT INTO sessions_fts(sessions_fts, rowid, title) VALUES('delete', old.rowid, old.title);
-        INSERT INTO sessions_fts(rowid, title) VALUES (new.rowid, new.title);
-      END;
-    `)
+    const initSqlJs = require('sql.js')
+    const SQL = await initSqlJs()
+
+    // Try to load existing database, or create new one
+    const { existsSync, readFileSync } = require('fs')
+    if (existsSync(DB_PATH)) {
+      const buffer = readFileSync(DB_PATH)
+      db = new SQL.Database(buffer)
+    } else {
+      db = new SQL.Database()
+    }
+
+    db.run(`CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      model TEXT,
+      token_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      profile_id TEXT DEFAULT 'default'
+    )`)
+
+    DB_READY = true
   } catch (err) {
-    console.warn('SQLite init failed (native module not available):', (err as Error).message)
+    console.warn('SQLite init failed:', (err as Error).message)
+    DB_READY = false
   }
 }
 
+function saveDb(): void {
+  if (!db || !DB_READY) return
+  try {
+    const data = db.export()
+    const { writeFileSync: wfs } = require('fs')
+    wfs(DB_PATH, Buffer.from(data))
+  } catch { /* skip */ }
+}
+
 export function createSession(id: string): void {
+  if (!DB_READY) return
   try {
     const now = new Date().toISOString()
     const filePath = join(DB_DIR, 'sessions', `${id}.jsonl`)
     mkdirSync(join(DB_DIR, 'sessions'), { recursive: true })
-    db.prepare(`
-      INSERT INTO sessions (id, title, model, created_at, updated_at, file_path)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, 'New session', null, now, now, filePath)
+    db.run('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, 'New session', null, 0, now, now, filePath])
     writeFileSync(filePath, '', 'utf-8')
-  } catch { /* skip if DB not available */ }
+    saveDb()
+  } catch { /* skip */ }
 }
 
 export function listSessions(): Array<{
-  id: string
-  title: string
-  model: string | null
-  tokenCount: number
-  createdAt: string
-  updatedAt: string
+  id: string; title: string; model: string | null
+  tokenCount: number; createdAt: string; updatedAt: string
 }> {
+  if (!DB_READY) return []
   try {
-    return db.prepare(`
-      SELECT id, title, model, token_count as tokenCount, created_at as createdAt, updated_at as updatedAt
-      FROM sessions ORDER BY updated_at DESC
-    `).all() as any
+    const r = db.exec('SELECT id, title, model, token_count, created_at, updated_at FROM sessions ORDER BY updated_at DESC')
+    if (!r.length) return []
+    return r[0].values.map((row: any[]) => ({
+      id: row[0], title: row[1], model: row[2],
+      tokenCount: row[3], createdAt: row[4], updatedAt: row[5],
+    }))
   } catch { return [] }
 }
 
 export function searchSessions(query: string): Array<{
-  id: string
-  title: string
-  updatedAt: string
+  id: string; title: string; updatedAt: string
 }> {
+  if (!DB_READY) return []
   try {
-    return db.prepare(`
-      SELECT s.id, s.title, s.updated_at as updatedAt
-      FROM sessions_fts f JOIN sessions s ON s.rowid = f.rowid
-      WHERE sessions_fts MATCH ? ORDER BY rank LIMIT 20
-    `).all(query) as any
+    const r = db.exec(`SELECT id, title, updated_at FROM sessions WHERE title LIKE '%' || ? || '%' ORDER BY updated_at DESC LIMIT 20`, [query])
+    if (!r.length) return []
+    return r[0].values.map((row: any[]) => ({
+      id: row[0], title: row[1], updatedAt: row[2],
+    }))
   } catch { return [] }
 }
 
 export function deleteSession(id: string): void {
-  try { db.prepare('DELETE FROM sessions WHERE id = ?').run(id) } catch { /* skip */ }
+  if (!DB_READY) return
+  try { db.run('DELETE FROM sessions WHERE id = ?', [id]); saveDb() } catch { /* skip */ }
 }
 
 export function updateSessionTitle(id: string, title: string): void {
-  try { db.prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?').run(title, new Date().toISOString(), id) } catch { /* skip */ }
+  if (!DB_READY) return
+  try { db.run('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?', [title, new Date().toISOString(), id]); saveDb() } catch { /* skip */ }
 }
 
 export function updateSessionTokens(id: string, tokens: number): void {
-  try { db.prepare('UPDATE sessions SET token_count = ?, updated_at = ? WHERE id = ?').run(tokens, new Date().toISOString(), id) } catch { /* skip */ }
+  if (!DB_READY) return
+  try { db.run('UPDATE sessions SET token_count = ?, updated_at = ? WHERE id = ?', [tokens, new Date().toISOString(), id]); saveDb() } catch { /* skip */ }
 }
 
 export function closeDatabase(): void {
-  try { if (db) db.close() } catch { /* skip */ }
+  if (db && DB_READY) { saveDb(); try { db.close() } catch { /* skip */ } }
 }
