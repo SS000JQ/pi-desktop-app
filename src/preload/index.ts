@@ -35,6 +35,12 @@ const api: PiDesktopApi = {
     delete: (id) => ipcRenderer.invoke('profiles:delete', id),
     getActive: () => ipcRenderer.invoke('profiles:getActive'),
     switch: (id) => ipcRenderer.invoke('profiles:switch', id)
+  },
+  files: {
+    list: (dirPath) => ipcRenderer.invoke('files:list', dirPath),
+    read: (filePath) => ipcRenderer.invoke('files:read', filePath),
+    save: (filePath, content) => ipcRenderer.invoke('files:save', filePath, content),
+    open: (filePath) => ipcRenderer.invoke('files:open', filePath)
   }
 }
 

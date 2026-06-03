@@ -59,4 +59,10 @@ export interface PiDesktopApi {
     getActive: () => Promise<IpcResponse>
     switch: (id: string) => Promise<IpcResponse>
   }
+  files: {
+    list: (dirPath: string) => Promise<IpcResponse>
+    read: (filePath: string) => Promise<IpcResponse>
+    save: (filePath: string, content: string) => Promise<IpcResponse>
+    open: (filePath: string) => Promise<IpcResponse>
+  }
 }

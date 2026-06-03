@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { join } from 'path'
+import { join, extname } from 'path'
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { openInExternalEditor } from './file-bridge'
 import { IPC_CHANNELS, APP_NAME, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT } from '../shared/constants'
 import {
   initDatabase,
@@ -135,6 +137,68 @@ ipcMain.handle(IPC_CHANNELS.SESSION_SEARCH, async (_event, query: string) => {
 ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, id: string) => {
   const messages = readMessages(id)
   return { success: true, data: { messages } }
+})
+
+// File system IPC handlers
+ipcMain.handle('files:list', async (_event, dirPath: string) => {
+  try {
+    const entries = readdirSync(dirPath)
+    const files = entries
+      .map((name) => {
+        const fullPath = join(dirPath, name)
+        try {
+          const st = statSync(fullPath)
+          return {
+            name,
+            path: fullPath,
+            isDir: st.isDirectory(),
+            size: st.size,
+            modifiedAt: st.mtime.toISOString()
+          }
+        } catch {
+          return null
+        }
+      })
+      .filter(Boolean)
+    return { success: true, data: files }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('files:read', async (_event, filePath: string) => {
+  try {
+    const ext = extname(filePath)
+    const isText = [
+      '.md', '.txt', '.ts', '.tsx', '.js', '.py', '.go', '.rs', '.json',
+      '.css', '.html', '.yaml', '.xml', '.sh'
+    ].includes(ext.toLowerCase())
+    if (isText) {
+      return { success: true, data: { type: 'text', content: readFileSync(filePath, 'utf-8') } }
+    }
+    if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'].includes(ext.toLowerCase())) {
+      const base64 = readFileSync(filePath).toString('base64')
+      const mime = ext === '.svg' ? 'image/svg+xml' : `image/${ext.slice(1)}`
+      return { success: true, data: { type: 'image', content: `data:${mime};base64,${base64}` } }
+    }
+    return { success: true, data: { type: 'binary', ext } }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('files:save', async (_event, filePath: string, content: string) => {
+  try {
+    writeFileSync(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('files:open', async (_event, filePath: string) => {
+  await openInExternalEditor(filePath)
+  return { success: true }
 })
 
 app.on('web-contents-created', (_, contents) => {
