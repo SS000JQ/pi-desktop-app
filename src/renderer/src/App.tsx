@@ -6,7 +6,9 @@ import PreviewPanel from './components/PreviewPanel'
 import StatusBar from './components/StatusBar'
 import Welcome from './screens/Welcome'
 import Settings from './screens/Settings'
+import Profile from './screens/Profile'
 import type { Message, Session } from './types/chat'
+import { useChatIPC } from './hooks/useChatIPC'
 
 const mockSessions: Session[] = [
   { id: 's1', title: 'PPT 结构设计', createdAt: Date.now() - 300000, updatedAt: Date.now() - 180000, messages: [] },
@@ -18,12 +20,35 @@ const mockSessions: Session[] = [
 export default function App() {
   const [showWizard, setShowWizard] = useState(false) // Phase 3: read wizardCompleted from config
   const [showSettings, setShowSettings] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>('s1')
   const [sessions] = useState<Session[]>(mockSessions)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+
+  // Check for token limit (mock — Phase 3 gets real token count)
+  const tokenCount = messages.reduce((sum, m) => sum + m.content.length / 4, 0)
+  const showTokenWarning = tokenCount > 3000 // ~75% of 4k context
+
+  const onAssistantMessage = useCallback((msg: Message) => {
+    setMessages(prev => [...prev, msg])
+  }, [])
+
+  const onStreamStart = useCallback(() => {
+    setIsStreaming(true)
+  }, [])
+
+  const onStreamEnd = useCallback(() => {
+    setIsStreaming(false)
+  }, [])
+
+  const { sendMessage } = useChatIPC({
+    onAssistantMessage,
+    onStreamStart,
+    onStreamEnd,
+  })
 
   const handleSendMessage = useCallback((text: string) => {
     if (!text.trim() || isStreaming) return
@@ -36,23 +61,16 @@ export default function App() {
     }
 
     setMessages(prev => [...prev, userMsg])
-    setIsStreaming(true)
+    sendMessage(text)
+  }, [isStreaming, sendMessage])
 
-    // Mock streaming response (Phase 2 uses real IPC)
-    setTimeout(() => {
-      const assistantMsg: Message = {
-        id: `msg-${Date.now() + 1}`,
-        role: 'assistant',
-        content: 'This is a mock response. Phase 2 will connect to Pi AgentSession.',
-        timestamp: Date.now() + 200,
-        toolCalls: [
-          { id: 'tc-1', name: 'web_search', args: '("query")', status: 'done', duration: '0.8s' }
-        ]
-      }
-      setMessages(prev => [...prev, assistantMsg])
-      setIsStreaming(false)
-    }, 1500)
-  }, [isStreaming])
+  // Token limit warning
+  const TokenWarning = () => showTokenWarning ? (
+    <div className="px-3 py-1 text-[10px] bg-warning/10 text-warning border-b border-warning/20 flex items-center gap-2">
+      <span>⚠</span>
+      <span>Context nearly full ({Math.round(tokenCount / 4000 * 100)}%). Consider /compact or start a new session.</span>
+    </div>
+  ) : null
 
   // Show welcome wizard on first launch
   if (showWizard) {
@@ -62,7 +80,12 @@ export default function App() {
   return (
     <>
       <div className="flex flex-col h-screen bg-[#0F172A] text-[#F1F5F9]">
-        <TopBar currentDir="~/projects/ppt-demo" onOpenSettings={() => setShowSettings(true)} />
+        <TopBar
+          currentDir="~/projects/ppt-demo"
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenProfile={() => setShowProfile(true)}
+        />
+        <TokenWarning />
         <div className="flex flex-1 min-h-0">
           <LeftPanel
             sessions={sessions}
@@ -75,6 +98,7 @@ export default function App() {
             messages={messages}
             onSendMessage={handleSendMessage}
             isStreaming={isStreaming}
+            onSetMessages={setMessages}
           />
           <PreviewPanel
             collapsed={rightPanelCollapsed}
@@ -84,6 +108,7 @@ export default function App() {
         <StatusBar />
       </div>
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      {showProfile && <Profile onClose={() => setShowProfile(false)} />}
     </>
   )
 }
