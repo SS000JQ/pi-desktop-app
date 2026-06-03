@@ -1,0 +1,618 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  .pi-desktop {
+    background: #0F172A;
+    color: #F1F5F9;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 960px;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6);
+  }
+
+  /* Top Bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    height: 44px;
+    background: #0F172A;
+    border-bottom: 1px solid #1E293B;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+  .topbar-title {
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+  }
+  .topbar-path {
+    margin-left: 20px;
+    color: #64748B;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    -webkit-app-region: no-drag;
+  }
+  .model-picker {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px 2px 8px;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 150ms;
+  }
+  .model-picker:hover { border-color: #3B82F6; }
+  .model-picker::after { content: "▾"; font-size: 8px; color: #64748B; margin-left: 4px; }
+  .token-usage {
+    color: #64748B;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .token-usage span { color: #94A3B8; }
+  .avatar-btn {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #1E293B;
+    border: 1px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 150ms;
+  }
+  .avatar-btn:hover { border-color: #3B82F6; }
+  .settings-btn {
+    color: #64748B;
+    font-size: 16px;
+    cursor: pointer;
+    transition: color 150ms;
+    line-height: 1;
+  }
+  .settings-btn:hover { color: #94A3B8; }
+
+  /* Three-panel body */
+  .body { display: flex; height: 460px; }
+
+  /* Left Panel */
+  .left-panel {
+    width: 140px;
+    background: #0F172A;
+    border-right: 1px solid #1E293B;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .nav-entry {
+    padding: 6px 12px;
+    margin: 1px 6px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #64748B;
+    transition: all 150ms;
+  }
+  .nav-entry:hover {
+    background: #1E293B;
+    color: #F1F5F9;
+  }
+  .nav-entry.active {
+    background: #1E293B;
+    color: #F1F5F9;
+  }
+  .nav-section {
+    padding: 10px 12px 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .nav-section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    font-weight: 600;
+  }
+  .session-new {
+    color: #475569;
+    font-size: 15px;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 150ms;
+  }
+  .session-new:hover { color: #94A3B8; }
+
+  .session-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 6px 4px;
+  }
+  .session-item {
+    padding: 5px 8px;
+    margin-bottom: 1px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #64748B;
+    transition: all 150ms;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .session-item:hover { background: #1E293B; color: #CBD5E1; }
+  .session-item.active {
+    background: #1E293B;
+    color: #F1F5F9;
+    font-weight: 500;
+  }
+  .nav-divider {
+    height: 1px;
+    background: #1E293B;
+    margin: 4px 12px;
+  }
+  .filter-bar {
+    display: flex;
+    gap: 2px;
+    padding: 6px 8px;
+    border-top: 1px solid #1E293B;
+    margin-top: auto;
+  }
+  .filter-pill {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    cursor: pointer;
+    color: #475569;
+    transition: all 150ms;
+  }
+  .filter-pill.active { background: #1E293B; color: #94A3B8; }
+  .filter-pill:hover { color: #94A3B8; }
+
+  /* Chat */
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: #0F172A;
+  }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg { display: flex; flex-direction: column; }
+  .msg-label {
+    font-size: 11px;
+    color: #64748B;
+    margin-bottom: 4px;
+    font-weight: 400;
+  }
+  .msg-label-user { color: #64748B; }
+  .msg-label-pi { color: #22C55E; }
+  .msg-bubble {
+    padding: 10px 14px;
+    border-radius: 8px;
+    line-height: 1.6;
+  }
+  .msg-bubble-user {
+    background: #1E293B;
+    color: #F1F5F9;
+    max-width: 80%;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-bubble-pi {
+    background: #1E293B;
+    color: #E2E8F0;
+    max-width: 100%;
+    border-bottom-left-radius: 4px;
+  }
+  .tool-call {
+    margin-top: 8px;
+    background: #0F172A;
+    border: 1px solid #334155;
+    border-left: 3px solid #3B82F6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    transition: border-left-color 300ms;
+  }
+  .tool-call.done { border-left-color: #22C55E; }
+  .tool-call.error { border-left-color: #EF4444; }
+  .tool-name { color: #F97316; }
+  .tool-status { color: #64748B; font-size: 10px; }
+  .tool-status.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+  .tool-status.dot.running { background: #3B82F6; animation: pulse 1.5s infinite; }
+  .tool-status.dot.done { background: #22C55E; }
+  .tool-status.dot.error { background: #EF4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .code-block {
+    margin-top: 8px;
+    background: #0F172A;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: #1E293B;
+    border-bottom: 1px solid #334155;
+    font-size: 10px;
+    color: #64748B;
+  }
+  .code-content {
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #CBD5E1;
+  }
+  .code-btn {
+    color: #64748B;
+    cursor: pointer;
+    transition: color 150ms;
+  }
+  .code-btn:hover { color: #94A3B8; }
+
+  /* Input */
+  .input-area {
+    padding: 10px 14px;
+    border-top: 1px solid #1E293B;
+    background: #0F172A;
+  }
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 6px 10px;
+    transition: border-color 150ms;
+  }
+  .input-row:focus-within { border-color: #3B82F6; }
+  .input-icon { color: #64748B; font-size: 14px; line-height: 1; flex-shrink: 0; }
+  .input-field {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #F1F5F9;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .input-field::placeholder { color: #64748B; }
+  .input-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .input-btn {
+    color: #475569;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: color 150ms;
+  }
+  .input-btn:hover { color: #94A3B8; }
+  .send-btn {
+    background: #3B82F6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 150ms;
+  }
+  .send-btn:hover { background: #2563EB; }
+  .key-hint {
+    color: #334155;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Preview Panel */
+  .preview-panel {
+    width: 240px;
+    background: #0F172A;
+    border-left: 1px solid #1E293B;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+  }
+  .preview-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    font-weight: 600;
+  }
+  .preview-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 12px;
+    margin-bottom: 8px;
+  }
+  .preview-tab {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    cursor: pointer;
+    color: #475569;
+    transition: all 150ms;
+  }
+  .preview-tab.active { background: #1E293B; color: #94A3B8; }
+  .preview-tab:hover { color: #94A3B8; }
+  .preview-content {
+    flex: 1;
+    margin: 0 10px;
+    background: #1E293B;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    overflow-y: auto;
+  }
+  .preview-actions {
+    display: flex;
+    gap: 4px;
+    padding: 8px 10px;
+    border-top: 1px solid #1E293B;
+  }
+  .preview-action {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    background: #1E293B;
+    color: #94A3B8;
+    transition: all 150ms;
+  }
+  .preview-action:hover { background: #334155; color: #F1F5F9; }
+  .preview-action.primary { background: #3B82F6; color: white; }
+  .preview-action.primary:hover { background: #2563EB; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 14px;
+    background: #0F172A;
+    border-top: 1px solid #1E293B;
+    font-size: 10px;
+    color: #475569;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #22C55E;
+    flex-shrink: 0;
+  }
+</style>
+
+<div class="pi-desktop">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-title">Pi Desktop</div>
+    <div class="topbar-path">~/projects/ppt-demo</div>
+    <div class="topbar-right">
+      <div class="model-picker">Sonnet 4.6</div>
+      <div class="token-usage"><span>1,247</span> / 8,000</div>
+      <div class="avatar-btn">P</div>
+      <div class="settings-btn">⚙</div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+    <!-- Left Panel -->
+    <div class="left-panel">
+      <div style="padding:8px 6px 4px">
+        <div class="nav-entry active">Tools</div>
+        <div class="nav-entry">Skills</div>
+        <div class="nav-entry">Memory</div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-section">
+        <span class="nav-section-label">Sessions</span>
+        <span class="session-new">+</span>
+      </div>
+      <div class="session-list">
+        <div class="session-item active">PPT 结构设计</div>
+        <div class="session-item">数据分析脚本</div>
+        <div class="session-item">配色方案生成</div>
+        <div class="session-item">周报草稿</div>
+        <div class="session-item">Bug fix: login redirect</div>
+        <div class="session-item">API 文档更新</div>
+      </div>
+      <div class="filter-bar">
+        <span class="filter-pill active">All</span>
+        <span class="filter-pill">Active</span>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-area">
+      <div class="messages">
+        <!-- User message -->
+        <div class="msg">
+          <div class="msg-label msg-label-user">You</div>
+          <div class="msg-bubble msg-bubble-user">帮我设计一份关于AI发展历程的PPT结构，要有数据支撑</div>
+        </div>
+
+        <!-- Pi response -->
+        <div class="msg">
+          <div class="msg-label msg-label-pi">Pi <span style="color:#64748B;font-weight:400;font-size:10px">· Sonnet 4.6 · 2.3s</span></div>
+          <div class="msg-bubble msg-bubble-pi">
+            <div>我来处理。先搜索最新的 AI 里程碑数据。</div>
+
+            <!-- Tool call: running state -->
+            <div class="tool-call">
+              <div><span class="tool-name">web_search</span> <span class="tool-status">("AI industry milestones 2025-2026")</span></div>
+              <div class="tool-status" style="margin-top:2px">
+                <span class="dot running"></span> Searching...
+              </div>
+            </div>
+
+            <!-- Tool call: done -->
+            <div class="tool-call done" style="margin-top:4px">
+              <div><span class="tool-name">web_search</span> <span class="tool-status">("AI industry milestones 2025-2026")</span></div>
+              <div class="tool-status" style="margin-top:2px">
+                <span class="dot done"></span> 15 results found · 1.1s
+              </div>
+            </div>
+
+            <div style="margin-top:8px">数据整理完成。这是推荐的 PPT 结构框架：</div>
+
+            <!-- Code block -->
+            <div class="code-block">
+              <div class="code-header">
+                <span>大纲.md</span>
+                <span class="code-btn">📋 Copy</span>
+              </div>
+              <div class="code-content">
+<span style="color:#22C55E;">## AI 发展历程 · PPT 大纲</span>
+<span style="color:#64748B;">---</span>
+<span style="color:#3B82F6;">1.</span> 🏛️ 人工智能的起源 (1950s-1970s)
+<span style="color:#3B82F6;">2.</span> ⚙️ 寒冬与重生 (1980s-1990s)
+<span style="color:#3B82F6;">3.</span> 📈 机器学习的崛起 (2000s-2012)
+<span style="color:#3B82F6;">4.</span> 🧠 深度学习革命 (2012-2020)
+<span style="color:#3B82F6;">5.</span> 🤖 大模型时代 (2020-至今)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div class="input-area">
+        <div class="input-row">
+          <span class="input-icon">💬</span>
+          <input class="input-field" type="text" placeholder="继续把每页的要点也列出来..." value="继续把每页的要点也列出来" />
+          <div class="input-actions">
+            <span class="input-btn">📎</span>
+            <span class="input-btn">🎤</span>
+            <span class="key-hint">⌘⏎</span>
+            <button class="send-btn">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview -->
+    <div class="preview-panel">
+      <div class="preview-header">
+        <span class="preview-label">Preview</span>
+        <span style="color:#475569;cursor:pointer;font-size:13px">↗</span>
+      </div>
+      <div class="preview-tabs">
+        <span class="preview-tab active">Preview</span>
+        <span class="preview-tab">Source</span>
+      </div>
+      <div class="preview-content">
+        <div style="color:#22C55E;font-weight:500">AI 发展历程 · PPT 大纲</div>
+        <div style="color:#64748B;margin:4px 0">────────────────</div>
+        <div><span style="color:#3B82F6">1.</span> 人工智能的起源 (1950s-1970s)</div>
+        <div><span style="color:#3B82F6">2.</span> 寒冬与重生 (1980s-1990s)</div>
+        <div><span style="color:#3B82F6">3.</span> 机器学习的崛起 (2000s-2012)</div>
+        <div><span style="color:#3B82F6">4.</span> 深度学习革命 (2012-2020)</div>
+        <div><span style="color:#3B82F6">5.</span> 大模型时代 (2020-至今)</div>
+        <div style="color:#64748B;margin-top:8px;font-size:10px">来源: web_search (15 results)</div>
+      </div>
+      <div class="preview-actions">
+        <span class="preview-action">📂 Save</span>
+        <span class="preview-action primary">🔗 Open in WPS</span>
+        <span class="preview-action">📋 Copy</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>Connected</span>
+    <span style="color:#334155">|</span>
+    <span>Sonnet 4.6</span>
+    <span style="color:#334155">|</span>
+    <span>2 tool calls</span>
+    <span style="margin-left:auto">0.7s avg</span>
+  </div>
+</div>
+
+<div style="margin-top:24px">
+  <h3>优化要点总结</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+    <tr style="border-bottom:1px solid #2a2a4a">
+      <th style="text-align:left;padding:4px 8px;color:#94A3B8">方面</th>
+      <th style="text-align:left;padding:4px 8px;color:#94A3B8">调整</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>配色</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">统一为 Developer Tool 色板: #0F172A 背景 / #1E293B 面板 / #3B82F6 强调 / #22C55E 成功 / #F97316 工具调用</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>字体</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">UI: IBM Plex Sans 400/500/600 · 代码: JetBrains Mono 400/500</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>层级</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">"大纲.md" 代码块用暗底(#0F172A) + 消息气泡浅底(#1E293B) + 主背景最浅(#0F172A)—三层层次分明</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>工具调用</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">左边框颜色变化: 蓝(运行中) → 绿(完成) → 红(失败)，+ 动画脉冲点</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>交互</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">输入框 :focus 蓝色边框 + focus:ring；弹窗 fade+scale 200ms；悬停 transition 150ms</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>预览</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">Preview/Source tab 切换；"Open in WPS" 蓝色强调按钮；统一 icon 风格</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px"><strong>状态栏</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">连接态绿色圆点 + 模型名 + 工具调用数 + 平均响应时间</td>
+    </tr>
+  </table>
+</div>

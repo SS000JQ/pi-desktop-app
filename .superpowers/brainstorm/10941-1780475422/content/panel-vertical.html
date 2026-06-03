@@ -1,0 +1,161 @@
+<h2>左侧面板 · 纵向排列</h2>
+<p class="subtitle">Tools / Skills / Memory 纵向排列，图标在上文字在下</p>
+
+<div class="mockup">
+  <div class="mockup-body" style="background:#1a1a2e;color:#e0e0e0;padding:0;border-radius:8px;overflow:hidden;text-align:left;font-size:12px;line-height:1.5">
+    <!-- Top bar -->
+    <div style="display:flex;align-items:center;padding:4px 12px;background:#16162a;border-bottom:1px solid #2a2a4a">
+      <span style="font-weight:600;font-size:13px">Pi Desktop</span>
+      <div style="margin-left:24px;display:flex;gap:4px;font-size:11px">
+        <span style="color:#7171a0">⌂</span>
+        <span style="margin-left:8px;color:#7171a0">~/projects/ppt-demo</span>
+      </div>
+      <span style="margin-left:auto;display:flex;gap:12px;font-size:11px;color:#7171a0;align-items:center">
+        <span style="border:1px solid #3a3a5a;border-radius:4px;padding:1px 6px;cursor:pointer">Sonnet 4.6 ▼</span>
+        <span>tokens: 1.2k / 8k</span>
+        <span style="background:#2a2a4a;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px">👤</span>
+        <span style="opacity:0.6;cursor:pointer">⚙️</span>
+      </span>
+    </div>
+    <!-- Three-panel -->
+    <div style="display:flex;height:340px">
+      <!-- Left panel -->
+      <div style="width:64px;background:#12122a;border-right:1px solid #2a2a4a;padding:6px 0;font-size:11px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px">
+
+        <!-- Tools - 图标 + 文字纵向 -->
+        <div style="width:52px;padding:6px 0;border-radius:6px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;background:#2a2a4a">
+          <span style="font-size:18px;line-height:1">🔧</span>
+          <span style="font-size:9px;color:#e0e0e0;line-height:1">Tools</span>
+        </div>
+
+        <!-- Skills -->
+        <div style="width:52px;padding:6px 0;border-radius:6px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;color:#7171a0">
+          <span style="font-size:18px;line-height:1">📚</span>
+          <span style="font-size:9px;color:#7171a0;line-height:1">Skills</span>
+        </div>
+
+        <!-- Memory -->
+        <div style="width:52px;padding:6px 0;border-radius:6px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;color:#7171a0">
+          <span style="font-size:18px;line-height:1">🧠</span>
+          <span style="font-size:9px;color:#7171a0;line-height:1">Memory</span>
+        </div>
+
+        <!-- 分隔线 -->
+        <div style="width:40px;height:1px;background:#2a2a4a;margin:4px 0"></div>
+
+        <!-- Session 作为列表 -->
+        <div style="flex:1;width:52px;overflow:hidden;display:flex;flex-direction:column;gap:1px;padding:0 2px">
+          <div style="width:100%;padding:5px 0;border-radius:4px;background:#2a2a4a;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
+            <span style="font-size:12px;line-height:1">📋</span>
+            <span style="font-size:7px;color:#e0e0e0;line-height:1;overflow:hidden;text-overflow:ellipsis;max-width:48px">PPT</span>
+          </div>
+          <div style="width:100%;padding:5px 0;border-radius:4px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
+            <span style="font-size:12px;line-height:1">📊</span>
+            <span style="font-size:7px;color:#7171a0;line-height:1">数据</span>
+          </div>
+          <div style="width:100%;padding:5px 0;border-radius:4px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
+            <span style="font-size:12px;line-height:1">🎨</span>
+            <span style="font-size:7px;color:#7171a0;line-height:1">配色</span>
+          </div>
+          <div style="width:100%;padding:5px 0;border-radius:4px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
+            <span style="font-size:12px;line-height:1">📝</span>
+            <span style="font-size:7px;color:#7171a0;line-height:1">周报</span>
+          </div>
+          <div style="width:100%;padding:5px 0;border-radius:4px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;background:#2a2a4a">
+            <span style="font-size:12px;line-height:1">🐛</span>
+            <span style="font-size:7px;color:#e0e0e0;line-height:1">Bug</span>
+          </div>
+        </div>
+
+        <!-- 新建 session -->
+        <div style="width:40px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px dashed #3a3a5a;color:#3a3a5a;font-size:14px;margin-top:2px">+</div>
+
+      </div>
+      <!-- Chat (不变) -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="flex:1;padding:12px;overflow:hidden;font-size:12px">
+          <div style="margin-bottom:10px">
+            <div style="color:#7171a0;font-size:10px;margin-bottom:2px">You · 刚刚</div>
+            <div style="color:#e0e0e0;background:#1e1e36;padding:8px 10px;border-radius:6px">帮我设计一份关于AI发展历程的PPT结构</div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="color:#7ee787;font-size:10px;margin-bottom:2px">Pi · Sonnet 4.6</div>
+            <div style="color:#c9d1d9;background:#222244;padding:8px 10px;border-radius:6px">
+              <div>这是推荐的大纲：</div>
+              <div style="background:#1a1a36;border-radius:4px;padding:8px;margin-top:6px;font-family:monospace;font-size:11px;border-left:3px solid #7ee787">
+                1️⃣ 起源 (1950s)<br/>
+                2️⃣ 寒冬与重生 (1980s)<br/>
+                3️⃣ 机器学习 (2000s)<br/>
+                4️⃣ 深度学习 (2012)<br/>
+                5️⃣ 大模型时代 (2020)
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:8px 12px;border-top:1px solid #2a2a4a">
+          <div style="display:flex;align-items:center;gap:8px;background:#16162a;border:1px solid #2a2a4a;border-radius:8px;padding:6px 10px">
+            <span style="color:#7171a0;font-size:14px">💬</span>
+            <span style="color:#52525b;flex:1">继续把每页的要点也列出来...</span>
+            <span style="font-size:10px;color:#52525b;display:flex;gap:6px">📎 🎤 ⌘⏎</span>
+          </div>
+        </div>
+      </div>
+      <!-- Preview (不变) -->
+      <div style="width:240px;background:#12122a;border-left:1px solid #2a2a4a;padding:8px;font-size:11px;flex-shrink:0;display:flex;flex-direction:column">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="color:#7171a0;font-size:9px;text-transform:uppercase;letter-spacing:1px">Preview</span>
+          <span style="color:#3a3a5a;font-size:9px;cursor:pointer">↗</span>
+        </div>
+        <div style="flex:1;background:#1a1a36;border-radius:4px;padding:10px;display:flex;flex-direction:column;font-size:11px">
+          <div style="display:flex;gap:4px">
+            <span style="background:#2a2a4a;padding:2px 8px;border-radius:10px;font-size:10px">📝 Preview</span>
+            <span style="padding:2px 8px;border-radius:10px;font-size:10px;color:#52525b">🔍 Source</span>
+          </div>
+          <div style="color:#e0e0e0;font-family:monospace;font-size:10px;line-height:1.6;flex:1;margin-top:8px">
+            <div style="color:#ff7b72"># AI 发展历程</div>
+            <div style="color:#79c0ff">## 1. 起源</div>
+            <div>1950: Turing Test</div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:4px;font-size:10px">
+            <span style="background:#2a2a4a;padding:2px 8px;border-radius:4px;color:#e0e0e0;cursor:pointer">📂 Save</span>
+            <span style="background:#2a2a4a;padding:2px 8px;border-radius:4px;color:#e0e0e0;cursor:pointer">🔗 Open in VSC</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>左侧面板（窄栏，约 64px）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <tr style="border-bottom:1px solid #2a2a4a">
+      <th style="text-align:left;padding:6px 8px;color:#7171a0">顺序</th>
+      <th style="text-align:left;padding:6px 8px;color:#7171a0">内容</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1e1e36">
+      <td style="padding:6px 8px"><strong>1</strong></td>
+      <td style="padding:6px 8px">🔧 Tools</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1e1e36">
+      <td style="padding:6px 8px"><strong>2</strong></td>
+      <td style="padding:6px 8px">📚 Skills</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1e1e36">
+      <td style="padding:6px 8px"><strong>3</strong></td>
+      <td style="padding:6px 8px">🧠 Memory</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1e1e36">
+      <td style="padding:6px 8px"><strong>—</strong></td>
+      <td style="padding:6px 8px;color:#3a3a5a">分隔线</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1e1e36">
+      <td style="padding:6px 8px"><strong>4+</strong></td>
+      <td style="padding:6px 8px">Session 列表（emoji + 短标题）</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px"><strong>底部</strong></td>
+      <td style="padding:6px 8px;color:#3a3a5a">➕ 新建 Session</td>
+    </tr>
+  </table>
+</div>

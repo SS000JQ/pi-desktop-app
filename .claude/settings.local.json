@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --yes @earendil-works/pi-coding-agent --version)",
+      "Bash(C:\\\\Users\\\\宋江齐\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.0.7\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh *)",
+      "WebSearch",
+      "WebFetch(domain:claude.com)",
+      "Bash(python3 *)",
+      "Bash(echo \"EXIT_CODE: $?\")",
+      "Bash(python search.py \"developer tool\" --domain style -n 2)",
+      "Bash(echo \"DONE:$?\")",
+      "Bash(PYTHONIOENCODING=utf-8 python search.py \"developer tool coding agent AI desktop dark professional\" --design-system -p \"Pi Desktop\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(PYTHONIOENCODING=utf-8 python search.py \"developer tool coding agent AI dark theme\" --domain color -n 3)",
+      "Bash(PYTHONIOENCODING=utf-8 python search.py \"developer tool coding technical monospace\" --domain typography -n 3)",
+      "Bash(PYTHONIOENCODING=utf-8 python search.py \"z-index accessibility focus keyboard modal overlay dark\" --domain ux -n 4)",
+      "Bash(PYTHONIOENCODING=utf-8 python search.py \"animation transition loading skeleton streaming dark mode\" --domain ux -n 2)",
+      "Bash(PYTHONIOENCODING=utf-8 python search.py \"dark theme desktop sidebar chat z-index dialog\" --domain web -n 3)"
+    ]
+  }
+}

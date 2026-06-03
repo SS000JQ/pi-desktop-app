@@ -1,0 +1,424 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  .pi-desktop {
+    background: #0F172A;
+    color: #F1F5F9;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 1000px;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6);
+  }
+
+  /* Top Bar */
+  .topbar {
+    display: flex; align-items: center; padding: 0 16px; height: 44px;
+    background: #0F172A; border-bottom: 1px solid #1E293B;
+    user-select: none; -webkit-app-region: drag;
+  }
+  .topbar-title { font-weight: 600; font-size: 14px; letter-spacing: -0.01em; }
+  .topbar-path { margin-left: 20px; color: #64748B; font-size: 12px; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; -webkit-app-region: no-drag; }
+
+  .model-picker {
+    display: flex; align-items: center; gap: 4px; padding: 2px 10px 2px 8px;
+    border: 1px solid #334155; border-radius: 6px; color: #94A3B8;
+    font-size: 11px; font-weight: 500; cursor: pointer; transition: border-color 150ms;
+  }
+  .model-picker:hover { border-color: #3B82F6; }
+  .model-picker::after { content: "▾"; font-size: 8px; color: #64748B; margin-left: 4px; }
+  .token-usage { color: #64748B; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+  .token-usage span { color: #94A3B8; }
+  .avatar-btn {
+    width: 26px; height: 26px; border-radius: 50%; background: #1E293B;
+    border: 1px solid #334155; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; cursor: pointer; transition: border-color 150ms;
+  }
+  .avatar-btn:hover { border-color: #3B82F6; }
+  .settings-btn { color: #64748B; font-size: 16px; cursor: pointer; transition: color 150ms; line-height: 1; }
+  .settings-btn:hover { color: #94A3B8; }
+
+  /* Left Panel */
+  .left-panel {
+    width: 130px; background: #0F172A; border-right: 1px solid #1E293B;
+    display: flex; flex-direction: column; flex-shrink: 0;
+  }
+  .nav-entry {
+    padding: 6px 10px; margin: 1px 6px; border-radius: 6px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    color: #64748B; transition: all 150ms;
+  }
+  .nav-entry:hover { background: #1E293B; color: #F1F5F9; }
+  .nav-entry.active { background: #1E293B; color: #F1F5F9; }
+  .nav-section { padding: 10px 10px 4px; display: flex; justify-content: space-between; align-items: center; }
+  .nav-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; font-weight: 600; }
+  .session-new { color: #475569; font-size: 15px; cursor: pointer; line-height: 1; transition: color 150ms; }
+  .session-new:hover { color: #94A3B8; }
+
+  .session-list { flex: 1; overflow-y: auto; padding: 0 6px 4px; }
+  .session-item {
+    padding: 4px 8px; margin-bottom: 1px; border-radius: 4px; font-size: 11px;
+    cursor: pointer; color: #64748B; transition: all 150ms;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .session-item:hover { background: #1E293B; color: #CBD5E1; }
+  .session-item.active { background: #1E293B; color: #F1F5F9; font-weight: 500; }
+  .nav-divider { height: 1px; background: #1E293B; margin: 4px 12px; }
+
+  .filter-bar { display: flex; gap: 2px; padding: 6px 8px; border-top: 1px solid #1E293B; margin-top: auto; }
+  .filter-pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; cursor: pointer; color: #475569; transition: all 150ms; }
+  .filter-pill.active { background: #1E293B; color: #94A3B8; }
+  .filter-pill:hover { color: #94A3B8; }
+
+  /* Chat */
+  .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #0F172A; }
+  .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { display: flex; flex-direction: column; }
+  .msg-label { font-size: 11px; color: #64748B; margin-bottom: 4px; }
+  .msg-label-pi { color: #22C55E; }
+  .msg-bubble { padding: 10px 14px; border-radius: 8px; line-height: 1.6; }
+  .msg-bubble-user { background: #1E293B; color: #F1F5F9; max-width: 80%; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg-bubble-pi { background: #1E293B; color: #E2E8F0; max-width: 100%; border-bottom-left-radius: 4px; }
+
+  .tool-call {
+    margin-top: 8px; background: #0F172A; border: 1px solid #334155;
+    border-left: 3px solid #3B82F6; border-radius: 6px; padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6;
+    transition: border-left-color 300ms;
+  }
+  .tool-call.done { border-left-color: #22C55E; }
+  .tool-name { color: #F97316; }
+  .tool-status { color: #64748B; font-size: 10px; }
+  .tool-status.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+  .tool-status.dot.done { background: #22C55E; }
+  .dot-running { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3B82F6; margin-right: 4px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .code-block { margin-top: 8px; background: #0F172A; border: 1px solid #334155; border-radius: 6px; overflow: hidden; }
+  .code-header { display: flex; justify-content: space-between; padding: 4px 10px; background: #1E293B; border-bottom: 1px solid #334155; font-size: 10px; color: #64748B; }
+  .code-content { padding: 10px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; color: #CBD5E1; }
+  .code-btn { color: #64748B; cursor: pointer; transition: color 150ms; }
+  .code-btn:hover { color: #94A3B8; }
+
+  /* Context Chips (新增) */
+  .context-chips {
+    display: flex; gap: 4px; padding: 4px 14px 0; flex-wrap: wrap;
+  }
+  .context-chip {
+    display: flex; align-items: center; gap: 4px;
+    background: #1E293B; border: 1px solid #334155; border-radius: 4px;
+    padding: 2px 8px; font-size: 11px; color: #94A3B8;
+  }
+  .context-chip .remove { color: #475569; cursor: pointer; font-size: 13px; line-height: 1; margin-left: 2px; }
+  .context-chip .remove:hover { color: #EF4444; }
+  .context-chip-icon { font-size: 12px; }
+
+  /* Input */
+  .input-area { padding: 10px 14px; border-top: 1px solid #1E293B; background: #0F172A; }
+  .input-row {
+    display: flex; align-items: center; gap: 8px; background: #1E293B;
+    border: 1px solid #334155; border-radius: 8px; padding: 6px 10px;
+    transition: border-color 150ms;
+  }
+  .input-row:focus-within { border-color: #3B82F6; }
+  .input-icon { color: #64748B; font-size: 14px; line-height: 1; flex-shrink: 0; }
+  .input-field {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: #F1F5F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px;
+  }
+  .input-field::placeholder { color: #64748B; }
+  .input-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .input-btn { color: #475569; cursor: pointer; font-size: 14px; line-height: 1; transition: color 150ms; }
+  .input-btn:hover { color: #94A3B8; }
+  .send-btn { background: #3B82F6; color: white; border: none; border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 500; cursor: pointer; transition: background 150ms; }
+  .send-btn:hover { background: #2563EB; }
+  .key-hint { color: #334155; font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+
+  /* Preview Panel */
+  .preview-panel {
+    width: 260px; background: #0F172A; border-left: 1px solid #1E293B;
+    display: flex; flex-direction: column; flex-shrink: 0;
+  }
+  .preview-file-tabs { display: flex; gap: 2px; padding: 8px 10px 0; overflow-x: auto; flex-shrink: 0; }
+  .preview-file-tab {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 4px 4px 0 0; font-size: 10px;
+    cursor: pointer; color: #64748B; background: transparent;
+    white-space: nowrap; transition: all 150ms;
+  }
+  .preview-file-tab.active { background: #1E293B; color: #F1F5F9; }
+  .preview-file-tab .close { color: #475569; font-size: 12px; line-height: 1; margin-left: 2px; cursor: pointer; }
+  .preview-file-tab .close:hover { color: #EF4444; }
+  .preview-header { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; }
+  .preview-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; font-weight: 600; }
+  .preview-tabs { display: flex; gap: 2px; padding: 0 12px; margin-bottom: 6px; }
+  .preview-tab { padding: 2px 8px; border-radius: 10px; font-size: 10px; cursor: pointer; color: #475569; transition: all 150ms; }
+  .preview-tab.active { background: #1E293B; color: #94A3B8; }
+  .preview-content {
+    flex: 1; margin: 0 10px; background: #1E293B; border-radius: 6px;
+    padding: 10px 12px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.7; overflow-y: auto;
+  }
+  .preview-actions { display: flex; gap: 4px; padding: 8px 10px; border-top: 1px solid #1E293B; }
+  .preview-action { padding: 3px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; background: #1E293B; color: #94A3B8; transition: all 150ms; }
+  .preview-action:hover { background: #334155; color: #F1F5F9; }
+  .preview-action.primary { background: #3B82F6; color: white; }
+  .preview-action.primary:hover { background: #2563EB; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex; align-items: center; gap: 12px; padding: 3px 14px;
+    background: #0F172A; border-top: 1px solid #1E293B;
+    font-size: 10px; color: #475569; font-family: 'JetBrains Mono', monospace;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #22C55E; flex-shrink: 0; }
+</style>
+
+<div class="pi-desktop">
+  <!-- Top Bar (不变) -->
+  <div class="topbar">
+    <div class="topbar-title">Pi Desktop</div>
+    <div class="topbar-path">~/projects/ppt-demo</div>
+    <div class="topbar-right">
+      <div class="model-picker">Sonnet 4.6</div>
+      <div class="token-usage"><span>1,247</span> / 8,000</div>
+      <div class="avatar-btn">P</div>
+      <div class="settings-btn">⚙</div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="body" style="display:flex;height:500px">
+    <!-- Left Panel (新增 Files) -->
+    <div class="left-panel">
+      <div style="padding:8px 6px 4px">
+        <div class="nav-entry active">Files</div>
+        <div class="nav-entry">Tools</div>
+        <div class="nav-entry">Skills</div>
+        <div class="nav-entry">Memory</div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-section">
+        <span class="nav-section-label">Sessions</span>
+        <span class="session-new">+</span>
+      </div>
+      <div class="session-list">
+        <div class="session-item active">PPT 结构设计</div>
+        <div class="session-item">数据分析脚本</div>
+        <div class="session-item">配色方案生成</div>
+        <div class="session-item">周报草稿</div>
+        <div class="session-item">Bug fix: login</div>
+      </div>
+      <div class="filter-bar">
+        <span class="filter-pill active">All</span>
+        <span class="filter-pill">Active</span>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-area">
+      <div class="messages">
+        <!-- User message with attached file -->
+        <div class="msg">
+          <div class="msg-label">You</div>
+          <div class="msg-bubble msg-bubble-user">
+            帮我看看这份数据，然后设计一个AI发展历程的PPT结构
+            <div style="margin-top:6px;font-size:11px;color:#64748B;border-top:1px solid #334155;padding-top:4px">
+              📎 行业数据报告.xlsx
+            </div>
+          </div>
+        </div>
+
+        <!-- Pi response -->
+        <div class="msg">
+          <div class="msg-label msg-label-pi">Pi <span style="color:#64748B;font-weight:400;font-size:10px">· Sonnet 4.6 · 3.1s</span></div>
+          <div class="msg-bubble msg-bubble-pi">
+            <div>收到数据。我分析了这份报告，然后搜索补充最新信息。</div>
+
+            <!-- Attached file preview indicator -->
+            <div style="margin-top:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;padding:8px 10px;display:flex;align-items:center;gap:8px">
+              <span style="color:#22C55E;font-size:16px">📊</span>
+              <div style="flex:1">
+                <div style="font-size:11px;color:#F1F5F9">行业数据报告.xlsx</div>
+                <div style="font-size:10px;color:#64748B">24 KB · 3 sheets · Attached</div>
+              </div>
+              <span style="font-size:10px;color:#3B82F6;cursor:pointer">Preview</span>
+            </div>
+
+            <div style="margin-top:8px">数据整理完成。这是推荐的 PPT 结构：</div>
+
+            <div class="code-block">
+              <div class="code-header">
+                <span>PPT 大纲.md</span>
+                <span class="code-btn">📋 Copy</span>
+              </div>
+              <div class="code-content">
+<span style="color:#22C55E;">## AI 发展历程 · PPT 大纲</span>
+<span style="color:#64748B;">---</span>
+<span style="color:#3B82F6;">1.</span> 🏛️ 人工智能的起源 (1950s-1970s)
+<span style="color:#3B82F6;">2.</span> ⚙️ 寒冬与重生 (1980s-1990s)
+<span style="color:#3B82F6;">3.</span> 📈 机器学习的崛起 (2000s-2012)
+<span style="color:#3B82F6;">4.</span> 🧠 深度学习革命 (2012-2020)
+<span style="color:#3B82F6;">5.</span> 🤖 大模型时代 (2020-至今)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Context chips (新增) -->
+      <div class="context-chips">
+        <div class="context-chip">
+          <span class="context-chip-icon">📊</span>
+          行业数据报告.xlsx
+          <span class="remove">✕</span>
+        </div>
+        <div class="context-chip">
+          <span class="context-chip-icon">📄</span>
+          C:\Users\path\to\PPT模板.pptx
+          <span class="remove">✕</span>
+        </div>
+      </div>
+
+      <!-- Input Bar (新增拖拽提示) -->
+      <div class="input-area">
+        <div class="input-row">
+          <span class="input-icon">💬</span>
+          <input class="input-field" type="text" placeholder="继续写每页要点...  ( / commands · drop files · paste images )" value="继续写每页要点" />
+          <div class="input-actions">
+            <span class="input-btn" title="Attach files">📎</span>
+            <span class="input-btn" title="Paste screenshot">🖼</span>
+            <span class="input-btn">🎤</span>
+            <span class="key-hint">⌘⏎</span>
+            <button class="send-btn">Send</button>
+          </div>
+        </div>
+        <!-- Drop zone hint (visible on drag) -->
+        <div style="margin-top:4px;font-size:10px;color:#334155;display:flex;gap:8px">
+          <span>Drag & drop files here</span>
+          <span>·</span>
+          <span>Ctrl+V paste images</span>
+          <span>·</span>
+          <span>Type file:// paths</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Panel (新增文件 Tab) -->
+    <div class="preview-panel">
+      <!-- File tabs (新增) -->
+      <div class="preview-file-tabs">
+        <div class="preview-file-tab active">
+          <span>📄</span> 大纲.md
+          <span class="close">✕</span>
+        </div>
+        <div class="preview-file-tab">
+          <span>📊</span> 数据.xlsx
+          <span class="close">✕</span>
+        </div>
+        <div class="preview-file-tab">
+          <span>📊</span> 行业数据报告.xlsx
+          <span class="close">✕</span>
+        </div>
+      </div>
+
+      <div class="preview-header">
+        <span class="preview-label">Preview</span>
+        <span style="color:#475569;cursor:pointer;font-size:13px">↗</span>
+      </div>
+      <div class="preview-tabs">
+        <span class="preview-tab active">Preview</span>
+        <span class="preview-tab">Source</span>
+      </div>
+
+      <!-- Preview content: Markdown tab active -->
+      <div class="preview-content">
+        <div style="color:#22C55E;font-weight:500">AI 发展历程 · PPT 大纲</div>
+        <div style="color:#64748B;margin:4px 0">────────────────</div>
+        <div><span style="color:#3B82F6">1.</span> 🏛️ 人工智能的起源 (1950s-1970s)</div>
+        <div><span style="color:#3B82F6">2.</span> ⚙️ 寒冬与重生 (1980s-1990s)</div>
+        <div><span style="color:#3B82F6">3.</span> 📈 机器学习的崛起 (2000s-2012)</div>
+        <div><span style="color:#3B82F6">4.</span> 🧠 深度学习革命 (2012-2020)</div>
+        <div><span style="color:#3B82F6">5.</span> 🤖 大模型时代 (2020-至今)</div>
+        <div style="color:#64748B;margin-top:8px;font-size:10px">来源: 行业数据报告.xlsx + web_search</div>
+      </div>
+
+      <div class="preview-actions">
+        <span class="preview-action">📂 Save</span>
+        <span class="preview-action primary">🔗 Open in WPS</span>
+        <span class="preview-action">📋 Copy</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar (不变) -->
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span>Connected</span>
+    <span style="color:#334155">|</span>
+    <span>Sonnet 4.6</span>
+    <span style="color:#334155">|</span>
+    <span>2 tool calls</span>
+    <span style="margin-left:auto">3 files in context</span>
+  </div>
+</div>
+
+<div style="margin-top:24px">
+  <h3>界面变更点</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+    <tr style="border-bottom:1px solid #2a2a4a">
+      <th style="text-align:left;padding:4px 8px;color:#94A3B8;width:25%">变化</th>
+      <th style="text-align:left;padding:4px 8px;color:#94A3B8;width:40%">内容</th>
+      <th style="text-align:left;padding:4px 8px;color:#94A3B8;width:35%">场景</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>左侧 Files</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">新增入口，点击弹出项目文件树</td>
+      <td style="padding:6px 8px;color:#64748B">浏览工作目录，浏览 Pi 生成的所有文件</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>Context chips</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">输入栏下方显示已附加的文件标签</td>
+      <td style="padding:6px 8px;color:#64748B">看到当前有哪些文件在上下文中，随时移除</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>Preview Tab</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">预览面板顶部文件标签页，可切换/关闭</td>
+      <td style="padding:6px 8px;color:#64748B">同时在多个生成文件之间来回切换查看</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>输入栏提示</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">底部提示: drag & drop / Ctrl+V paste / file:// paths</td>
+      <td style="padding:6px 8px;color:#64748B">用户知道可以通过哪些方式给 Pi 提供文件</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px"><strong>消息内附件</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">用户消息可显示附加的文件列表</td>
+      <td style="padding:6px 8px;color:#64748B">用户看到自己发了哪些文件给 Pi</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px"><strong>对话内文件引用</strong></td>
+      <td style="padding:6px 8px;color:#CBD5E1">Pi 引用文件时展示可交互的文件卡片</td>
+      <td style="padding:6px 8px;color:#64748B">点击 "Preview" 直接在 Preview 面板打开</td>
+    </tr>
+  </table>
+
+  <h3 style="margin-top:20px">系统托盘和全局快捷键（不可见但可用）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+    <tr style="border-bottom:1px solid #1E293B">
+      <td style="padding:6px 8px;width:25%"><strong>全局快捷键</strong></td>
+      <td style="padding:6px 8px;color:#64748B"><code>Alt+Shift+Space</code> 从任何应用唤出 Pi Desktop</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 8px"><strong>托盘菜单</strong></td>
+      <td style="padding:6px 8px;color:#64748B">关闭窗口 → 最小化到托盘；托盘右键：显示窗口 / 新建会话 / 退出</td>
+    </tr>
+  </table>
+</div>
