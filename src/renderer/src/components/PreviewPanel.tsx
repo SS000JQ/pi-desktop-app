@@ -1,12 +1,32 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface PreviewPanelProps {
   collapsed: boolean
   onToggleCollapse: () => void
+  panelWidth: number
+  onResize: (w: number) => void
 }
 
-export default function PreviewPanel({ collapsed, onToggleCollapse }: PreviewPanelProps) {
+export default function PreviewPanel({ collapsed, onToggleCollapse, panelWidth, onResize }: PreviewPanelProps) {
   const [activeTab, setActiveTab] = useState<string | null>('大纲.md')
+
+  const isDraggingRight = useRef(false)
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRight.current) return
+      const windowW = window.innerWidth
+      const newWidth = Math.min(Math.max(windowW - e.clientX, 150), 500)
+      onResize(newWidth)
+    }
+    const handleMouseUp = () => { isDraggingRight.current = false }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [onResize])
 
   if (collapsed) {
     return (
@@ -20,8 +40,9 @@ export default function PreviewPanel({ collapsed, onToggleCollapse }: PreviewPan
   }
 
   return (
-    <div className="prev" style={{ position: 'relative' }}>
-      <div className="resize-h" style={{ left: -2 }} />
+    <div className="prev" style={{ width: panelWidth, position: 'relative' }}>
+      <div className="resize-h" style={{ left: -2 }}
+        onMouseDown={(e) => { e.preventDefault(); isDraggingRight.current = true }} />
       <div className="pft">
         <button
           onClick={() => setActiveTab('大纲.md')}

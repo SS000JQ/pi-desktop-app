@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { Session } from '../types/chat'
 
 interface LeftPanelProps {
@@ -11,10 +11,29 @@ interface LeftPanelProps {
   onOpenTools?: () => void
   onOpenSkills?: () => void
   onOpenMemory?: () => void
+  panelWidth: number
+  onResize: (w: number) => void
 }
 
-export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, collapsed, onToggleCollapse, onOpenFiles, onOpenTools, onOpenSkills, onOpenMemory }: LeftPanelProps) {
+export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, collapsed, onToggleCollapse, onOpenFiles, onOpenTools, onOpenSkills, onOpenMemory, panelWidth, onResize }: LeftPanelProps) {
   const [filter, setFilter] = useState<'all' | 'active'>('all')
+
+  const isDraggingLeft = useRef(false)
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingLeft.current) return
+      const newWidth = Math.min(Math.max(e.clientX, 120), 400)
+      onResize(newWidth)
+    }
+    const handleMouseUp = () => { isDraggingLeft.current = false }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [onResize])
 
   if (collapsed) {
     return (
@@ -28,7 +47,7 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
   }
 
   return (
-    <div className="left">
+    <div className="left" style={{ width: panelWidth }}>
       <div className="l-list" style={{ padding: '6px 8px 0' }}>
         {[
           { label: 'Files', onClick: onOpenFiles },
@@ -84,6 +103,8 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
         </button>
         <button onClick={onToggleCollapse} className="l-new" style={{ marginLeft: 'auto', fontSize: '9px' }}>◀</button>
       </div>
+      <div className="resize-h" style={{ right: -2 }}
+        onMouseDown={(e) => { e.preventDefault(); isDraggingLeft.current = true }} />
     </div>
   )
 }

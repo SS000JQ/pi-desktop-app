@@ -24,6 +24,8 @@ export default function App() {
   const [sessions] = useState<Session[]>(mockSessions)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(220)
+  const [rightPanelWidth, setRightPanelWidth] = useState(300)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
 
@@ -129,6 +131,8 @@ export default function App() {
             onOpenTools={() => {}}
             onOpenSkills={() => {}}
             onOpenMemory={() => {}}
+            panelWidth={leftPanelWidth}
+            onResize={setLeftPanelWidth}
           />
           <ChatView
             messages={messages}
@@ -139,6 +143,8 @@ export default function App() {
           <PreviewPanel
             collapsed={rightPanelCollapsed}
             onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            panelWidth={rightPanelWidth}
+            onResize={setRightPanelWidth}
           />
         </div>
 
