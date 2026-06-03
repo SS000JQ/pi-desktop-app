@@ -1,0 +1,18 @@
+export const IPC_CHANNELS = {
+  CHAT_SEND: 'chat:send',
+  CHAT_ABORT: 'chat:abort',
+  AGENT_EVENT: 'agent:event',
+  SESSIONS_LIST: 'sessions:list',
+  SESSIONS_CREATE: 'sessions:create',
+  SESSIONS_DELETE: 'sessions:delete',
+  SESSIONS_SEARCH: 'sessions:search',
+  SESSION_SWITCH: 'session:switch',
+  CONFIG_GET: 'config:get',
+  CONFIG_SET: 'config:set',
+} as const
+
+export const APP_NAME = 'Pi Desktop'
+export const DEFAULT_WINDOW_WIDTH = 1200
+export const DEFAULT_WINDOW_HEIGHT = 800
+export const MIN_WINDOW_WIDTH = 900
+export const MIN_WINDOW_HEIGHT = 600
