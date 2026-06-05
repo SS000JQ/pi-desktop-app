@@ -10,7 +10,10 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts')
         },
-        external: ['@earendil-works/pi-ai']
+        external: ['electron', /^electron\/.+/, '@earendil-works/pi-ai']
+      },
+      commonjsOptions: {
+        transformMixedEsModules: true
       }
     }
   },

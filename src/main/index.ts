@@ -3,27 +3,39 @@ import { join, extname } from 'path'
 import { readFileSync, readdirSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { openInExternalEditor } from './file-bridge'
-import { IPC_CHANNELS, APP_NAME, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT } from '../shared/constants'
 import {
-  initDatabase,
-  createSession,
-  listSessions,
-  searchSessions,
-  deleteSession,
-  updateSessionTitle,
-  closeDatabase
-} from './db'
-import { ensureSessionsDir, appendMessage, readMessages } from './session-store'
+  IPC_CHANNELS,
+  APP_NAME,
+  DEFAULT_WINDOW_WIDTH,
+  DEFAULT_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+} from '../shared/constants'
+import { initDatabase, closeDatabase } from './db'
+import { ensureSessionsDir } from './session-store'
 import {
+  getProviderCatalog,
   loadProviders,
   addProvider,
   updateProvider,
   deleteProvider,
-  testConnection
+  testConnection,
+  discoverModels,
 } from './providers'
-import type { ProviderConfig } from './providers'
 import { listProfiles, createProfile, deleteProfile, getActiveProfile, setActiveProfile } from './profiles'
-import { addUserMessage, streamResponse, abortSession } from './agent'
+import { getConfigValue, setConfigValue } from './config-store'
+import { piBridge } from './pi-bridge'
+import {
+  createPiSession,
+  listPiSessions,
+  openPiSession,
+  updatePiSessionRuntime,
+} from './pi-sessions'
+import {
+  getActiveSessionId,
+  getDesktopStateSummary,
+  saveActiveSessionId,
+} from './desktop-state'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -42,8 +54,8 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
-    }
+      nodeIntegration: false,
+    },
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -55,15 +67,15 @@ function createWindow(): void {
   })
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
 function createTray(): void {
   if (!mainWindow) return
-  // Create a simple 16x16 tray icon
+
   const icon = nativeImage.createEmpty()
   tray = new Tray(icon)
   tray.setToolTip('Pi Desktop')
@@ -72,7 +84,12 @@ function createTray(): void {
     { label: 'Show Window', click: () => mainWindow?.show() },
     { label: 'New Session', click: () => mainWindow?.show() },
     { type: 'separator' },
-    { label: 'Quit', click: () => { app.quit() } },
+    {
+      label: 'Quit',
+      click: () => {
+        app.quit()
+      },
+    },
   ])
   tray.setContextMenu(contextMenu)
 
@@ -81,7 +98,16 @@ function createTray(): void {
   })
 }
 
+function resolveWorkingDirectory(): string {
+  const configured = getConfigValue('workingDirectory')
+  return typeof configured === 'string' && configured ? configured : process.cwd()
+}
+
 // Provider IPC handlers
+ipcMain.handle('providers:catalog', async () => {
+  return { success: true, data: getProviderCatalog() }
+})
+
 ipcMain.handle('providers:list', async () => {
   return { success: true, data: loadProviders() }
 })
@@ -99,7 +125,11 @@ ipcMain.handle('providers:delete', async (_event, id: string) => {
 })
 
 ipcMain.handle('providers:test', async (_event, config) => {
-  return testConnection(config)
+  return { success: true, data: await testConnection(config) }
+})
+
+ipcMain.handle('providers:discoverModels', async (_event, config) => {
+  return { success: true, data: await discoverModels(config) }
 })
 
 // Profile IPC handlers
@@ -125,88 +155,215 @@ ipcMain.handle('profiles:switch', async (_event, id: string) => {
 })
 
 // Agent streaming IPC handlers
-ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (_event, payload: { text: string; sessionId?: string; modelId?: string }) => {
-  const sessionId = payload.sessionId || 'default'
-  addUserMessage(sessionId, payload.text)
+ipcMain.handle(
+  IPC_CHANNELS.CHAT_SEND,
+  async (
+    _event,
+    payload: {
+      text: string
+      sessionId?: string
+      sessionPath?: string
+      modelId?: string
+      thinkingLevel?: string
+    },
+  ) => {
+    const cwd = resolveWorkingDirectory()
+    const sessionDetail = payload.sessionPath ? await openPiSession(payload.sessionPath) : await createPiSession(cwd)
+    const sessionId = sessionDetail.sessionId
+    const sessionPath = sessionDetail.sessionPath
+    const createdNewSession = !payload.sessionPath
 
-  if (mainWindow) {
-    const stream = streamResponse(sessionId, payload.modelId || 'openai/gpt-4')
+    saveActiveSessionId(sessionId)
 
-    ;(async () => {
-      try {
-        for await (const event of stream) {
-          if (event.type === 'token') {
-            mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
-              type: 'token',
-              text: event.text,
-              sessionId,
-            })
-          } else if (event.type === 'done') {
-            mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
-              type: 'done',
-              sessionId,
-            })
-          } else if (event.type === 'error') {
-            mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
-              type: 'error',
-              error: event.error,
-              sessionId,
-            })
-          }
+    if (mainWindow) {
+      ;(async () => {
+        try {
+          await piBridge.sendMessage(
+            sessionId,
+            sessionPath,
+            payload.text,
+            payload.modelId,
+            payload.thinkingLevel,
+            (event) => {
+              if (event.type === 'assistant_token') {
+                mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                  type: 'token',
+                  text: event.text,
+                  sessionId,
+                  sessionPath,
+                })
+              } else if (event.type === 'assistant_message') {
+                void openPiSession(sessionPath)
+                  .then((detail) => {
+                    mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                      type: 'done',
+                      sessionId,
+                      sessionPath,
+                      session: detail,
+                    })
+                  })
+                  .catch((error: unknown) => {
+                    mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                      type: 'error',
+                      error: error instanceof Error ? error.message : 'Failed to refresh Pi session',
+                      sessionId,
+                      sessionPath,
+                    })
+                  })
+              } else if (event.type === 'tool_started') {
+                mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                  type: 'tool_started',
+                  toolName: event.toolName,
+                  args: event.args,
+                  sessionId,
+                  sessionPath,
+                })
+              } else if (event.type === 'tool_finished') {
+                mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                  type: 'tool_finished',
+                  toolName: event.toolName,
+                  sessionId,
+                  sessionPath,
+                })
+              } else if (event.type === 'artifact_created') {
+                mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                  type: 'artifact_created',
+                  path: event.path,
+                  sessionId,
+                  sessionPath,
+                })
+              } else if (event.type === 'tool_failed' || event.type === 'run_failed') {
+                mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                  type: 'error',
+                  error: event.error || `${event.toolName || 'Pi'} failed`,
+                  sessionId,
+                  sessionPath,
+                })
+              } else if (event.type === 'run_aborted') {
+                mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+                  type: 'error',
+                  error: 'Run aborted',
+                  sessionId,
+                  sessionPath,
+                })
+              }
+            },
+          )
+        } catch (err) {
+          mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+            type: 'error',
+            error: err instanceof Error ? err.message : 'Unknown error',
+            sessionId,
+            sessionPath,
+          })
         }
-      } catch (err) {
-        mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
-          type: 'error',
-          error: err instanceof Error ? err.message : 'Unknown error',
-          sessionId,
-        })
-      }
-    })()
-  }
+      })()
+    }
 
-  return { success: true, data: { sessionId } }
-})
+    return { success: true, data: { sessionId, sessionPath, createdNewSession } }
+  },
+)
 
-ipcMain.handle(IPC_CHANNELS.CHAT_ABORT, async (_event, sessionId?: string) => {
-  abortSession(sessionId || 'default')
+ipcMain.handle(IPC_CHANNELS.CHAT_ABORT, async (_event, sessionPath?: string) => {
+  await piBridge.abort(sessionPath || '', (event) => {
+    if (event.type === 'run_aborted') {
+      mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+        type: 'error',
+        error: 'Run aborted',
+        sessionPath: sessionPath || '',
+      })
+    }
+  })
   return { success: true }
 })
 
 ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async (_event, key: string) => {
-  return { success: true, data: null }
+  return { success: true, data: getConfigValue(key) }
 })
 
 ipcMain.handle(IPC_CHANNELS.CONFIG_SET, async (_event, key: string, value: unknown) => {
+  setConfigValue(key, value as string | number | boolean | null)
   return { success: true }
 })
 
 // Session IPC handlers
 ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
-  return { success: true, data: listSessions() }
+  return { success: true, data: await listPiSessions() }
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async () => {
-  const id = crypto.randomUUID()
-  createSession(id)
-  return { success: true, data: { id } }
+  const session = await createPiSession(resolveWorkingDirectory())
+  saveActiveSessionId(session.sessionId)
+
+  return {
+    success: true,
+    data: {
+      id: session.sessionId,
+      path: session.sessionPath,
+      cwd: session.cwd,
+      title: session.title,
+      source: 'pi',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  }
 })
 
-ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (_event, id: string) => {
-  deleteSession(id)
-  return { success: true }
+ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async () => {
+  return { success: true, data: false }
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_SEARCH, async (_event, query: string) => {
-  return { success: true, data: searchSessions(query) }
+  const sessions = await listPiSessions()
+  return {
+    success: true,
+    data: sessions
+      .filter((session) => session.title.toLowerCase().includes(query.toLowerCase()))
+      .map((session) => ({
+        id: session.id,
+        title: session.title,
+        updatedAt: session.updatedAt,
+      })),
+  }
 })
 
-ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, id: string) => {
-  const messages = readMessages(id)
-  return { success: true, data: { messages } }
+ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, sessionPath: string) => {
+  const session = await openPiSession(sessionPath)
+  saveActiveSessionId(session.sessionId)
+  return { success: true, data: session }
 })
+
+ipcMain.handle(
+  'session:updateRuntime',
+  async (
+    _event,
+    payload: {
+      sessionPath: string
+      modelId?: string
+      thinkingLevel?: string
+    },
+  ) => {
+    try {
+      const session = await updatePiSessionRuntime(payload.sessionPath, {
+        modelKey: payload.modelId,
+        thinkingLevel: payload.thinkingLevel,
+      })
+      return { success: true, data: session }
+    } catch (error: unknown) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update Pi session runtime',
+      }
+    }
+  },
+)
 
 ipcMain.handle('session:getActive', async () => {
-  return { success: true, data: getActiveSession() }
+  return { success: true, data: getActiveSessionId() }
+})
+
+ipcMain.handle('desktop:getStateSummary', async () => {
+  return { success: true, data: getDesktopStateSummary() }
 })
 
 // File system IPC handlers
@@ -223,7 +380,7 @@ ipcMain.handle('files:list', async (_event, dirPath: string) => {
             path: fullPath,
             isDir: st.isDirectory(),
             size: st.size,
-            modifiedAt: st.mtime.toISOString()
+            modifiedAt: st.mtime.toISOString(),
           }
         } catch {
           return null
@@ -240,8 +397,20 @@ ipcMain.handle('files:read', async (_event, filePath: string) => {
   try {
     const ext = extname(filePath)
     const isText = [
-      '.md', '.txt', '.ts', '.tsx', '.js', '.py', '.go', '.rs', '.json',
-      '.css', '.html', '.yaml', '.xml', '.sh'
+      '.md',
+      '.txt',
+      '.ts',
+      '.tsx',
+      '.js',
+      '.py',
+      '.go',
+      '.rs',
+      '.json',
+      '.css',
+      '.html',
+      '.yaml',
+      '.xml',
+      '.sh',
     ].includes(ext.toLowerCase())
     if (isText) {
       return { success: true, data: { type: 'text', content: readFileSync(filePath, 'utf-8') } }
@@ -299,12 +468,11 @@ ipcMain.handle('files:unwatch', async (_event, filePath: string) => {
 
 app.on('web-contents-created', (_, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    void shell.openExternal(url)
     return { action: 'deny' }
   })
 })
 
-// Single instance lock
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
@@ -317,29 +485,9 @@ if (!gotTheLock) {
   })
 }
 
-const RECOVERY_PATH = join(app.getPath('userData'), 'pi-desktop', 'active-session.json')
-
-function saveActiveSession(sessionId: string): void {
-  try {
-    const dir = join(app.getPath('userData'), 'pi-desktop')
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(RECOVERY_PATH, JSON.stringify({ id: sessionId, timestamp: new Date().toISOString() }), 'utf-8')
-  } catch { /* skip */ }
-}
-
-function getActiveSession(): string | null {
-  try {
-    if (!existsSync(RECOVERY_PATH)) return null
-    const data = JSON.parse(readFileSync(RECOVERY_PATH, 'utf-8'))
-    return data.id || null
-  } catch { return null }
-}
-
 app.whenReady().then(() => {
   electronApp.setAppUserModelId(APP_NAME)
-  optimizer.watchWindowShortcuts(mainWindow!)
 
-  // Register global shortcut
   globalShortcut.register('Alt+Shift+Space', () => {
     if (mainWindow?.isVisible()) {
       mainWindow.hide()
@@ -349,9 +497,12 @@ app.whenReady().then(() => {
   })
 
   ensureSessionsDir()
-  initDatabase()
+  void initDatabase()
 
   createWindow()
+  if (mainWindow) {
+    optimizer.watchWindowShortcuts(mainWindow)
+  }
   createTray()
 
   app.on('activate', () => {
@@ -362,13 +513,13 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  // Don't quit on close — minimize to tray
   if (mainWindow) {
     mainWindow.hide()
   }
 })
 
 app.on('before-quit', () => {
+  void piBridge.dispose()
   closeDatabase()
 })
 

@@ -56,8 +56,10 @@ export function createSession(id: string): void {
     const now = new Date().toISOString()
     const filePath = join(DB_DIR, 'sessions', `${id}.jsonl`)
     mkdirSync(join(DB_DIR, 'sessions'), { recursive: true })
-    db.run('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, 'New session', null, 0, now, now, filePath])
+    db.run(
+      'INSERT INTO sessions (id, title, model, token_count, created_at, updated_at, file_path, profile_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, 'New session', null, 0, now, now, filePath, 'default'],
+    )
     writeFileSync(filePath, '', 'utf-8')
     saveDb()
   } catch { /* skip */ }

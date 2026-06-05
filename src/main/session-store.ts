@@ -28,3 +28,12 @@ export function readMessages(sessionId: string): unknown[] {
 export function clearMessages(sessionId: string): void {
   writeFileSync(join(SESSIONS_DIR, `${sessionId}.jsonl`), '', 'utf-8')
 }
+
+export function overwriteMessages(sessionId: string, messages: unknown[]): void {
+  const content = messages
+    .map((message) =>
+      JSON.stringify({ ...(message as Record<string, unknown>), timestamp: new Date().toISOString() }),
+    )
+    .join('\n')
+  writeFileSync(join(SESSIONS_DIR, `${sessionId}.jsonl`), content ? `${content}\n` : '', 'utf-8')
+}

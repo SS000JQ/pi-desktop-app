@@ -13,7 +13,9 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (typeof bottomRef.current?.scrollIntoView === 'function') {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   if (messages.length === 0) {

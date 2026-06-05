@@ -1,117 +1,137 @@
-import { useState, useEffect } from 'react'
-
-interface ProviderConfig {
-  id: string
-  name: string
-  baseUrl: string
-  models: string[]
-  isDefault: boolean
-  createdAt: string
-}
-
-const BUILTIN_PROVIDERS = [
-  { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
-  { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1' },
-  { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
-  { name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
-  { name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
-  { name: 'Custom', baseUrl: '' },
-]
+import { useEffect, useState } from 'react'
+import type { ProviderCatalogEntry, ProviderModel, ProviderSummary } from '../types/chat'
 
 interface ProviderManagerProps {
   onClose: () => void
 }
 
 export default function ProviderManager({ onClose }: ProviderManagerProps) {
-  const [providers, setProviders] = useState<ProviderConfig[]>([])
+  const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([])
+  const [providers, setProviders] = useState<ProviderSummary[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [formName, setFormName] = useState('')
+  const [selectedCatalog, setSelectedCatalog] = useState<ProviderCatalogEntry | null>(null)
+  const [formDisplayName, setFormDisplayName] = useState('')
   const [formUrl, setFormUrl] = useState('')
   const [formApiKey, setFormApiKey] = useState('')
-  const [formModels, setFormModels] = useState('')
+  const [formModels, setFormModels] = useState<ProviderModel[]>([])
   const [formIsDefault, setFormIsDefault] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState('')
 
-  useEffect(() => { loadProviders() }, [])
+  useEffect(() => {
+    void Promise.all([loadCatalog(), loadProviders()])
+  }, [])
 
-  async function loadProviders(): Promise<void> {
-    const res = await window.piDesktop.providers.list()
-    if (res.success && res.data) {
-      setProviders(res.data as ProviderConfig[])
+  async function loadCatalog(): Promise<void> {
+    const response = await window.piDesktop.providers.catalog()
+    if (response.success && response.data) {
+      setCatalog(response.data)
     }
   }
 
-  function startAdd(selected?: { name: string; baseUrl: string }): void {
-    setEditingId(null)
-    setFormName(selected?.name || '')
+  async function loadProviders(): Promise<void> {
+    const response = await window.piDesktop.providers.list()
+    if (response.success && response.data) {
+      setProviders(response.data)
+    }
+  }
+
+  function startAdd(selected?: ProviderCatalogEntry): void {
+    setSelectedCatalog(selected || null)
+    setFormDisplayName(selected?.displayName || '')
     setFormUrl(selected?.baseUrl || '')
     setFormApiKey('')
-    setFormModels('')
+    setFormModels([])
     setFormIsDefault(false)
     setTestStatus('idle')
+    setTestMessage('')
     setShowAddForm(true)
   }
 
-  async function handleSave(): Promise<void> {
-    if (!formName || !formUrl) return
-    if (editingId) {
-      await window.piDesktop.providers.update(editingId, {
-        name: formName,
-        baseUrl: formUrl,
-        models: formModels.split(',').map((s) => s.trim()).filter(Boolean),
-        isDefault: formIsDefault,
-        apiKey: formApiKey || undefined,
-      })
-    } else {
-      await window.piDesktop.providers.add(
-        {
-          name: formName,
-          baseUrl: formUrl,
-          models: formModels.split(',').map((s) => s.trim()).filter(Boolean),
-          isDefault: formIsDefault,
-        },
-        formApiKey || undefined,
-      )
+  async function handleDiscoverModels(): Promise<void> {
+    const providerId = selectedCatalog?.providerId || 'custom'
+    const response = await window.piDesktop.providers.discoverModels({
+      providerId,
+      displayName: formDisplayName,
+      baseUrl: formUrl,
+      apiType: selectedCatalog?.apiType || 'openai-completions',
+    })
+
+    if (response.success && response.data) {
+      setFormModels(response.data)
     }
-    setShowAddForm(false)
-    loadProviders()
   }
 
   async function handleTest(): Promise<void> {
     setTestStatus('testing')
     setTestMessage('')
-    const res = await window.piDesktop.providers.test({ baseUrl: formUrl, apiKey: formApiKey })
-    setTestStatus(res.success ? 'success' : 'error')
-    setTestMessage(res.error || 'Connection successful')
+
+    const response = await window.piDesktop.providers.test({
+      providerId: selectedCatalog?.providerId || 'custom',
+      displayName: formDisplayName,
+      baseUrl: formUrl,
+      apiKey: formApiKey || undefined,
+      apiType: selectedCatalog?.apiType || 'openai-completions',
+    })
+
+    const result = response.success ? response.data : undefined
+    setTestStatus(result?.success ? 'success' : 'error')
+    setTestMessage(result?.message || result?.error || response.error || 'Connection failed')
+    if (result?.detectedModels?.length) {
+      setFormModels(result.detectedModels)
+    }
+  }
+
+  async function handleSave(): Promise<void> {
+    if (!formDisplayName || !formUrl) return
+
+    await window.piDesktop.providers.add(
+      {
+        providerId: selectedCatalog?.providerId || 'custom',
+        displayName: formDisplayName,
+        kind: selectedCatalog ? 'builtin' : 'custom',
+        authType: selectedCatalog?.authType || 'apiKey',
+        apiType: selectedCatalog?.apiType || 'openai-completions',
+        baseUrl: formUrl,
+        models: formModels,
+        isDefault: formIsDefault,
+      },
+      formApiKey || undefined,
+    )
+
+    setShowAddForm(false)
+    await loadProviders()
   }
 
   async function handleDelete(id: string): Promise<void> {
     await window.piDesktop.providers.delete(id)
-    loadProviders()
+    await loadProviders()
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" style={{ width: '540px', maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-box" style={{ width: '620px', maxHeight: '80vh' }} onClick={(event) => event.stopPropagation()}>
         <div className="modal-hdr">
           <h2 className="modal-title">Provider Manager</h2>
-          <button onClick={onClose} className="modal-x">✕</button>
+          <button onClick={onClose} className="modal-x">×</button>
         </div>
 
         <div className="modal-body">
-          {providers.map((p) => (
-            <div key={p.id} className="ci">
+          {providers.map((provider) => (
+            <div key={provider.id} className="ci">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="flex items-center gap-2">
-                  <span className="cit">{p.name}</span>
-                  {p.isDefault && <span className="cib">default</span>}
+                  <span className="cit">{provider.displayName}</span>
+                  {provider.isDefault && <span className="cib">default</span>}
                 </div>
-                <div className="cim truncate">{p.baseUrl}</div>
-                {p.models.length > 0 && <div className="cim" style={{ marginTop: '2px' }}>{p.models.join(', ')}</div>}
+                <div className="cim truncate">{provider.baseUrl}</div>
+                {provider.models.length > 0 && (
+                  <div className="cim" style={{ marginTop: '2px' }}>
+                    {provider.models.map((model) => `${provider.displayName} / ${model.name}`).join(', ')}
+                  </div>
+                )}
               </div>
-              <button onClick={() => handleDelete(p.id)} className="cix">✕</button>
+              <button onClick={() => handleDelete(provider.id)} className="cix">×</button>
             </div>
           ))}
 
@@ -120,32 +140,50 @@ export default function ProviderManager({ onClose }: ProviderManagerProps) {
               <div style={{ marginBottom: '10px' }}>
                 <label className="fl">Provider</label>
                 <div className="prov-grid">
-                  {BUILTIN_PROVIDERS.map((pr) => (
+                  {catalog.map((provider) => (
                     <button
-                      key={pr.name}
-                      onClick={() => { setFormName(pr.name); setFormUrl(pr.baseUrl) }}
-                      className={`prov-pill ${formName === pr.name ? 'active' : ''}`}
+                      key={provider.providerId}
+                      onClick={() => {
+                        setSelectedCatalog(provider)
+                        setFormDisplayName(provider.displayName)
+                        setFormUrl(provider.baseUrl)
+                      }}
+                      className={`prov-pill ${selectedCatalog?.providerId === provider.providerId ? 'active' : ''}`}
                     >
-                      {pr.name}
+                      {provider.displayName}
                     </button>
                   ))}
+                  <button
+                    onClick={() => {
+                      setSelectedCatalog(null)
+                      setFormDisplayName('Custom')
+                      setFormUrl('')
+                    }}
+                    className={`prov-pill ${selectedCatalog === null && formDisplayName === 'Custom' ? 'active' : ''}`}
+                  >
+                    Custom
+                  </button>
                 </div>
               </div>
+
               <div style={{ marginBottom: '10px' }}>
                 <label className="fl">Name</label>
-                <input value={formName} onChange={(e) => setFormName(e.target.value)} className="fi" placeholder="My Provider" />
+                <input value={formDisplayName} onChange={(event) => setFormDisplayName(event.target.value)} className="fi" placeholder="My Provider" />
               </div>
+
               <div style={{ marginBottom: '10px' }}>
                 <label className="fl">Base URL</label>
-                <input value={formUrl} onChange={(e) => setFormUrl(e.target.value)} className="fi" placeholder="https://api.openai.com/v1" />
+                <input value={formUrl} onChange={(event) => setFormUrl(event.target.value)} className="fi" placeholder="https://api.openai.com/v1" />
               </div>
+
               <div style={{ marginBottom: '10px' }}>
                 <label className="fl">API Key</label>
                 <div className="flex" style={{ gap: '6px' }}>
-                  <input type="password" value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)} className="fi" style={{ flex: 1 }} placeholder="sk-..." />
-                  <button onClick={handleTest} disabled={!formUrl || !formApiKey || testStatus === 'testing'} className="bs">
+                  <input type="password" value={formApiKey} onChange={(event) => setFormApiKey(event.target.value)} className="fi" style={{ flex: 1 }} placeholder="sk-..." />
+                  <button onClick={handleTest} disabled={!formUrl || testStatus === 'testing'} className="bs">
                     {testStatus === 'testing' ? '...' : 'Test'}
                   </button>
+                  <button onClick={handleDiscoverModels} disabled={!formUrl} className="bs">Models</button>
                 </div>
                 {testStatus !== 'idle' && (
                   <div className={testStatus === 'success' ? 'ts-success' : 'ts-error'} style={{ fontSize: '10px', marginTop: '4px' }}>
@@ -153,16 +191,41 @@ export default function ProviderManager({ onClose }: ProviderManagerProps) {
                   </div>
                 )}
               </div>
+
               <div style={{ marginBottom: '10px' }}>
-                <label className="fl">Models (comma separated)</label>
-                <input value={formModels} onChange={(e) => setFormModels(e.target.value)} className="fi" placeholder="gpt-4, gpt-3.5-turbo" />
+                <label className="fl">Models</label>
+                {formModels.length === 0 ? (
+                  <div className="cim">No models discovered yet. Use Models to load defaults.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {formModels.map((model, index) => (
+                      <label key={model.id} className="flex items-center" style={{ gap: '6px', fontSize: '11px', color: 'var(--text2)', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="defaultModel"
+                          checked={model.isDefault}
+                          onChange={() => {
+                            setFormModels((previous) =>
+                              previous.map((entry, entryIndex) => ({ ...entry, isDefault: entryIndex === index })),
+                            )
+                          }}
+                          className="fchk"
+                        />
+                        <span>{model.name}</span>
+                        <span className="cim">{model.runtimeKey}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
+
               <label className="flex items-center" style={{ gap: '6px', fontSize: '11px', color: 'var(--text2)', cursor: 'pointer', marginBottom: '10px' }}>
-                <input type="checkbox" checked={formIsDefault} onChange={(e) => setFormIsDefault(e.target.checked)} className="fchk" />
+                <input type="checkbox" checked={formIsDefault} onChange={(event) => setFormIsDefault(event.target.checked)} className="fchk" />
                 Set as default provider
               </label>
+
               <div className="flex" style={{ gap: '6px' }}>
-                <button onClick={handleSave} disabled={!formName || !formUrl} className="bp">Save</button>
+                <button onClick={handleSave} disabled={!formDisplayName || !formUrl} className="bp">Save</button>
                 <button onClick={() => setShowAddForm(false)} className="bs">Cancel</button>
               </div>
             </div>

@@ -4,9 +4,8 @@ import type { PiDesktopApi } from './api'
 
 const api: PiDesktopApi = {
   chat: {
-    send: (text: string, modelId?: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, { text, modelId }),
-    abort: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_ABORT, sessionId),
+    send: (payload) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, payload),
+    abort: (sessionPath?: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_ABORT, sessionPath),
   },
   config: {
     get: (key: string) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET, key),
@@ -17,7 +16,9 @@ const api: PiDesktopApi = {
     create: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_CREATE),
     delete: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_DELETE, id),
     search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SEARCH, query),
-    switch: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH, id)
+    switch: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH, id),
+    updateRuntime: (payload) => ipcRenderer.invoke('session:updateRuntime', payload),
+    getActive: () => ipcRenderer.invoke('session:getActive'),
   },
   onAgentEvent: (callback) => {
     const handler = (_event: unknown, data: unknown) => callback(data)
@@ -25,11 +26,16 @@ const api: PiDesktopApi = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_EVENT, handler)
   },
   providers: {
+    catalog: () => ipcRenderer.invoke('providers:catalog'),
     list: () => ipcRenderer.invoke('providers:list'),
     add: (config, apiKey) => ipcRenderer.invoke('providers:add', config, apiKey),
     update: (id, updates) => ipcRenderer.invoke('providers:update', id, updates),
     delete: (id) => ipcRenderer.invoke('providers:delete', id),
-    test: (config) => ipcRenderer.invoke('providers:test', config)
+    test: (config) => ipcRenderer.invoke('providers:test', config),
+    discoverModels: (config) => ipcRenderer.invoke('providers:discoverModels', config),
+  },
+  desktop: {
+    getStateSummary: () => ipcRenderer.invoke('desktop:getStateSummary'),
   },
   profiles: {
     list: () => ipcRenderer.invoke('profiles:list'),

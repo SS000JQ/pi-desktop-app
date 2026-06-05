@@ -5,6 +5,7 @@ interface LeftPanelProps {
   sessions: Session[]
   activeSessionId: string | null
   onSessionSelect: (id: string) => void
+  onSessionCreate?: () => void
   collapsed: boolean
   onToggleCollapse: () => void
   onOpenFiles?: () => void
@@ -15,10 +16,30 @@ interface LeftPanelProps {
   onResize: (w: number) => void
 }
 
-export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, collapsed, onToggleCollapse, onOpenFiles, onOpenTools, onOpenSkills, onOpenMemory, panelWidth, onResize }: LeftPanelProps) {
-  const [filter, setFilter] = useState<'all' | 'active'>('all')
-
+export default function LeftPanel({
+  sessions,
+  activeSessionId,
+  onSessionSelect,
+  onSessionCreate,
+  collapsed,
+  onToggleCollapse,
+  onOpenFiles,
+  onOpenTools,
+  onOpenSkills,
+  onOpenMemory,
+  panelWidth,
+  onResize,
+}: LeftPanelProps) {
+  const [viewMode, setViewMode] = useState<'recent' | 'directory'>('recent')
   const isDraggingLeft = useRef(false)
+
+  const recentSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+  const groupedSessions = recentSessions.reduce<Record<string, Session[]>>((groups, session) => {
+    const key = session.cwd || 'Unknown Directory'
+    groups[key] = groups[key] || []
+    groups[key].push(session)
+    return groups
+  }, {})
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -38,8 +59,10 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
   if (collapsed) {
     return (
       <div className="relative" style={{ width: 32, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.04)', background: '#1a1919' }}>
-        <button onClick={onToggleCollapse}
-          style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", width: '100%', padding: '12px 0' }}>
+        <button
+          onClick={onToggleCollapse}
+          style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", width: '100%', padding: '12px 0' }}
+        >
           EXPAND
         </button>
       </div>
@@ -67,7 +90,7 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
 
       <div className="l-hdr">
         <span className="l-hdr-label">Sessions</span>
-        <button className="l-new">+</button>
+        <button className="l-new" onClick={onSessionCreate}>+</button>
       </div>
 
       <div className="l-list">
@@ -75,14 +98,41 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
           <div className="l-session" style={{ cursor: 'default', textAlign: 'center', color: 'rgba(255,255,255,0.08)' }}>
             No sessions yet.
           </div>
-        ) : (
-          sessions.map(s => (
+        ) : viewMode === 'recent' ? (
+          recentSessions.map((session) => (
             <div
-              key={s.id}
-              onClick={() => onSessionSelect(s.id)}
-              className={`l-session ${s.id === activeSessionId ? 'active' : ''}`}
+              key={session.path || session.id}
+              onClick={() => onSessionSelect(session.id)}
+              className={`l-session ${session.id === activeSessionId ? 'active' : ''}`}
+              title={`${session.title}\n${session.cwd}`}
             >
-              {s.title}
+              {session.title}
+            </div>
+          ))
+        ) : (
+          Object.entries(groupedSessions).map(([cwd, grouped]) => (
+            <div key={cwd}>
+              <div
+                style={{
+                  padding: '8px 10px 4px',
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.16)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                {cwd}
+              </div>
+              {grouped.map((session) => (
+                <div
+                  key={session.path || session.id}
+                  onClick={() => onSessionSelect(session.id)}
+                  className={`l-session ${session.id === activeSessionId ? 'active' : ''}`}
+                  title={session.title}
+                >
+                  {session.title}
+                </div>
+              ))}
             </div>
           ))
         )}
@@ -90,21 +140,24 @@ export default function LeftPanel({ sessions, activeSessionId, onSessionSelect, 
 
       <div className="l-fil">
         <button
-          onClick={() => setFilter('all')}
-          className={filter === 'all' ? 'active' : ''}
+          onClick={() => setViewMode('recent')}
+          className={viewMode === 'recent' ? 'active' : ''}
         >
-          All
+          Recent
         </button>
         <button
-          onClick={() => setFilter('active')}
-          className={filter === 'active' ? 'active' : ''}
+          onClick={() => setViewMode('directory')}
+          className={viewMode === 'directory' ? 'active' : ''}
         >
-          Active
+          Directories
         </button>
         <button onClick={onToggleCollapse} className="l-new" style={{ marginLeft: 'auto', fontSize: '9px' }}>◀</button>
       </div>
-      <div className="resize-h" style={{ right: -2 }}
-        onMouseDown={(e) => { e.preventDefault(); isDraggingLeft.current = true }} />
+      <div
+        className="resize-h"
+        style={{ right: -2 }}
+        onMouseDown={(e) => { e.preventDefault(); isDraggingLeft.current = true }}
+      />
     </div>
   )
 }

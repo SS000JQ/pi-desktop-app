@@ -26,4 +26,17 @@ describe('MessageRow', () => {
     const { container } = render(<MessageRow message={message} />)
     expect(container.textContent).toContain('web_search')
   })
+
+  it('renders running tool call status from Pi events', () => {
+    const message = {
+      id: '4',
+      role: 'assistant' as const,
+      content: 'Working...',
+      timestamp: 0,
+      toolCalls: [{ id: 'tc2', name: 'read', args: '{}', status: 'running' as const }],
+    }
+    const { container } = render(<MessageRow message={message} />)
+    expect(container.textContent).toContain('read')
+    expect(container.textContent?.toLowerCase()).toContain('running')
+  })
 })

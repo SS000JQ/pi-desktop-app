@@ -17,7 +17,18 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
           {isUser ? 'You' : 'Pi'}
         </span>
         {isUser && onEdit && (
-          <button onClick={onEdit} className="mb-actions" style={{ fontSize: '9px', color: 'rgba(255,255,255,0.12)', background: 'none', border: 'none', cursor: 'pointer', gap: '2px' }}>
+          <button
+            onClick={onEdit}
+            className="mb-actions"
+            style={{
+              fontSize: '9px',
+              color: 'rgba(255,255,255,0.12)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              gap: '2px',
+            }}
+          >
             edit
           </button>
         )}
@@ -25,13 +36,13 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
       <div className={`mb ${isUser ? 'right' : 'left'}`}>
         <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
 
-        {message.toolCalls?.map(tc => (
-          <ToolCallCard key={tc.id} toolCall={tc} />
+        {message.toolCalls?.map((toolCall) => (
+          <ToolCallCard key={toolCall.id} toolCall={toolCall} />
         ))}
       </div>
       {!isUser && onRegenerate && (
         <div className="mb-actions" style={{ marginTop: '6px' }}>
-          <button onClick={onRegenerate}>⟳ Regenerate</button>
+          <button onClick={onRegenerate}>Regenerate</button>
         </div>
       )}
     </div>

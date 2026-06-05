@@ -6,11 +6,12 @@ import type { Message } from '../types/chat'
 interface ChatViewProps {
   messages: Message[]
   onSendMessage: (text: string) => void
+  onCommand?: (command: string) => void
   isStreaming: boolean
   onSetMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void
 }
 
-export default function ChatView({ messages, onSendMessage, isStreaming, onSetMessages }: ChatViewProps) {
+export default function ChatView({ messages, onSendMessage, onCommand, isStreaming, onSetMessages }: ChatViewProps) {
   const handleRegenerate = useCallback((msgId: string) => {
     const msgIndex = messages.findIndex(m => m.id === msgId)
     const userMessages = messages.slice(0, msgIndex).filter(m => m.role === 'user')
@@ -37,7 +38,7 @@ export default function ChatView({ messages, onSendMessage, isStreaming, onSetMe
         onRegenerate={handleRegenerate}
         onEditMessage={handleEditMessage}
       />
-      <InputBar onSendMessage={onSendMessage} isStreaming={isStreaming} />
+      <InputBar onSendMessage={onSendMessage} onCommand={onCommand} isStreaming={isStreaming} />
     </div>
   )
 }

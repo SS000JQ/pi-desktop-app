@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 interface FileEntry {
   name: string
@@ -12,47 +12,88 @@ interface FilesProps {
   onClose: () => void
   onOpenFile?: (path: string) => void
   onAttachFile?: (path: string) => void
+  initialDir?: string
 }
 
-export default function Files({ onClose, onOpenFile, onAttachFile }: FilesProps) {
+function fileIcon(entry: FileEntry): string {
+  if (entry.isDir) return '[dir]'
+
+  const ext = entry.name.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'md':
+    case 'txt':
+      return '[txt]'
+    case 'xlsx':
+    case 'xls':
+      return '[xls]'
+    case 'pptx':
+    case 'ppt':
+      return '[ppt]'
+    case 'docx':
+    case 'doc':
+      return '[doc]'
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'svg':
+      return '[img]'
+    case 'ts':
+    case 'tsx':
+    case 'js':
+    case 'jsx':
+    case 'py':
+    case 'go':
+    case 'rs':
+      return '[code]'
+    default:
+      return '[file]'
+  }
+}
+
+export default function Files({ onClose, onOpenFile, onAttachFile, initialDir }: FilesProps) {
   const [currentDir, setCurrentDir] = useState('')
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [history, setHistory] = useState<string[]>([])
+  const rootDir = initialDir || 'C:\\'
 
   useEffect(() => {
-    // Start from userData or home
-    loadDir('')
-  }, [])
+    void loadDir(rootDir)
+  }, [rootDir])
 
   async function loadDir(dir: string) {
-    if (dir) setHistory(prev => [...prev, currentDir])
-    const res = await window.piDesktop.files.list(dir || 'C:\\')
-    if (res.success && res.data) {
-      const files = res.data as FileEntry[]
-      // Sort: dirs first, then by name
-      files.sort((a, b) => {
-        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
-        return a.name.localeCompare(b.name)
-      })
-      setEntries(files)
-      setCurrentDir(dir || 'C:\\')
+    if (dir && currentDir) {
+      setHistory((previous) => [...previous, currentDir])
     }
+
+    const response = await window.piDesktop.files.list(dir || rootDir)
+    if (!response.success || !response.data) return
+
+    const files = (response.data as FileEntry[]).sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+
+    setEntries(files)
+    setCurrentDir(dir || rootDir)
   }
 
   async function goUp() {
-    if (history.length > 0) {
-      const prev = history[history.length - 1]
-      setHistory(h => h.slice(0, -1))
-      const res = await window.piDesktop.files.list(prev)
-      if (res.success && res.data) {
-        const files = (res.data as FileEntry[]).sort((a, b) => {
-          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
-          return a.name.localeCompare(b.name)
-        })
-        setEntries(files)
-        setCurrentDir(prev)
-      }
-    }
+    if (history.length === 0) return
+
+    const previousDir = history[history.length - 1]
+    setHistory((previous) => previous.slice(0, -1))
+
+    const response = await window.piDesktop.files.list(previousDir)
+    if (!response.success || !response.data) return
+
+    const files = (response.data as FileEntry[]).sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+
+    setEntries(files)
+    setCurrentDir(previousDir)
   }
 
   function formatSize(bytes: number): string {
@@ -61,43 +102,118 @@ export default function Files({ onClose, onOpenFile, onAttachFile }: FilesProps)
     return `${(bytes / 1024 / 1024).toFixed(1)}MB`
   }
 
-  function iconFor(entry: FileEntry): string {
-    if (entry.isDir) return '📁'
-    const ext = entry.name.split('.').pop()?.toLowerCase()
-    switch (ext) {
-      case 'md': return '📄'
-      case 'xlsx': case 'xls': return '📊'
-      case 'pptx': case 'ppt': return '📊'
-      case 'docx': case 'doc': return '📄'
-      case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': return '🖼'
-      case 'ts': case 'tsx': case 'js': case 'jsx': case 'py': case 'go': case 'rs': return '📝'
-      default: return '📄'
-    }
-  }
-
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div style={{ background: '#1a1919', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 4, width: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-          <button onClick={goUp} style={{ border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 13, color: history.length > 0 ? 'rgba(0,122,255,0.4)' : 'rgba(255,255,255,0.05)', cursor: history.length > 0 ? 'pointer' : 'default', padding: 0 }}>←</button>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentDir}</span>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 13, color: 'rgba(255,255,255,0.1)', cursor: 'pointer' }}>✕</button>
+      <div
+        style={{
+          background: '#1a1919',
+          border: '1px solid rgba(255,255,255,0.04)',
+          borderRadius: 4,
+          width: 480,
+          maxHeight: '80vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 14px',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+          }}
+        >
+          <button
+            onClick={goUp}
+            style={{
+              border: 'none',
+              background: 'none',
+              fontFamily: 'inherit',
+              fontSize: 13,
+              color: history.length > 0 ? 'rgba(0,122,255,0.4)' : 'rgba(255,255,255,0.05)',
+              cursor: history.length > 0 ? 'pointer' : 'default',
+              padding: 0,
+            }}
+          >
+            Up
+          </button>
+          <span
+            style={{
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.3)',
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {currentDir}
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              border: 'none',
+              background: 'none',
+              fontFamily: 'inherit',
+              fontSize: 13,
+              color: 'rgba(255,255,255,0.1)',
+              cursor: 'pointer',
+            }}
+          >
+            Close
+          </button>
         </div>
 
-        {/* File list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-          {entries.map(e => (
-            <div key={e.path}
-              onDoubleClick={() => e.isDir ? loadDir(e.path) : onOpenFile?.(e.path)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', cursor: 'pointer', fontSize: 12, color: e.isDir ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.25)', transition: 'all 120ms' }}
-              onMouseEnter={e2 => e2.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-              onMouseLeave={e2 => e2.currentTarget.style.background = 'transparent'}
+          {entries.map((entry) => (
+            <div
+              key={entry.path}
+              onDoubleClick={() => (entry.isDir ? void loadDir(entry.path) : onOpenFile?.(entry.path))}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 14px',
+                cursor: 'pointer',
+                fontSize: 12,
+                color: entry.isDir ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.25)',
+                transition: 'all 120ms',
+              }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = 'transparent'
+              }}
             >
-              <span>{iconFor(e)}</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
-              {!e.isDir && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.06)' }}>{formatSize(e.size)}</span>}
+              <span>{fileIcon(entry)}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {entry.name}
+              </span>
+              {!entry.isDir && (
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.06)' }}>{formatSize(entry.size)}</span>
+              )}
+              {!entry.isDir && onAttachFile && (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onAttachFile(entry.path)
+                  }}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    fontFamily: 'inherit',
+                    fontSize: 11,
+                    color: 'rgba(0,122,255,0.55)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Attach
+                </button>
+              )}
             </div>
           ))}
         </div>
