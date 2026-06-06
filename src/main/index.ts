@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeI
 import { join, extname } from 'path'
 import { readFileSync, readdirSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { homedir } from 'os'
 import { openInExternalEditor } from './file-bridge'
 import {
   IPC_CHANNELS,
@@ -36,10 +37,99 @@ import {
   getDesktopStateSummary,
   saveActiveSessionId,
 } from './desktop-state'
+import {
+  artifactHistory,
+  getArtifact,
+  listArtifacts,
+  markArtifactPrimary,
+  pinArtifact,
+  refreshArtifact,
+  upsertArtifactFromPath,
+} from './artifacts'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 const fileWatchers = new Map<string, import('fs').FSWatcher>()
+
+type RuntimeStatusPayload = {
+  type: 'status'
+  status: 'idle' | 'preparing' | 'processing' | 'reading_file' | 'analyzing_web' | 'generating' | 'writing_file' | 'waiting' | 'completed' | 'failed'
+  statusLabel: string
+  lastAction?: string
+  startedAt?: number
+  elapsedMs?: number
+  isWaitingForUser: boolean
+  isStalled?: boolean
+  errorSummary?: string
+  resultSummary?: string
+  sessionId?: string
+  sessionPath?: string
+}
+
+function emitRuntimeStatus(payload: Omit<RuntimeStatusPayload, 'type'>): void {
+  mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
+    type: 'status',
+    ...payload,
+  })
+}
+
+function summarizeError(error: string): string {
+  const normalized = error.toLowerCase()
+  if (normalized.includes('api key') || normalized.includes('auth')) return 'Provider authentication failed'
+  if (normalized.includes('model')) return 'Selected model is unavailable'
+  if (normalized.includes('network') || normalized.includes('fetch')) return 'Network request failed'
+  if (normalized.includes('session')) return 'Pi session could not be updated'
+  return error
+}
+
+function buildToolStatus(
+  toolName?: string,
+  args?: unknown,
+): Pick<RuntimeStatusPayload, 'status' | 'statusLabel' | 'lastAction' | 'isWaitingForUser'> {
+  const name = (toolName || '').toLowerCase()
+  const argText = typeof args === 'string' ? args : JSON.stringify(args || {}).toLowerCase()
+  const combined = `${name} ${argText}`
+
+  if (combined.includes('confirm') || combined.includes('approval') || combined.includes('consent')) {
+    return {
+      status: 'waiting',
+      statusLabel: 'Waiting for confirmation',
+      lastAction: toolName ? `Waiting for confirmation: ${toolName}` : 'Waiting for your confirmation',
+      isWaitingForUser: true,
+    }
+  }
+  if (combined.includes('write') || combined.includes('save') || combined.includes('edit') || combined.includes('create')) {
+    return {
+      status: 'writing_file',
+      statusLabel: 'Writing files',
+      lastAction: toolName ? `Updating with ${toolName}` : 'Writing files',
+      isWaitingForUser: false,
+    }
+  }
+  if (combined.includes('read') || combined.includes('file') || combined.includes('glob') || combined.includes('grep')) {
+    return {
+      status: 'reading_file',
+      statusLabel: 'Reading files',
+      lastAction: toolName ? `Reading with ${toolName}` : 'Reading files',
+      isWaitingForUser: false,
+    }
+  }
+  if (combined.includes('web') || combined.includes('browser') || combined.includes('fetch') || combined.includes('open') || combined.includes('search')) {
+    return {
+      status: 'analyzing_web',
+      statusLabel: 'Analyzing web content',
+      lastAction: toolName ? `Processing with ${toolName}` : 'Analyzing web content',
+      isWaitingForUser: false,
+    }
+  }
+
+  return {
+    status: 'processing',
+    statusLabel: 'Processing',
+    lastAction: toolName ? `Running ${toolName}` : 'Pi is processing your request',
+    isWaitingForUser: false,
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -103,7 +193,10 @@ function resolveWorkingDirectory(): string {
   return typeof configured === 'string' && configured ? configured : process.cwd()
 }
 
-// Provider IPC handlers
+function resolveDefaultSessionDirectory(): string {
+  return join(homedir(), 'Pi-Desktop-Session')
+}
+
 ipcMain.handle('providers:catalog', async () => {
   return { success: true, data: getProviderCatalog() }
 })
@@ -132,7 +225,6 @@ ipcMain.handle('providers:discoverModels', async (_event, config) => {
   return { success: true, data: await discoverModels(config) }
 })
 
-// Profile IPC handlers
 ipcMain.handle('profiles:list', async () => {
   return { success: true, data: listProfiles() }
 })
@@ -154,7 +246,6 @@ ipcMain.handle('profiles:switch', async (_event, id: string) => {
   return { success: true }
 })
 
-// Agent streaming IPC handlers
 ipcMain.handle(
   IPC_CHANNELS.CHAT_SEND,
   async (
@@ -178,6 +269,16 @@ ipcMain.handle(
     if (mainWindow) {
       ;(async () => {
         try {
+          emitRuntimeStatus({
+            status: 'preparing',
+            statusLabel: 'Preparing',
+            lastAction: createdNewSession ? 'Creating a new Pi session' : 'Connecting to the current Pi session',
+            isWaitingForUser: false,
+            startedAt: Date.now(),
+            sessionId,
+            sessionPath,
+          })
+
           await piBridge.sendMessage(
             sessionId,
             sessionPath,
@@ -185,7 +286,24 @@ ipcMain.handle(
             payload.modelId,
             payload.thinkingLevel,
             (event) => {
-              if (event.type === 'assistant_token') {
+              if (event.type === 'run_started') {
+                emitRuntimeStatus({
+                  status: 'processing',
+                  statusLabel: 'Processing',
+                  lastAction: 'Pi has started working on your request',
+                  isWaitingForUser: false,
+                  sessionId,
+                  sessionPath,
+                })
+              } else if (event.type === 'assistant_token') {
+                emitRuntimeStatus({
+                  status: 'generating',
+                  statusLabel: 'Generating content',
+                  lastAction: 'Drafting the response',
+                  isWaitingForUser: false,
+                  sessionId,
+                  sessionPath,
+                })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
                   type: 'token',
                   text: event.text,
@@ -193,6 +311,15 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'assistant_message') {
+                emitRuntimeStatus({
+                  status: 'completed',
+                  statusLabel: 'Completed',
+                  lastAction: 'Response finished',
+                  isWaitingForUser: false,
+                  resultSummary: event.text ? `${event.text.slice(0, 80)}${event.text.length > 80 ? '...' : ''}` : 'Reply ready',
+                  sessionId,
+                  sessionPath,
+                })
                 void openPiSession(sessionPath)
                   .then((detail) => {
                     mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
@@ -211,6 +338,11 @@ ipcMain.handle(
                     })
                   })
               } else if (event.type === 'tool_started') {
+                emitRuntimeStatus({
+                  ...buildToolStatus(event.toolName, event.args),
+                  sessionId,
+                  sessionPath,
+                })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
                   type: 'tool_started',
                   toolName: event.toolName,
@@ -219,6 +351,14 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'tool_finished') {
+                emitRuntimeStatus({
+                  status: 'processing',
+                  statusLabel: 'Processing',
+                  lastAction: event.toolName ? `${event.toolName} finished, continuing` : 'Tool finished, continuing',
+                  isWaitingForUser: false,
+                  sessionId,
+                  sessionPath,
+                })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
                   type: 'tool_finished',
                   toolName: event.toolName,
@@ -226,6 +366,22 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'artifact_created') {
+                if (event.path) {
+                  upsertArtifactFromPath({
+                    sessionId,
+                    path: event.path,
+                    status: 'ready',
+                  })
+                }
+                emitRuntimeStatus({
+                  status: 'completed',
+                  statusLabel: 'Completed',
+                  lastAction: 'Created a new result file',
+                  isWaitingForUser: false,
+                  resultSummary: event.path ? `Created ${event.path.split(/[\\/]/).pop()}` : 'Created a new result',
+                  sessionId,
+                  sessionPath,
+                })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
                   type: 'artifact_created',
                   path: event.path,
@@ -233,6 +389,21 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'tool_failed' || event.type === 'run_failed') {
+                emitRuntimeStatus({
+                  status: 'failed',
+                  statusLabel: 'Failed',
+                  lastAction: event.toolName ? `${event.toolName} failed` : 'Pi failed to complete the request',
+                  isWaitingForUser: false,
+                  errorSummary: summarizeError(event.error || `${event.toolName || 'Pi'} failed`),
+                  sessionId,
+                  sessionPath,
+                })
+                upsertArtifactFromPath({
+                  sessionId,
+                  path: join(resolveWorkingDirectory(), `failed-run-${Date.now()}.txt`),
+                  status: 'failed',
+                  errorSummary: summarizeError(event.error || `${event.toolName || 'Pi'} failed`),
+                })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
                   type: 'error',
                   error: event.error || `${event.toolName || 'Pi'} failed`,
@@ -240,6 +411,15 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'run_aborted') {
+                emitRuntimeStatus({
+                  status: 'failed',
+                  statusLabel: 'Stopped',
+                  lastAction: 'Run was aborted',
+                  isWaitingForUser: false,
+                  errorSummary: 'Run aborted',
+                  sessionId,
+                  sessionPath,
+                })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
                   type: 'error',
                   error: 'Run aborted',
@@ -250,6 +430,15 @@ ipcMain.handle(
             },
           )
         } catch (err) {
+          emitRuntimeStatus({
+            status: 'failed',
+            statusLabel: 'Failed',
+            lastAction: 'Pi could not start this request',
+            isWaitingForUser: false,
+            errorSummary: summarizeError(err instanceof Error ? err.message : 'Unknown error'),
+            sessionId,
+            sessionPath,
+          })
           mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
             type: 'error',
             error: err instanceof Error ? err.message : 'Unknown error',
@@ -267,6 +456,14 @@ ipcMain.handle(
 ipcMain.handle(IPC_CHANNELS.CHAT_ABORT, async (_event, sessionPath?: string) => {
   await piBridge.abort(sessionPath || '', (event) => {
     if (event.type === 'run_aborted') {
+      emitRuntimeStatus({
+        status: 'failed',
+        statusLabel: 'Stopped',
+        lastAction: 'Run was aborted',
+        isWaitingForUser: false,
+        errorSummary: 'Run aborted',
+        sessionPath: sessionPath || '',
+      })
       mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
         type: 'error',
         error: 'Run aborted',
@@ -286,13 +483,14 @@ ipcMain.handle(IPC_CHANNELS.CONFIG_SET, async (_event, key: string, value: unkno
   return { success: true }
 })
 
-// Session IPC handlers
 ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
   return { success: true, data: await listPiSessions() }
 })
 
-ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async () => {
-  const session = await createPiSession(resolveWorkingDirectory())
+ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, payload?: { cwd?: string }) => {
+  const targetDir = payload?.cwd?.trim() || resolveDefaultSessionDirectory()
+  mkdirSync(targetDir, { recursive: true })
+  const session = await createPiSession(targetDir)
   saveActiveSessionId(session.sessionId)
 
   return {
@@ -366,7 +564,30 @@ ipcMain.handle('desktop:getStateSummary', async () => {
   return { success: true, data: getDesktopStateSummary() }
 })
 
-// File system IPC handlers
+ipcMain.handle('artifacts:list', async (_event, sessionId?: string) => {
+  return { success: true, data: listArtifacts(sessionId) }
+})
+
+ipcMain.handle('artifacts:get', async (_event, artifactId: string) => {
+  return { success: true, data: getArtifact(artifactId) }
+})
+
+ipcMain.handle('artifacts:history', async (_event, artifactId: string) => {
+  return { success: true, data: artifactHistory(artifactId) }
+})
+
+ipcMain.handle('artifacts:refresh', async (_event, artifactId: string) => {
+  return { success: true, data: refreshArtifact(artifactId) }
+})
+
+ipcMain.handle('artifacts:pin', async (_event, artifactId: string, pinned: boolean) => {
+  return { success: true, data: pinArtifact(artifactId, pinned) }
+})
+
+ipcMain.handle('artifacts:markPrimary', async (_event, artifactId: string) => {
+  return { success: true, data: markArtifactPrimary(artifactId) }
+})
+
 ipcMain.handle('files:list', async (_event, dirPath: string) => {
   try {
     const entries = readdirSync(dirPath)

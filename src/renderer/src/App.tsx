@@ -1,19 +1,26 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TopBar from './components/TopBar'
 import LeftPanel from './components/LeftPanel'
 import ChatView from './components/ChatView'
 import PreviewPanel from './components/PreviewPanel'
+import NewSessionDialog from './components/NewSessionDialog'
 import StatusBar from './components/StatusBar'
 import Welcome from './screens/Welcome'
 import Settings from './screens/Settings'
 import Profile from './screens/Profile'
 import ProviderManager from './screens/ProviderManager'
 import Shortcuts from './screens/Shortcuts'
-import Files from './screens/Files'
-import Tools from './screens/Tools'
 import Skills from './screens/Skills'
-import Memory from './screens/Memory'
-import type { Message, ModelOption, ProviderSummary, Session } from './types/chat'
+import type {
+  ArtifactEntity,
+  Message,
+  ModelOption,
+  ProviderSummary,
+  ResultItem,
+  RuntimeStatus,
+  Session,
+  WorkspaceFileEntry,
+} from './types/chat'
 import { useChatIPC } from './hooks/useChatIPC'
 import type { PreviewFile } from './components/PreviewPanel'
 
@@ -56,18 +63,23 @@ interface StoredMessage {
   fullOutputPath?: string
 }
 
+interface FileReadResponse {
+  type: 'text' | 'image' | 'binary'
+  content?: string
+}
+
 function buildModelOptions(providers: ProviderSummary[]): ModelOption[] {
   return providers
     .filter((provider) => provider.hasAuth)
     .flatMap((provider) =>
-    provider.models.map((model) => ({
-      id: model.runtimeKey,
-      name: model.name,
-      provider: provider.displayName,
-      label: `${provider.displayName} / ${model.name}`,
-      providerId: provider.providerId,
-    })),
-  )
+      provider.models.map((model) => ({
+        id: model.runtimeKey,
+        name: model.name,
+        provider: provider.displayName,
+        label: `${provider.displayName} / ${model.name}`,
+        providerId: provider.providerId,
+      })),
+    )
 }
 
 function getInitialModel(providers: ProviderSummary[]): string {
@@ -130,11 +142,10 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
   }
 
   if (message.role === 'toolResult') {
-    const resultText = extractContentText(message.content)
     return {
       id: `${sessionId}-msg-${index}`,
       role: 'assistant',
-      content: `Tool result (${message.toolName || message.toolCallId || 'tool'})\n${resultText}`.trim(),
+      content: `Tool result (${message.toolName || message.toolCallId || 'tool'})\n${extractContentText(message.content)}`.trim(),
       timestamp,
       rawContent,
       kind: 'toolResult',
@@ -143,11 +154,10 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
 
   if (message.role === 'custom') {
     if (message.display === false) return null
-    const customText = extractContentText(message.content)
     return {
       id: `${sessionId}-msg-${index}`,
       role: 'assistant',
-      content: `[${message.customType || 'custom'}]\n${customText}`.trim(),
+      content: `[${message.customType || 'custom'}]\n${extractContentText(message.content)}`.trim(),
       timestamp,
       rawContent,
       kind: 'custom',
@@ -181,9 +191,7 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
       : typeof message.exitCode === 'number' && message.exitCode !== 0
         ? `exit ${message.exitCode}`
         : 'ok'
-    const truncated = message.truncated && message.fullOutputPath
-      ? `\n[full output: ${message.fullOutputPath}]`
-      : ''
+    const truncated = message.truncated && message.fullOutputPath ? `\n[full output: ${message.fullOutputPath}]` : ''
     return {
       id: `${sessionId}-msg-${index}`,
       role: 'assistant',
@@ -202,14 +210,69 @@ function toUiMessages(sessionId: string, storedMessages: StoredMessage[]): Messa
     .filter((message): message is Message => Boolean(message))
 }
 
+function sortWorkspaceFiles(files: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
+  return [...files].sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function normalizeArtifact(entity: any): ArtifactEntity {
+  return {
+    ...entity,
+    createdAt: new Date(entity.createdAt).getTime(),
+    updatedAt: new Date(entity.updatedAt).getTime(),
+  }
+}
+
+function artifactToResultItem(artifact: ArtifactEntity): ResultItem {
+  const path = artifact.sourcePath || artifact.title
+  let kind: ResultItem['kind'] = 'created'
+  if (artifact.status === 'failed') kind = 'failed'
+  else if (artifact.sourceKind === 'manual') kind = 'viewed'
+  else if (artifact.versions.length > 1) kind = 'updated'
+  else if (artifact.artifactType === 'slides' || artifact.artifactType === 'table') kind = 'exported'
+
+  return {
+    id: artifact.id,
+    sessionId: artifact.sessionId,
+    path,
+    title: artifact.title,
+    kind,
+    action: artifact.metadata.actionLabel || artifact.title,
+    updatedAt: new Date(artifact.updatedAt).toISOString(),
+    isNew: artifact.status !== 'failed' && Date.now() - artifact.updatedAt < 60_000,
+    errorSummary: artifact.metadata.errorSummary,
+  }
+}
+
+function buildSessionStatus(runtimeStatus: RuntimeStatus | null, sessionPath: string): Session['status'] {
+  if (!runtimeStatus || runtimeStatus.sessionPath !== sessionPath) return 'idle'
+  if (runtimeStatus.status === 'waiting') return 'waiting'
+  if (runtimeStatus.status === 'failed') return 'failed'
+  if (runtimeStatus.status === 'completed' || runtimeStatus.status === 'idle') return 'idle'
+  return 'running'
+}
+
+function pickPreferredArtifact(artifacts: ArtifactEntity[]): ArtifactEntity | null {
+  if (artifacts.length === 0) return null
+  const sorted = [...artifacts].sort((a, b) => {
+    const priorityA = a.metadata.primary ? 3 : a.metadata.pinned ? 2 : a.status === 'ready' ? 1 : 0
+    const priorityB = b.metadata.primary ? 3 : b.metadata.pinned ? 2 : b.status === 'ready' ? 1 : 0
+    if (priorityA !== priorityB) return priorityB - priorityA
+    return b.updatedAt - a.updatedAt
+  })
+  return sorted[0] || null
+}
+
 export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeSessionPath, setActiveSessionPath] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(220)
-  const [rightPanelWidth, setRightPanelWidth] = useState(300)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(280)
+  const [rightPanelWidth, setRightPanelWidth] = useState(360)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [providers, setProviders] = useState<ProviderSummary[]>([])
@@ -219,24 +282,27 @@ export default function App() {
   const [thinkingLevel, setThinkingLevel] = useState('medium')
   const [isInitialized, setIsInitialized] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null)
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>([])
+  const [artifactsBySession, setArtifactsBySession] = useState<Record<string, ArtifactEntity[]>>({})
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null)
 
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [showProvider, setShowProvider] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
-  const [showFiles, setShowFiles] = useState(false)
-  const [showTools, setShowTools] = useState(false)
   const [showSkills, setShowSkills] = useState(false)
-  const [showMemory, setShowMemory] = useState(false)
+  const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [hasProvider, setHasProvider] = useState(false)
+  const currentDirRef = useRef(currentDir)
+  const workspaceRequestRef = useRef(0)
+
   const hasRunnableProvider = useCallback((providerList: ProviderSummary[]) => {
     return providerList.some((provider) => provider.hasAuth && provider.models.length > 0)
   }, [])
 
-  const directoryOptions = Array.from(
-    new Set([currentDir, ...sessions.map((session) => session.cwd)].filter(Boolean)),
-  )
+  const directoryOptions = Array.from(new Set([currentDir, ...sessions.map((session) => session.cwd)].filter(Boolean)))
   const activeSession = sessions.find((session) => session.id === activeSessionId) || null
 
   const onAssistantMessage = useCallback((message: Message) => {
@@ -253,14 +319,86 @@ export default function App() {
 
   const onStreamStart = useCallback(() => setIsStreaming(true), [])
   const onStreamEnd = useCallback(() => setIsStreaming(false), [])
-  const showRuntimeError = useCallback((error: string) => {
-    onAssistantMessage({
-      id: `error-${Date.now()}`,
-      role: 'assistant',
-      content: `Error: ${error}`,
-      timestamp: Date.now(),
+
+  const showRuntimeError = useCallback(
+    (error: string) => {
+      onAssistantMessage({
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: `Error: ${error}`,
+        timestamp: Date.now(),
+      })
+    },
+    [onAssistantMessage],
+  )
+
+  const loadWorkspaceFiles = useCallback(async (dir: string): Promise<WorkspaceFileEntry[]> => {
+    const requestId = workspaceRequestRef.current + 1
+    workspaceRequestRef.current = requestId
+
+    if (!dir) {
+      if (workspaceRequestRef.current === requestId) {
+        setWorkspaceFiles([])
+      }
+      return []
+    }
+
+    const response = await window.piDesktop.files.list(dir)
+    if (workspaceRequestRef.current !== requestId) {
+      return []
+    }
+
+    if (!response.success || !Array.isArray(response.data)) {
+      setWorkspaceFiles([])
+      return []
+    }
+
+    const files = sortWorkspaceFiles(response.data as WorkspaceFileEntry[])
+    setWorkspaceFiles(files)
+    return files
+  }, [])
+
+  const loadArtifacts = useCallback(async (sessionId: string | null) => {
+    if (!sessionId) {
+      setActiveArtifactId(null)
+      return []
+    }
+
+    const artifactApi = window.piDesktop.artifacts
+    if (!artifactApi?.list) {
+      setArtifactsBySession((previous) => ({ ...previous, [sessionId]: [] }))
+      setActiveArtifactId(null)
+      return []
+    }
+
+    const response = await artifactApi.list(sessionId)
+    if (!response.success || !Array.isArray(response.data)) {
+      setArtifactsBySession((previous) => ({ ...previous, [sessionId]: [] }))
+      setActiveArtifactId((previous) => (previous && previous.startsWith(`${sessionId}:`) ? null : previous))
+      return []
+    }
+
+    const nextArtifacts = (response.data as unknown as any[])
+      .map((artifact) => normalizeArtifact(artifact))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+
+    setArtifactsBySession((previous) => ({ ...previous, [sessionId]: nextArtifacts }))
+    setActiveArtifactId((previous) => {
+      if (previous && nextArtifacts.some((artifact) => artifact.id === previous)) {
+        return previous
+      }
+      return pickPreferredArtifact(nextArtifacts)?.id || null
     })
-  }, [onAssistantMessage])
+    return nextArtifacts
+  }, [])
+
+  const handleSelectArtifact = useCallback((path: string) => {
+    if (!activeSessionId) return
+    const match = (artifactsBySession[activeSessionId] || []).find((artifact) => artifact.sourcePath === path)
+    if (match) {
+      setActiveArtifactId(match.id)
+    }
+  }, [activeSessionId, artifactsBySession])
 
   const handleOpenPreviewFile = useCallback(async (path: string) => {
     const response = await window.piDesktop.files.read(path)
@@ -268,7 +406,7 @@ export default function App() {
 
     const ext = path.includes('.') ? `.${path.split('.').pop()?.toLowerCase() || ''}` : ''
     const name = path.split(/[/\\]/).pop() || path
-    const data = response.data as { type: 'text' | 'image' | 'binary'; content?: string }
+    const data = response.data as FileReadResponse
 
     setPreviewFile({
       path,
@@ -277,7 +415,6 @@ export default function App() {
       type: data.type,
       content: data.content,
     })
-    setShowFiles(false)
   }, [])
 
   const loadProviders = useCallback(async (): Promise<ProviderSummary[]> => {
@@ -290,9 +427,8 @@ export default function App() {
     }
 
     const nextProviders = response.data as ProviderSummary[]
-    const nextOptions = buildModelOptions(nextProviders)
     setProviders(nextProviders)
-    setModelOptions(nextOptions)
+    setModelOptions(buildModelOptions(nextProviders))
     setCurrentModel((previous) => previous || getInitialModel(nextProviders))
     return nextProviders
   }, [])
@@ -304,7 +440,7 @@ export default function App() {
       return []
     }
 
-    const loadedSessions = (response.data as SessionListItem[]).map((session) => ({
+    const nextSessions = (response.data as SessionListItem[]).map((session) => ({
       id: session.id,
       path: session.path,
       cwd: session.cwd,
@@ -316,11 +452,15 @@ export default function App() {
       model: session.model || undefined,
       tokenCount: session.tokenCount,
       messageCount: session.messageCount,
+      thinkingLevel: 'medium',
+      cwdLabel: session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd,
+      lastActiveLabel: undefined,
+      status: buildSessionStatus(runtimeStatus, session.path),
     }))
 
-    setSessions(loadedSessions)
-    return loadedSessions
-  }, [])
+    setSessions(nextSessions)
+    return nextSessions
+  }, [runtimeStatus])
 
   const syncSessionDetail = useCallback(
     (detail: {
@@ -333,57 +473,56 @@ export default function App() {
       thinkingLevel: string
       tokenCount: number
     }) => {
+      const nextMessages = toUiMessages(detail.sessionId, detail.messages as StoredMessage[])
       setActiveSessionId(detail.sessionId)
       setActiveSessionPath(detail.sessionPath)
       setCurrentDir(detail.cwd)
       setThinkingLevel(detail.thinkingLevel || 'medium')
-      if (detail.model) {
-        setCurrentModel(detail.model)
-      }
-
-      const nextMessages = toUiMessages(detail.sessionId, detail.messages as StoredMessage[])
+      if (detail.model) setCurrentModel(detail.model)
       setMessages(nextMessages)
+
       setSessions((previous) => {
-        const index = previous.findIndex((session) => session.path === detail.sessionPath)
+        const existingSession = previous.find((session) => session.path === detail.sessionPath)
+        const derivedUpdatedAt = nextMessages[nextMessages.length - 1]?.timestamp || existingSession?.updatedAt || Date.now()
         const nextSession: Session = {
           id: detail.sessionId,
           path: detail.sessionPath,
           cwd: detail.cwd,
           source: 'pi',
           title: detail.title,
-          createdAt: previous[index]?.createdAt || Date.now(),
-          updatedAt: Date.now(),
+          createdAt: existingSession?.createdAt || Date.now(),
+          updatedAt: derivedUpdatedAt,
           messages: nextMessages,
           model: detail.model || undefined,
           tokenCount: detail.tokenCount,
           messageCount: nextMessages.length,
           thinkingLevel: detail.thinkingLevel,
+          cwdLabel: detail.cwd.split(/[\\/]/).filter(Boolean).pop() || detail.cwd,
+          lastActiveLabel: undefined,
+          status: buildSessionStatus(runtimeStatus, detail.sessionPath),
         }
 
-        if (index >= 0) {
+        const existingIndex = previous.findIndex((session) => session.path === detail.sessionPath)
+        if (existingIndex >= 0) {
           const next = [...previous]
-          next[index] = {
-            ...next[index],
-            ...nextSession,
-          }
+          next[existingIndex] = { ...next[existingIndex], ...nextSession }
           return next.sort((a, b) => b.updatedAt - a.updatedAt)
         }
-
         return [nextSession, ...previous].sort((a, b) => b.updatedAt - a.updatedAt)
       })
     },
-    [],
+    [runtimeStatus],
   )
 
   const loadSessionMessages = useCallback(
-    async (sessionPath: string): Promise<void> => {
+    async (sessionPath: string) => {
       const response = await window.piDesktop.session.switch(sessionPath)
       if (!response.success || !response.data) {
         setMessages([])
         return
       }
 
-      syncSessionDetail(response.data as {
+      const detail = response.data as {
         sessionId: string
         sessionPath: string
         cwd: string
@@ -392,9 +531,11 @@ export default function App() {
         model: string | null
         thinkingLevel: string
         tokenCount: number
-      })
+      }
+      syncSessionDetail(detail)
+      await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
     },
-    [syncSessionDetail],
+    [loadArtifacts, loadWorkspaceFiles, syncSessionDetail],
   )
 
   const updateSessionRuntime = useCallback(
@@ -439,10 +580,7 @@ export default function App() {
       setPreviewFile(null)
       await window.piDesktop.config.set('workingDirectory', dir)
 
-      const matchingSession = [...sessions]
-        .filter((session) => session.cwd === dir)
-        .sort((a, b) => b.updatedAt - a.updatedAt)[0]
-
+      const matchingSession = [...sessions].filter((session) => session.cwd === dir).sort((a, b) => b.updatedAt - a.updatedAt)[0]
       if (matchingSession?.path) {
         setActiveSessionId(matchingSession.id)
         setActiveSessionPath(matchingSession.path)
@@ -452,6 +590,7 @@ export default function App() {
       setActiveSessionId(null)
       setActiveSessionPath(null)
       setMessages([])
+      setActiveArtifactId(null)
     },
     [currentDir, sessions],
   )
@@ -460,12 +599,24 @@ export default function App() {
     onAssistantMessage,
     onStreamStart,
     onStreamEnd,
-    onArtifactCreated: (path) => {
-      void handleOpenPreviewFile(path)
+    onRuntimeStatus: setRuntimeStatus,
+    onArtifactCreated: ({ path, sessionId }) => {
+      const targetSessionId = sessionId || activeSessionId
+      if (!targetSessionId) return
+
+      void loadArtifacts(targetSessionId).then((artifacts) => {
+        const freshestArtifact = artifacts.find((artifact) => artifact.sourcePath === path) || pickPreferredArtifact(artifacts)
+        if (!previewFile && freshestArtifact?.sourcePath) {
+          void handleOpenPreviewFile(freshestArtifact.sourcePath)
+        }
+      })
+      void loadWorkspaceFiles(currentDirRef.current)
     },
     onSessionSynced: (detail) => {
       syncSessionDetail(detail)
       void loadSessions()
+      void loadWorkspaceFiles(detail.cwd)
+      void loadArtifacts(detail.sessionId)
     },
     currentModel,
     currentSessionId: activeSessionId || undefined,
@@ -474,7 +625,7 @@ export default function App() {
   })
 
   useEffect(() => {
-    async function initialize(): Promise<void> {
+    async function initialize() {
       const [providersLoaded, workingDirRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
         loadProviders(),
         window.piDesktop.config.get('workingDirectory'),
@@ -490,103 +641,183 @@ export default function App() {
       const wizardCompleted = wizardRes.success ? wizardRes.data === 'true' || wizardRes.data === true : false
 
       setCurrentDir(workingDirectory)
-      const runnableProviderAvailable = hasRunnableProvider(providersLoaded)
-      setHasProvider(runnableProviderAvailable)
+      setHasProvider(hasRunnableProvider(providersLoaded))
 
-      const preferredSessionId =
-        activeSessionRes.success && typeof activeSessionRes.data === 'string'
-          ? activeSessionRes.data
-          : null
+      const preferredSessionId = activeSessionRes.success && typeof activeSessionRes.data === 'string' ? activeSessionRes.data : null
       const preferredSession = sessionsLoaded.find((session) => session.id === preferredSessionId) || sessionsLoaded[0] || null
-
       setActiveSessionId(preferredSession?.id || null)
       setActiveSessionPath(preferredSession?.path || null)
-      if (preferredSession?.path) {
-        await loadSessionMessages(preferredSession.path)
+
+      if (!preferredSession?.path) {
+        await loadWorkspaceFiles(workingDirectory)
       }
 
-      setShowWizard(!wizardCompleted && !runnableProviderAvailable)
+      setShowWizard(!wizardCompleted && !hasRunnableProvider(providersLoaded))
       setIsInitialized(true)
     }
 
     void initialize()
-  }, [hasRunnableProvider, loadProviders, loadSessionMessages, loadSessions])
+  }, [hasRunnableProvider, loadProviders, loadSessions, loadWorkspaceFiles])
 
   useEffect(() => {
-    if (!activeSessionPath) {
-      return
-    }
+    if (!activeSessionPath) return
     void loadSessionMessages(activeSessionPath)
   }, [activeSessionPath, loadSessionMessages])
+
+  useEffect(() => {
+    setRuntimeStatus(null)
+  }, [activeSessionPath, currentDir, currentModel])
+
+  useEffect(() => {
+    currentDirRef.current = currentDir
+  }, [currentDir])
+
+  useEffect(() => {
+    if (!currentDir) return
+    void loadWorkspaceFiles(currentDir)
+  }, [currentDir, loadWorkspaceFiles])
+
+  useEffect(() => {
+    setSessions((previous) =>
+      previous.map((session) => ({
+        ...session,
+        status: buildSessionStatus(runtimeStatus, session.path),
+      })),
+    )
+  }, [runtimeStatus])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      setActiveArtifactId(null)
+      return
+    }
+    const preferred = pickPreferredArtifact(artifactsBySession[activeSessionId] || [])
+    if (preferred && !previewFile && preferred.sourcePath) {
+      void handleOpenPreviewFile(preferred.sourcePath)
+    }
+  }, [activeSessionId, artifactsBySession, handleOpenPreviewFile, previewFile])
 
   const handleSendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || isStreaming || !currentModel) return
 
-      const userMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: text,
-        timestamp: Date.now(),
-      }
+      const startedAt = Date.now()
+      setRuntimeStatus({
+        status: 'preparing',
+        statusLabel: 'Preparing',
+        lastAction: activeSessionPath ? 'Connecting to the selected Pi session' : 'Creating a new Pi session',
+        startedAt,
+        elapsedMs: 0,
+        isWaitingForUser: false,
+        sessionId: activeSessionId || undefined,
+        sessionPath: activeSessionPath || undefined,
+      })
 
-      setMessages((previous) => [...previous, userMessage])
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `msg-${Date.now()}`,
+          role: 'user',
+          content: text,
+          timestamp: Date.now(),
+        },
+      ])
+
       const response = await sendMessage(text)
       if (response?.success && response.data) {
-        const data = response.data as {
-          sessionId: string
-          sessionPath: string
-          createdNewSession: boolean
-        }
+        const data = response.data as { sessionId: string; sessionPath: string; createdNewSession: boolean }
         if (data.createdNewSession || !activeSessionPath) {
           setActiveSessionId(data.sessionId)
           setActiveSessionPath(data.sessionPath)
-          await loadSessions()
+          await Promise.all([loadSessions(), loadArtifacts(data.sessionId)])
         }
       }
     },
-    [activeSessionPath, currentModel, isStreaming, loadSessions, sendMessage],
+    [activeSessionId, activeSessionPath, currentModel, isStreaming, loadArtifacts, loadSessions, sendMessage],
   )
 
-  const handleCreateSession = useCallback(async () => {
-    const response = await window.piDesktop.session.create()
-    if (!response.success || !response.data) return
+  const handleArtifactAction = useCallback((action: 'improve' | 'regenerate' | 'summarize' | 'new_task', path: string) => {
+    const artifact = activeSessionId ? (artifactsBySession[activeSessionId] || []).find((entry) => entry.sourcePath === path) : undefined
+    const title = artifact?.title || path.split(/[/\\]/).pop() || path
+    const type = artifact?.artifactType || 'file'
 
-    const created = response.data as {
-      id: string
-      path: string
-      cwd: string
-      title: string
-      source: 'pi'
-      createdAt: string
-      updatedAt: string
+    let prompt = ''
+    if (action === 'improve') {
+      prompt = `Please continue improving the current ${type} artifact "${title}". Use the file at "${path}" as the primary source, keep the same session context, and produce a stronger next version.`
+    } else if (action === 'regenerate') {
+      prompt = `Please regenerate the ${type} artifact "${title}" from the current session context. Use the existing file at "${path}" as reference, but feel free to restructure it if needed.`
+    } else if (action === 'summarize') {
+      prompt = `Please summarize the artifact "${title}" located at "${path}". Focus on the key conclusions, deliverables, and next actions.`
+    } else {
+      prompt = `Create a new follow-up task based on the artifact "${title}" at "${path}". Use it as the starting context and propose the next concrete piece of work.`
     }
-    await loadSessions()
-    setActiveSessionId(created.id)
-    setActiveSessionPath(created.path)
-    setCurrentDir(created.cwd)
-    setMessages([])
-  }, [loadSessions])
 
-  const handleComposerCommand = useCallback(
-    async (command: string) => {
-      if (command === '/new') {
-        await handleCreateSession()
+    void handleSendMessage(prompt)
+  }, [activeSessionId, artifactsBySession, handleSendMessage])
+
+  const handleCreateSession = useCallback(
+    async (cwd?: string) => {
+      const response = await window.piDesktop.session.create(cwd ? { cwd } : undefined)
+      if (!response.success || !response.data) return
+
+      const created = response.data as {
+        id: string
+        path: string
+        cwd: string
+        title: string
+        source: 'pi'
+        createdAt: string
+        updatedAt: string
       }
+
+      await loadSessions()
+      await window.piDesktop.config.set('workingDirectory', created.cwd)
+      setActiveSessionId(created.id)
+      setActiveSessionPath(created.path)
+      setCurrentDir(created.cwd)
+      setMessages([])
+      setPreviewFile(null)
+      setActiveArtifactId(null)
+      setShowNewSessionDialog(false)
     },
-    [handleCreateSession],
+    [loadSessions],
   )
+
+  const handleComposerCommand = useCallback((command: string) => {
+    if (command === '/new') {
+      setShowNewSessionDialog(true)
+    }
+  }, [])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey
-      if (meta && event.key === '/') { event.preventDefault(); setShowShortcuts((state) => !state) }
-      if (meta && event.key === 'p') { event.preventDefault(); setShowProvider((state) => !state) }
-      if (meta && event.key === ',') { event.preventDefault(); setShowSettings((state) => !state) }
-      if (meta && event.key === 'b') { event.preventDefault(); setLeftPanelCollapsed((state) => !state) }
-      if (meta && event.key === 'j') { event.preventDefault(); setRightPanelCollapsed((state) => !state) }
-      if (meta && event.key === 'k') { event.preventDefault(); setMessages([]) }
+      if (meta && event.key === '/') {
+        event.preventDefault()
+        setShowShortcuts((state) => !state)
+      }
+      if (meta && event.key === 'p') {
+        event.preventDefault()
+        setShowProvider((state) => !state)
+      }
+      if (meta && event.key === ',') {
+        event.preventDefault()
+        setShowSettings((state) => !state)
+      }
+      if (meta && event.key === 'b') {
+        event.preventDefault()
+        setLeftPanelCollapsed((state) => !state)
+      }
+      if (meta && event.key === 'j') {
+        event.preventDefault()
+        setRightPanelCollapsed((state) => !state)
+      }
+      if (meta && event.key === 'k') {
+        event.preventDefault()
+        setMessages([])
+      }
     }
+
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
@@ -594,13 +825,10 @@ export default function App() {
   useEffect(() => {
     const handler = () => {
       const width = window.innerWidth
-      if (width < 700 && !leftPanelCollapsed) {
-        setLeftPanelCollapsed(true)
-      }
-      if (width < 500 && !rightPanelCollapsed) {
-        setRightPanelCollapsed(true)
-      }
+      if (width < 760 && !leftPanelCollapsed) setLeftPanelCollapsed(true)
+      if (width < 560 && !rightPanelCollapsed) setRightPanelCollapsed(true)
     }
+
     window.addEventListener('resize', handler)
     return () => window.removeEventListener('resize', handler)
   }, [leftPanelCollapsed, rightPanelCollapsed])
@@ -610,6 +838,15 @@ export default function App() {
   const showTokenWarning = tokenPct > 70
   const selectedModelOption = modelOptions.find((option) => option.id === currentModel)
   const currentModelLabel = selectedModelOption?.label || (currentModel ? `${currentModel} (unconfigured)` : '')
+
+  const activeArtifacts = useMemo(() => {
+    if (!activeSessionId) return []
+    return artifactsBySession[activeSessionId] || []
+  }, [activeSessionId, artifactsBySession])
+
+  const resultsForPanel = useMemo(() => {
+    return activeArtifacts.map(artifactToResultItem).slice(0, 8)
+  }, [activeArtifacts])
 
   if (!isInitialized) {
     return (
@@ -631,11 +868,11 @@ export default function App() {
   if (!hasProvider && !showWizard) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#151414' }}>
-        <div style={{ textAlign: 'center', maxWidth: '300px' }}>
-          <div style={{ fontSize: '28px', marginBottom: '10px' }}>🧠</div>
-          <h1 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', color: 'rgba(255,255,255,0.7)' }}>Welcome to Pi Desktop</h1>
-          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', marginBottom: '20px' }}>Configure an AI provider to get started.</p>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', maxWidth: 300 }}>
+          <div style={{ fontSize: 28, marginBottom: 10 }}>Pi</div>
+          <h1 style={{ fontSize: 14, fontWeight: 600, marginBottom: 6, color: 'rgba(255,255,255,0.7)' }}>Welcome to Pi Desktop</h1>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', marginBottom: 20 }}>Configure an AI provider to get started.</p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button onClick={() => setShowWizard(true)} className="bp">Set Up Provider</button>
             <button onClick={() => setShowProvider(true)} className="bs">Advanced Setup</button>
           </div>
@@ -671,8 +908,8 @@ export default function App() {
 
         {showTokenWarning && (
           <div className="twarn">
-            <span>⚠</span>
-            <span>Context {tokenPct}% full. Consider /compact or new session.</span>
+            <span>!</span>
+            <span>Context {tokenPct}% full. Consider /compact or a new session.</span>
           </div>
         )}
 
@@ -684,17 +921,15 @@ export default function App() {
               const selected = sessions.find((session) => session.id === id)
               setActiveSessionId(id)
               setActiveSessionPath(selected?.path || null)
-              if (selected?.cwd) {
-                setCurrentDir(selected.cwd)
-              }
+              setPreviewFile(null)
+              if (selected?.cwd) setCurrentDir(selected.cwd)
             }}
-            onSessionCreate={handleCreateSession}
-            collapsed={leftPanelCollapsed}
-            onToggleCollapse={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-            onOpenFiles={() => setShowFiles(true)}
-            onOpenTools={() => setShowTools(true)}
+            onSessionCreate={() => setShowNewSessionDialog(true)}
+            onOpenModels={() => setShowProvider(true)}
             onOpenSkills={() => setShowSkills(true)}
-            onOpenMemory={() => setShowMemory(true)}
+            onOpenSettings={() => setShowSettings(true)}
+            collapsed={leftPanelCollapsed}
+            onToggleCollapse={() => setLeftPanelCollapsed((state) => !state)}
             panelWidth={leftPanelWidth}
             onResize={setLeftPanelWidth}
           />
@@ -703,42 +938,49 @@ export default function App() {
             onSendMessage={handleSendMessage}
             onCommand={handleComposerCommand}
             isStreaming={isStreaming}
+            runtimeStatus={runtimeStatus}
             onSetMessages={setMessages}
           />
           <PreviewPanel
             collapsed={rightPanelCollapsed}
-            onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            onToggleCollapse={() => setRightPanelCollapsed((state) => !state)}
             panelWidth={rightPanelWidth}
             onResize={setRightPanelWidth}
+            currentWorkspace={currentDir}
+            workspaceFiles={workspaceFiles}
+            recentResults={resultsForPanel}
+            runtimeStatus={runtimeStatus}
             previewFile={previewFile}
+            onSelectResult={handleSelectArtifact}
+            onSelectFile={(path) => { void handleOpenPreviewFile(path) }}
             onClosePreview={() => setPreviewFile(null)}
             onOpenExternal={(path) => { void window.piDesktop.files.open(path) }}
+            onOpenFolder={(path) => {
+              const directory = path.includes('/') || path.includes('\\')
+                ? path.replace(/[/\\][^/\\]+$/, '')
+                : path
+              void window.piDesktop.files.open(directory)
+            }}
+            onCopyPath={(path) => { void navigator.clipboard?.writeText(path) }}
+            onArtifactAction={handleArtifactAction}
           />
         </div>
 
-        <StatusBar
-          currentModel={currentModelLabel || currentModel}
-          activeSessionCount={sessions.length}
-          currentDir={currentDir}
-        />
+        <StatusBar currentModel={currentModelLabel || currentModel} activeSessionCount={sessions.length} currentDir={currentDir} />
       </div>
+
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       {showProfile && <Profile onClose={() => setShowProfile(false)} />}
       {showProvider && <ProviderManager onClose={() => { setShowProvider(false); void loadProviders() }} />}
       {showShortcuts && <Shortcuts onClose={() => setShowShortcuts(false)} />}
-      {showFiles && <Files onClose={() => setShowFiles(false)} onOpenFile={handleOpenPreviewFile} initialDir={currentDir} />}
-      {showTools && (
-        <Tools
-          onClose={() => setShowTools(false)}
-          sessionCount={sessions.length}
-          providerCount={providers.length}
-          currentDir={currentDir}
-          currentModelLabel={currentModelLabel || currentModel}
-          activeSessionTitle={activeSession?.title}
-        />
-      )}
       {showSkills && <Skills onClose={() => setShowSkills(false)} />}
-      {showMemory && <Memory onClose={() => setShowMemory(false)} />}
+      <NewSessionDialog
+        isOpen={showNewSessionDialog}
+        currentDir={currentDir}
+        directoryOptions={directoryOptions}
+        onClose={() => setShowNewSessionDialog(false)}
+        onCreate={(cwd) => { void handleCreateSession(cwd) }}
+      />
     </>
   )
 }

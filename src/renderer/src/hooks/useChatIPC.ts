@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { Message, ToolCall } from '../types/chat'
+import type { AgentEvent, Message, RuntimeStatus, ToolCall } from '../types/chat'
 
 interface UseChatIPCOptions {
   onAssistantMessage: (message: Message) => void
   onStreamStart: () => void
   onStreamEnd: () => void
-  onArtifactCreated?: (path: string) => void
+  onRuntimeStatus?: (status: RuntimeStatus | ((previous: RuntimeStatus | null) => RuntimeStatus | null)) => void
+  onArtifactCreated?: (payload: { path: string; sessionId?: string; sessionPath?: string }) => void
   onSessionSynced?: (session: {
     sessionId: string
     sessionPath: string
@@ -22,6 +23,7 @@ export function useChatIPC({
   onAssistantMessage,
   onStreamStart,
   onStreamEnd,
+  onRuntimeStatus,
   onArtifactCreated,
   onSessionSynced,
   currentModel = 'openai/gpt-4',
@@ -39,14 +41,27 @@ export function useChatIPC({
   const toolCallsRef = useRef<ToolCall[]>([])
   const currentSessionIdRef = useRef(currentSessionId)
   const currentSessionPathRef = useRef(currentSessionPath)
+  const lastRuntimeUpdateRef = useRef<number>(0)
+  const runtimeStatusRef = useRef<RuntimeStatus | null>(null)
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId
     currentSessionPathRef.current = currentSessionPath
   }, [currentSessionId, currentSessionPath])
 
+  const setRuntimeStatus = useCallback((next: RuntimeStatus | ((previous: RuntimeStatus | null) => RuntimeStatus | null)) => {
+    const resolved = typeof next === 'function' ? next(runtimeStatusRef.current) : next
+    runtimeStatusRef.current = resolved
+    if (resolved) {
+      lastRuntimeUpdateRef.current = Date.now()
+      onRuntimeStatus?.(resolved)
+    } else {
+      onRuntimeStatus?.(() => null)
+    }
+  }, [onRuntimeStatus])
+
   useEffect(() => {
-    const cleanup = window.piDesktop.onAgentEvent((event: any) => {
+    const cleanup = window.piDesktop.onAgentEvent((event: AgentEvent) => {
       const activeSessionId = currentSessionIdRef.current
       const activeSessionPath = currentSessionPathRef.current
       const isDifferentSession =
@@ -57,7 +72,19 @@ export function useChatIPC({
         return
       }
 
-      if (event.type === 'token') {
+      if (event.type === 'status') {
+        const startedAt = event.startedAt || runtimeStatusRef.current?.startedAt || Date.now()
+        setRuntimeStatus((previous) => ({
+          ...previous,
+          ...event,
+          startedAt,
+          elapsedMs: Date.now() - startedAt,
+          isStalled: false,
+        }))
+        if (event.status !== 'completed' && event.status !== 'failed' && !msgIdRef.current) {
+          onStreamStart()
+        }
+      } else if (event.type === 'token') {
         if (!msgIdRef.current) {
           msgIdRef.current = `msg-${Date.now()}`
           accumulatedRef.current = ''
@@ -116,6 +143,22 @@ export function useChatIPC({
           toolCalls: toolCallsRef.current,
         })
       } else if (event.type === 'done') {
+        setRuntimeStatus((previous) => {
+          const startedAt = previous?.startedAt || Date.now()
+          return {
+            status: 'completed',
+            statusLabel: previous?.status === 'failed' ? previous.statusLabel : 'Completed',
+            lastAction: previous?.lastAction || 'Response finished',
+            startedAt,
+            elapsedMs: Date.now() - startedAt,
+            isWaitingForUser: false,
+            isStalled: false,
+            errorSummary: previous?.errorSummary,
+            resultSummary: previous?.resultSummary || 'Pi session synced',
+            sessionId: event.session?.sessionId || previous?.sessionId,
+            sessionPath: event.session?.sessionPath || previous?.sessionPath,
+          }
+        })
         if (event.session) {
           onSessionSynced?.(event.session)
         } else {
@@ -133,8 +176,45 @@ export function useChatIPC({
         toolCallsRef.current = []
         onStreamEnd()
       } else if (event.type === 'artifact_created' && event.path) {
-        onArtifactCreated?.(event.path)
+        setRuntimeStatus((previous) => {
+          const startedAt = previous?.startedAt || Date.now()
+          const artifactName = event.path?.split(/[/\\]/).pop() || event.path
+          return {
+            status: previous?.status === 'failed' ? 'failed' : 'completed',
+            statusLabel: previous?.status === 'failed' ? previous.statusLabel : 'Completed',
+            lastAction: 'Result file created',
+            startedAt,
+            elapsedMs: Date.now() - startedAt,
+            isWaitingForUser: false,
+            isStalled: false,
+            errorSummary: previous?.errorSummary,
+            resultSummary: `Created ${artifactName}`,
+            sessionId: event.sessionId || previous?.sessionId,
+            sessionPath: event.sessionPath || previous?.sessionPath,
+          }
+        })
+        onArtifactCreated?.({
+          path: event.path,
+          sessionId: event.sessionId,
+          sessionPath: event.sessionPath,
+        })
       } else if (event.type === 'error') {
+        setRuntimeStatus((previous) => {
+          const startedAt = previous?.startedAt || Date.now()
+          return {
+            status: 'failed',
+            statusLabel: 'Failed',
+            lastAction: previous?.lastAction || 'Pi could not finish this request',
+            startedAt,
+            elapsedMs: Date.now() - startedAt,
+            isWaitingForUser: false,
+            isStalled: false,
+            errorSummary: event.error || 'Unknown error',
+            resultSummary: previous?.resultSummary,
+            sessionId: event.sessionId || previous?.sessionId,
+            sessionPath: event.sessionPath || previous?.sessionPath,
+          }
+        })
         onAssistantMessage({
           id: `error-${Date.now()}`,
           role: 'assistant',
@@ -148,7 +228,30 @@ export function useChatIPC({
       }
     })
     return cleanup
-  }, [onArtifactCreated, onAssistantMessage, onSessionSynced, onStreamStart, onStreamEnd])
+  }, [onArtifactCreated, onAssistantMessage, onSessionSynced, onStreamStart, onStreamEnd, setRuntimeStatus])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const status = runtimeStatusRef.current
+      if (!status?.startedAt) return
+      if (status.status === 'completed' || status.status === 'failed') return
+
+      const now = Date.now()
+      const idleFor = now - lastRuntimeUpdateRef.current
+      if (idleFor < 12000) {
+        return
+      }
+
+      setRuntimeStatus({
+        ...status,
+        elapsedMs: now - status.startedAt,
+        isStalled: true,
+        lastAction: status.isWaitingForUser ? status.lastAction : 'Still processing without new output',
+      })
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [setRuntimeStatus])
 
   const sendMessage = useCallback(
     async (text: string) => {

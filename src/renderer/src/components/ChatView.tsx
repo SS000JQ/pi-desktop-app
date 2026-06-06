@@ -1,17 +1,19 @@
 import { useCallback } from 'react'
 import MessageList from './MessageList'
 import InputBar from './InputBar'
-import type { Message } from '../types/chat'
+import ChatRuntimeStatusBar from './ChatRuntimeStatusBar'
+import type { Message, RuntimeStatus } from '../types/chat'
 
 interface ChatViewProps {
   messages: Message[]
   onSendMessage: (text: string) => void
   onCommand?: (command: string) => void
   isStreaming: boolean
+  runtimeStatus: RuntimeStatus | null
   onSetMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void
 }
 
-export default function ChatView({ messages, onSendMessage, onCommand, isStreaming, onSetMessages }: ChatViewProps) {
+export default function ChatView({ messages, onSendMessage, onCommand, isStreaming, runtimeStatus, onSetMessages }: ChatViewProps) {
   const handleRegenerate = useCallback((msgId: string) => {
     const msgIndex = messages.findIndex(m => m.id === msgId)
     const userMessages = messages.slice(0, msgIndex).filter(m => m.role === 'user')
@@ -32,6 +34,7 @@ export default function ChatView({ messages, onSendMessage, onCommand, isStreami
 
   return (
     <div className="chat">
+      <ChatRuntimeStatusBar status={runtimeStatus} />
       <MessageList
         messages={messages}
         isStreaming={isStreaming}

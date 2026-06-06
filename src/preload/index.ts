@@ -13,7 +13,7 @@ const api: PiDesktopApi = {
   },
   session: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_LIST),
-    create: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_CREATE),
+    create: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_CREATE, payload),
     delete: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_DELETE, id),
     search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SEARCH, query),
     switch: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH, id),
@@ -49,6 +49,14 @@ const api: PiDesktopApi = {
     read: (filePath) => ipcRenderer.invoke('files:read', filePath),
     save: (filePath, content) => ipcRenderer.invoke('files:save', filePath, content),
     open: (filePath) => ipcRenderer.invoke('files:open', filePath)
+  },
+  artifacts: {
+    list: (sessionId) => ipcRenderer.invoke('artifacts:list', sessionId),
+    get: (artifactId) => ipcRenderer.invoke('artifacts:get', artifactId),
+    history: (artifactId) => ipcRenderer.invoke('artifacts:history', artifactId),
+    refresh: (artifactId) => ipcRenderer.invoke('artifacts:refresh', artifactId),
+    pin: (artifactId, pinned) => ipcRenderer.invoke('artifacts:pin', artifactId, pinned),
+    markPrimary: (artifactId) => ipcRenderer.invoke('artifacts:markPrimary', artifactId),
   }
 }
 

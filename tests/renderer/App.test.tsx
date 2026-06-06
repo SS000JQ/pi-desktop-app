@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../src/renderer/src/App'
 
 function createPiDesktopMock(overrides: Partial<Window['piDesktop']> = {}): Window['piDesktop'] {
@@ -157,6 +157,14 @@ function createPiDesktopMock(overrides: Partial<Window['piDesktop']> = {}): Wind
       save: vi.fn().mockResolvedValue({ success: true }),
       open: vi.fn().mockResolvedValue({ success: true }),
     },
+    artifacts: {
+      list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      get: vi.fn().mockResolvedValue({ success: true, data: null }),
+      history: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      refresh: vi.fn().mockResolvedValue({ success: true, data: null }),
+      pin: vi.fn().mockResolvedValue({ success: true, data: null }),
+      markPrimary: vi.fn().mockResolvedValue({ success: true, data: null }),
+    },
     onAgentEvent: vi.fn(() => () => {}),
     ...overrides,
   }
@@ -253,6 +261,183 @@ describe('App', () => {
     await waitFor(() => {
       expect(sendMock).toHaveBeenCalled()
     })
+  })
+
+  it('opens a new chat dialog and creates a session in the chosen directory', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-3',
+        path: 'C:/Users/test/.pi/agent/sessions/project/session-3.jsonl',
+        cwd: 'D:/PI/client-a',
+        title: 'Client A Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+    const configSetMock = vi.fn().mockResolvedValue({ success: true })
+
+    window.piDesktop = createPiDesktopMock({
+      config: {
+        get: vi.fn(async (key: string) => {
+          if (key === 'workingDirectory') return { success: true, data: 'D:/PI/app' }
+          if (key === 'wizardCompleted') return { success: true, data: 'true' }
+          return { success: true, data: null }
+        }),
+        set: configSetMock,
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        create: createMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    expect(await screen.findByText(/Choose where this Pi session should live/)).toBeTruthy()
+
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-a' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({ cwd: 'D:/PI/client-a' })
+    })
+    await waitFor(() => {
+      expect(configSetMock).toHaveBeenCalledWith('workingDirectory', 'D:/PI/client-a')
+    })
+  })
+
+  it('keeps the left sidebar focused on sessions with models and skills as secondary actions', async () => {
+    window.piDesktop = createPiDesktopMock()
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    const leftPanel = screen.getByText('Pi Sessions').closest('.left')
+    expect(leftPanel).toBeTruthy()
+    const panel = within(leftPanel as HTMLElement)
+
+    expect(panel.getByRole('button', { name: 'New Chat' })).toBeTruthy()
+    expect(panel.getByRole('button', { name: 'Recent' })).toBeTruthy()
+    expect(panel.getByRole('button', { name: 'Directories' })).toBeTruthy()
+    expect(panel.getByRole('button', { name: 'Models' })).toBeTruthy()
+    expect(panel.getByRole('button', { name: 'Skills' })).toBeTruthy()
+    expect(panel.queryByText('Files')).toBeNull()
+    expect(panel.queryByText('Tools')).toBeNull()
+    expect(panel.queryByText('Memory')).toBeNull()
+  })
+
+  it('shows a results workbench on the right with progress, workspace, and context sections', async () => {
+    window.piDesktop = createPiDesktopMock({
+      files: {
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              name: 'report.md',
+              path: 'D:/PI/app/report.md',
+              isDir: false,
+              size: 1200,
+              modifiedAt: new Date().toISOString(),
+            },
+            {
+              name: 'slides',
+              path: 'D:/PI/app/slides',
+              isDir: true,
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        read: vi.fn().mockResolvedValue({ success: true, data: { type: 'text', content: '# Report' } }),
+        save: vi.fn().mockResolvedValue({ success: true }),
+        open: vi.fn().mockResolvedValue({ success: true }),
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    expect(await screen.findByText('Progress')).toBeTruthy()
+    expect(screen.getByText('Workspace')).toBeTruthy()
+    expect(screen.getByText('Context')).toBeTruthy()
+    expect(screen.getAllByText('report.md').length).toBeGreaterThan(0)
+    expect(screen.getByText('slides')).toBeTruthy()
+  })
+
+  it('shows a preparing status immediately after the user sends a message', async () => {
+    const sendMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              success: true,
+              data: {
+                sessionId: 'session-1',
+                sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+                createdNewSession: false,
+              },
+            })
+          }, 50)
+        }),
+    )
+
+    window.piDesktop = createPiDesktopMock({
+      chat: {
+        send: sendMock,
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+    })
+
+    render(<App />)
+
+    const input = await screen.findByPlaceholderText(/Ask Pi/)
+    fireEvent.change(input, { target: { value: 'draft the update' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect((await screen.findAllByText('Preparing')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Connecting to the selected Pi session/).length).toBeGreaterThan(0)
+  })
+
+  it('renders runtime status updates from agent events in the chat header', async () => {
+    let agentCallback: ((event: unknown) => void) | null = null
+
+    window.piDesktop = createPiDesktopMock({
+      onAgentEvent: vi.fn((callback) => {
+        agentCallback = callback
+        return () => {
+          agentCallback = null
+        }
+      }),
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    await waitFor(() => {
+      expect(window.piDesktop.onAgentEvent).toHaveBeenCalled()
+    })
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'status',
+        status: 'reading_file',
+        statusLabel: 'Reading files',
+        lastAction: 'Reading with read',
+        isWaitingForUser: false,
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+    })
+
+    expect((await screen.findAllByText('Reading files')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Reading with read').length).toBeGreaterThan(0)
   })
 
   it('shows the welcome flow when no provider is configured', async () => {
@@ -409,7 +594,7 @@ describe('App', () => {
 
     expect(await screen.findByText('Real Pi Session')).toBeTruthy()
 
-    fireEvent.click(screen.getAllByText('OpenAI / GPT-4o Mini')[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Current model' }))
     fireEvent.click(await screen.findByRole('button', { name: 'OpenAI / GPT-4o Mini' }))
 
     await waitFor(() => {
@@ -433,6 +618,20 @@ describe('App', () => {
   })
 
   it('restores the last active Pi session when it is still available', async () => {
+    const switchMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+        cwd: 'D:/PI/app',
+        title: 'Restored Session',
+        model: 'openai/gpt-4o-mini',
+        thinkingLevel: 'medium',
+        messages: [],
+        tokenCount: 0,
+      },
+    })
+
     window.piDesktop = createPiDesktopMock({
       session: {
         ...createPiDesktopMock().session,
@@ -466,19 +665,7 @@ describe('App', () => {
           ],
         }),
         getActive: vi.fn().mockResolvedValue({ success: true, data: 'session-1' }),
-        switch: vi.fn().mockResolvedValue({
-          success: true,
-          data: {
-            sessionId: 'session-1',
-            sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
-            cwd: 'D:/PI/app',
-            title: 'Restored Session',
-            model: 'openai/gpt-4o-mini',
-            thinkingLevel: 'medium',
-            messages: [],
-            tokenCount: 0,
-          },
-        }),
+        switch: switchMock,
       },
     })
 
@@ -486,10 +673,11 @@ describe('App', () => {
 
     expect(await screen.findByText('Restored Session')).toBeTruthy()
     await waitFor(() => {
-      expect(window.piDesktop.session.switch).toHaveBeenCalledWith(
+      expect(switchMock).toHaveBeenCalledWith(
         'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
       )
     })
+    expect(switchMock).toHaveBeenCalledTimes(1)
   })
 
   it('restores tool calls from Pi session history instead of flattening everything to plain text', async () => {
@@ -687,5 +875,53 @@ describe('App', () => {
         'C:/Users/test/.pi/agent/sessions/other/session-2.jsonl',
       )
     })
+  })
+
+  it('shows runtime status updates at the top of the chat view', async () => {
+    let agentListener: ((event: any) => void) | undefined
+
+    window.piDesktop = createPiDesktopMock({
+      onAgentEvent: vi.fn((callback) => {
+        agentListener = callback
+        return () => {}
+      }),
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    expect(screen.queryAllByText('Generating content')).toHaveLength(0)
+
+    await act(async () => {
+      agentListener?.({
+        type: 'status',
+        status: 'generating',
+        statusLabel: 'Generating content',
+        lastAction: 'Drafting the response',
+        isWaitingForUser: false,
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+        startedAt: Date.now(),
+      })
+    })
+
+    expect((await screen.findAllByText('Generating content')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Drafting the response').length).toBeGreaterThan(0)
+
+    await act(async () => {
+      agentListener?.({
+        type: 'status',
+        status: 'completed',
+        statusLabel: 'Completed',
+        lastAction: 'Response finished',
+        resultSummary: 'Created report.md',
+        isWaitingForUser: false,
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+    })
+
+    expect((await screen.findAllByText('Completed')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Created report.md').length).toBeGreaterThan(0)
   })
 })

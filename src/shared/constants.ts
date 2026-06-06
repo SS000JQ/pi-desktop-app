@@ -9,6 +9,12 @@ export const IPC_CHANNELS = {
   SESSION_SWITCH: 'session:switch',
   CONFIG_GET: 'config:get',
   CONFIG_SET: 'config:set',
+  ARTIFACTS_LIST: 'artifacts:list',
+  ARTIFACTS_GET: 'artifacts:get',
+  ARTIFACTS_HISTORY: 'artifacts:history',
+  ARTIFACTS_REFRESH: 'artifacts:refresh',
+  ARTIFACTS_PIN: 'artifacts:pin',
+  ARTIFACTS_PRIMARY: 'artifacts:primary',
 } as const
 
 export const APP_NAME = 'Pi Desktop'

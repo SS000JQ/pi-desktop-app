@@ -25,6 +25,21 @@ export interface SessionSearchResult {
   updatedAt: string
 }
 
+export interface RuntimeStatusPayload {
+  type: 'status'
+  status: 'idle' | 'preparing' | 'processing' | 'reading_file' | 'analyzing_web' | 'generating' | 'writing_file' | 'waiting' | 'completed' | 'failed'
+  statusLabel: string
+  lastAction?: string
+  startedAt?: number
+  elapsedMs?: number
+  isWaitingForUser: boolean
+  isStalled?: boolean
+  errorSummary?: string
+  resultSummary?: string
+  sessionId?: string
+  sessionPath?: string
+}
+
 export type ProviderAuthType = 'apiKey' | 'oauth' | 'none'
 export type ProviderApiType =
   | 'openai-completions'
@@ -90,6 +105,39 @@ export interface ProviderUpsertInput {
   isDefault: boolean
 }
 
+export type ArtifactStatus = 'draft' | 'ready' | 'failed' | 'refreshing'
+export type ArtifactType = 'report' | 'summary' | 'table' | 'slides' | 'tracker' | 'brief' | 'file'
+export type ArtifactSourceKind = 'local_file' | 'pi_generated' | 'manual'
+
+export interface ArtifactVersion {
+  id: string
+  artifactId: string
+  createdAt: string
+  summary: string
+  sourcePath?: string
+  snapshot?: string
+}
+
+export interface ArtifactEntity {
+  id: string
+  sessionId: string
+  title: string
+  artifactType: ArtifactType
+  sourceKind: ArtifactSourceKind
+  status: ArtifactStatus
+  createdAt: string
+  updatedAt: string
+  sourcePath?: string
+  snapshot?: string
+  metadata: {
+    pinned?: boolean
+    primary?: boolean
+    actionLabel?: string
+    errorSummary?: string
+  }
+  versions: ArtifactVersion[]
+}
+
 export interface PiDesktopApi {
   chat: {
     send: (payload: {
@@ -111,7 +159,7 @@ export interface PiDesktopApi {
   }
   session: {
     list: () => Promise<IpcResponse<SessionInfo[]>>
-    create: () => Promise<IpcResponse<{
+    create: (payload?: { cwd?: string }) => Promise<IpcResponse<{
       id: string
       path: string
       cwd: string
@@ -185,7 +233,7 @@ export interface PiDesktopApi {
       }>
     }>>
   }
-  onAgentEvent: (callback: (event: unknown) => void) => () => void
+  onAgentEvent: (callback: (event: unknown | RuntimeStatusPayload) => void) => () => void
   profiles: {
     list: () => Promise<IpcResponse>
     create: (name: string) => Promise<IpcResponse>
@@ -198,6 +246,14 @@ export interface PiDesktopApi {
     read: (filePath: string) => Promise<IpcResponse>
     save: (filePath: string, content: string) => Promise<IpcResponse>
     open: (filePath: string) => Promise<IpcResponse>
+  }
+  artifacts: {
+    list: (sessionId?: string) => Promise<IpcResponse<ArtifactEntity[]>>
+    get: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
+    history: (artifactId: string) => Promise<IpcResponse<ArtifactVersion[]>>
+    refresh: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
+    pin: (artifactId: string, pinned: boolean) => Promise<IpcResponse<ArtifactEntity | null>>
+    markPrimary: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
   }
 }
 

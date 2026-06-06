@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  AgentEvent,
   ProviderCatalogEntry,
   ProviderConnectionResult,
   ProviderModel,
@@ -46,6 +47,39 @@ interface ProviderUpsertInput {
   isDefault: boolean
 }
 
+type ArtifactStatus = 'draft' | 'ready' | 'failed' | 'refreshing'
+type ArtifactType = 'report' | 'summary' | 'table' | 'slides' | 'tracker' | 'brief' | 'file'
+type ArtifactSourceKind = 'local_file' | 'pi_generated' | 'manual'
+
+interface ArtifactVersion {
+  id: string
+  artifactId: string
+  createdAt: string
+  summary: string
+  sourcePath?: string
+  snapshot?: string
+}
+
+interface ArtifactEntity {
+  id: string
+  sessionId: string
+  title: string
+  artifactType: ArtifactType
+  sourceKind: ArtifactSourceKind
+  status: ArtifactStatus
+  createdAt: string
+  updatedAt: string
+  sourcePath?: string
+  snapshot?: string
+  metadata: {
+    pinned?: boolean
+    primary?: boolean
+    actionLabel?: string
+    errorSummary?: string
+  }
+  versions: ArtifactVersion[]
+}
+
 interface PiDesktopApi {
   chat: {
     send: (payload: {
@@ -67,7 +101,7 @@ interface PiDesktopApi {
   }
   session: {
     list: () => Promise<IpcResponse<SessionInfo[]>>
-    create: () => Promise<IpcResponse<{
+    create: (payload?: { cwd?: string }) => Promise<IpcResponse<{
       id: string
       path: string
       cwd: string
@@ -141,7 +175,7 @@ interface PiDesktopApi {
       }>
     }>>
   }
-  onAgentEvent: (callback: (event: unknown) => void) => () => void
+  onAgentEvent: (callback: (event: AgentEvent) => void) => () => void
   profiles: {
     list: () => Promise<IpcResponse>
     create: (name: string) => Promise<IpcResponse>
@@ -154,6 +188,14 @@ interface PiDesktopApi {
     read: (filePath: string) => Promise<IpcResponse>
     save: (filePath: string, content: string) => Promise<IpcResponse>
     open: (filePath: string) => Promise<IpcResponse>
+  }
+  artifacts: {
+    list: (sessionId?: string) => Promise<IpcResponse<ArtifactEntity[]>>
+    get: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
+    history: (artifactId: string) => Promise<IpcResponse<ArtifactVersion[]>>
+    refresh: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
+    pin: (artifactId: string, pinned: boolean) => Promise<IpcResponse<ArtifactEntity | null>>
+    markPrimary: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
   }
 }
 

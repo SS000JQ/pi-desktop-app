@@ -1,19 +1,35 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '../types/chat'
 
 interface LeftPanelProps {
   sessions: Session[]
   activeSessionId: string | null
   onSessionSelect: (id: string) => void
-  onSessionCreate?: () => void
+  onSessionCreate: () => void
+  onOpenModels: () => void
+  onOpenSkills: () => void
+  onOpenSettings?: () => void
   collapsed: boolean
   onToggleCollapse: () => void
-  onOpenFiles?: () => void
-  onOpenTools?: () => void
-  onOpenSkills?: () => void
-  onOpenMemory?: () => void
   panelWidth: number
   onResize: (w: number) => void
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const diffMs = Date.now() - timestamp
+  const diffMinutes = Math.max(0, Math.round(diffMs / 60000))
+  if (diffMinutes < 1) return 'Just now'
+  if (diffMinutes < 60) return `${diffMinutes}m ago`
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.round(diffHours / 24)
+  return `${diffDays}d ago`
+}
+
+function getDirectoryLabel(cwd: string): string {
+  if (!cwd) return 'No directory'
+  const parts = cwd.split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] || cwd
 }
 
 export default function LeftPanel({
@@ -21,33 +37,28 @@ export default function LeftPanel({
   activeSessionId,
   onSessionSelect,
   onSessionCreate,
+  onOpenModels,
+  onOpenSkills,
+  onOpenSettings,
   collapsed,
   onToggleCollapse,
-  onOpenFiles,
-  onOpenTools,
-  onOpenSkills,
-  onOpenMemory,
   panelWidth,
   onResize,
 }: LeftPanelProps) {
   const [viewMode, setViewMode] = useState<'recent' | 'directory'>('recent')
   const isDraggingLeft = useRef(false)
 
-  const recentSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
-  const groupedSessions = recentSessions.reduce<Record<string, Session[]>>((groups, session) => {
-    const key = session.cwd || 'Unknown Directory'
-    groups[key] = groups[key] || []
-    groups[key].push(session)
-    return groups
-  }, {})
-
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (event: MouseEvent) => {
       if (!isDraggingLeft.current) return
-      const newWidth = Math.min(Math.max(e.clientX, 120), 400)
+      const newWidth = Math.min(Math.max(event.clientX, 220), 420)
       onResize(newWidth)
     }
-    const handleMouseUp = () => { isDraggingLeft.current = false }
+
+    const handleMouseUp = () => {
+      isDraggingLeft.current = false
+    }
+
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
     return () => {
@@ -56,14 +67,47 @@ export default function LeftPanel({
     }
   }, [onResize])
 
+  const recentSessions = useMemo(
+    () =>
+      [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).map((session) => ({
+        ...session,
+        cwdLabel: session.cwdLabel || getDirectoryLabel(session.cwd),
+        lastActiveLabel: session.lastActiveLabel || formatRelativeTime(session.updatedAt),
+      })),
+    [sessions],
+  )
+
+  const groupedSessions = useMemo(() => {
+    return recentSessions.reduce<Record<string, Session[]>>((groups, session) => {
+      const key = session.cwd || 'Unknown Directory'
+      groups[key] = groups[key] || []
+      groups[key].push(session)
+      return groups
+    }, {})
+  }, [recentSessions])
+
   if (collapsed) {
     return (
-      <div className="relative" style={{ width: 32, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.04)', background: '#1a1919' }}>
+      <div
+        className="relative"
+        style={{ width: 32, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.04)', background: '#1a1919' }}
+      >
         <button
           onClick={onToggleCollapse}
-          style={{ writingMode: 'vertical-lr', letterSpacing: '2px', fontSize: 10, color: 'rgba(255,255,255,0.15)', cursor: 'pointer', background: 'none', border: 'none', fontFamily: "'JetBrains Mono', monospace", width: '100%', padding: '12px 0' }}
+          style={{
+            writingMode: 'vertical-lr',
+            letterSpacing: '2px',
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.15)',
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            fontFamily: "'JetBrains Mono', monospace",
+            width: '100%',
+            padding: '12px 0',
+          }}
         >
-          EXPAND
+          SESSIONS
         </button>
       </div>
     )
@@ -71,92 +115,115 @@ export default function LeftPanel({
 
   return (
     <div className="left" style={{ width: panelWidth }}>
-      <div className="l-list" style={{ padding: '6px 8px 0' }}>
-        {[
-          { label: 'Files', onClick: onOpenFiles },
-          { label: 'Tools', onClick: onOpenTools },
-          { label: 'Skills', onClick: onOpenSkills },
-          { label: 'Memory', onClick: onOpenMemory },
-        ].map((item, i) => (
-          <div
-            key={item.label}
-            onClick={item.onClick}
-            className={`l-item ${i === 0 ? 'active' : ''}`}
+      <div className="l-primary">
+        <button className="bp l-primary-btn" onClick={onSessionCreate} aria-label="New Chat">
+          New Chat
+        </button>
+        <div className="l-view-switch" role="tablist" aria-label="Session views">
+          <button
+            className={viewMode === 'recent' ? 'active' : ''}
+            onClick={() => setViewMode('recent')}
+            aria-label="Recent"
           >
-            {item.label}
-          </div>
-        ))}
+            Recent
+          </button>
+          <button
+            className={viewMode === 'directory' ? 'active' : ''}
+            onClick={() => setViewMode('directory')}
+            aria-label="Directories"
+          >
+            Directories
+          </button>
+        </div>
       </div>
 
       <div className="l-hdr">
-        <span className="l-hdr-label">Sessions</span>
-        <button className="l-new" onClick={onSessionCreate}>+</button>
+        <span className="l-hdr-label">Pi Sessions</span>
+        <button onClick={onToggleCollapse} className="l-new" aria-label="Collapse sidebar">
+          {'<'}
+        </button>
       </div>
 
       <div className="l-list">
-        {sessions.length === 0 ? (
-          <div className="l-session" style={{ cursor: 'default', textAlign: 'center', color: 'rgba(255,255,255,0.08)' }}>
-            No sessions yet.
+        {recentSessions.length === 0 ? (
+          <div className="l-session-empty">
+            <div>No sessions yet.</div>
+            <div className="cim" style={{ marginTop: 6 }}>
+              Start a new chat to create one in your chosen workspace.
+            </div>
           </div>
         ) : viewMode === 'recent' ? (
           recentSessions.map((session) => (
-            <div
+            <button
               key={session.path || session.id}
               onClick={() => onSessionSelect(session.id)}
-              className={`l-session ${session.id === activeSessionId ? 'active' : ''}`}
+              className={`l-session-card ${session.id === activeSessionId ? 'active' : ''}`}
               title={`${session.title}\n${session.cwd}`}
             >
-              {session.title}
-            </div>
+              <div className="l-session-title-row">
+                <span className="l-session-title">{session.title}</span>
+                {session.status && session.status !== 'idle' && (
+                  <span className={`l-session-status ${session.status}`} aria-hidden="true" />
+                )}
+              </div>
+              <div className="l-session-meta">{session.cwdLabel}</div>
+              <div className="l-session-submeta">
+                <span title={session.lastActiveLabel}>{session.lastActiveLabel}</span>
+                <span>{session.messageCount || 0} msgs</span>
+              </div>
+            </button>
           ))
         ) : (
           Object.entries(groupedSessions).map(([cwd, grouped]) => (
-            <div key={cwd}>
-              <div
-                style={{
-                  padding: '8px 10px 4px',
-                  fontSize: 10,
-                  color: 'rgba(255,255,255,0.16)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                {cwd}
-              </div>
+            <div key={cwd} className="l-directory-group">
+              <div className="l-directory-label">{cwd}</div>
               {grouped.map((session) => (
-                <div
+                <button
                   key={session.path || session.id}
                   onClick={() => onSessionSelect(session.id)}
-                  className={`l-session ${session.id === activeSessionId ? 'active' : ''}`}
-                  title={session.title}
+                  className={`l-session-card ${session.id === activeSessionId ? 'active' : ''}`}
                 >
-                  {session.title}
-                </div>
+                  <div className="l-session-title-row">
+                    <span className="l-session-title">{session.title}</span>
+                    {session.status && session.status !== 'idle' && (
+                      <span className={`l-session-status ${session.status}`} aria-hidden="true" />
+                    )}
+                  </div>
+                  <div className="l-session-submeta">
+                    <span title={session.lastActiveLabel || formatRelativeTime(session.updatedAt)}>
+                      {session.lastActiveLabel || formatRelativeTime(session.updatedAt)}
+                    </span>
+                    <span>{session.messageCount || 0} msgs</span>
+                  </div>
+                </button>
               ))}
             </div>
           ))
         )}
       </div>
 
-      <div className="l-fil">
-        <button
-          onClick={() => setViewMode('recent')}
-          className={viewMode === 'recent' ? 'active' : ''}
-        >
-          Recent
+      <div className="l-capability">
+        <div className="l-section-label">Capabilities</div>
+        <button className="l-item" onClick={onOpenModels} aria-label="Models">
+          Models
         </button>
-        <button
-          onClick={() => setViewMode('directory')}
-          className={viewMode === 'directory' ? 'active' : ''}
-        >
-          Directories
+        <button className="l-item" onClick={onOpenSkills} aria-label="Skills">
+          Skills
         </button>
-        <button onClick={onToggleCollapse} className="l-new" style={{ marginLeft: 'auto', fontSize: '9px' }}>◀</button>
+        {onOpenSettings && (
+          <button className="l-item" onClick={onOpenSettings} aria-label="Settings">
+            Settings
+          </button>
+        )}
       </div>
+
       <div
         className="resize-h"
         style={{ right: -2 }}
-        onMouseDown={(e) => { e.preventDefault(); isDraggingLeft.current = true }}
+        onMouseDown={(event) => {
+          event.preventDefault()
+          isDraggingLeft.current = true
+        }}
       />
     </div>
   )
