@@ -252,28 +252,10 @@ function isDocumentLike(path: string): boolean {
 
 function buildWorkspaceViewModel(
   files: WorkspaceFileEntry[],
-  activeArtifacts: ArtifactEntity[],
-  recentOpenedPaths: string[],
+  _activeArtifacts: ArtifactEntity[],
+  _recentOpenedPaths: string[],
 ): WorkspaceViewModel {
-  const artifactPaths = new Set(activeArtifacts.map((artifact) => artifact.sourcePath).filter(Boolean) as string[])
-  const recentOpened = new Map(recentOpenedPaths.map((path, index) => [path, recentOpenedPaths.length - index]))
-
-  const scoreEntry = (entry: WorkspaceFileEntry): number => {
-    let score = entry.isDir ? 10 : 0
-    if (artifactPaths.has(entry.path)) score += 70
-    if (recentOpened.has(entry.path)) score += (recentOpened.get(entry.path) || 0) * 10
-    if (!entry.isDir && isDocumentLike(entry.path)) score += 30
-    const ageMinutes = Math.max(1, Math.round((Date.now() - new Date(entry.modifiedAt).getTime()) / 60000))
-    score += Math.max(0, 20 - Math.min(ageMinutes, 20))
-    return score
-  }
-
-  const sorted = uniqueWorkspaceEntries(files).sort((a, b) => {
-    const scoreDiff = scoreEntry(b) - scoreEntry(a)
-    if (scoreDiff !== 0) return scoreDiff
-    if (a.isDir !== b.isDir) return a.isDir ? 1 : -1
-    return a.name.localeCompare(b.name)
-  })
+  const sorted = uniqueWorkspaceEntries(sortWorkspaceFiles(files))
 
   const filesOnly = sorted.filter((entry) => !entry.isDir)
   const directories = sorted.filter((entry) => entry.isDir)
@@ -405,6 +387,7 @@ export default function App() {
   const [hasProvider, setHasProvider] = useState(false)
   const currentDirRef = useRef(currentDir)
   const workspaceRequestRef = useRef(0)
+  const sessionRequestRef = useRef(0)
 
   const hasRunnableProvider = useCallback((providerList: ProviderSummary[]) => {
     return providerList.some((provider) => provider.hasAuth && provider.models.length > 0)
@@ -545,6 +528,12 @@ export default function App() {
     const response = await window.piDesktop.files.read(path)
     if (!response.success || !response.data) return
 
+    if (activeSessionId && window.piDesktop.artifacts?.view) {
+      void window.piDesktop.artifacts.view({ sessionId: activeSessionId, path }).then(() => {
+        void loadArtifacts(activeSessionId)
+      })
+    }
+
     const ext = path.includes('.') ? `.${path.split('.').pop()?.toLowerCase() || ''}` : ''
     const name = path.split(/[/\\]/).pop() || path
     setPreviewFile({
@@ -555,7 +544,7 @@ export default function App() {
     })
     setRightPanelCollapsed(false)
     setRecentOpenedPaths((previous) => [path, ...previous.filter((entry) => entry !== path)].slice(0, 10))
-  }, [])
+  }, [activeSessionId, loadArtifacts])
 
   const handleBrowseWorkspaceDirectory = useCallback(
     async (path: string) => {
@@ -583,9 +572,14 @@ export default function App() {
     }
 
     const nextProviders = response.data as ProviderSummary[]
+    const nextModelOptions = buildModelOptions(nextProviders)
     setProviders(nextProviders)
-    setModelOptions(buildModelOptions(nextProviders))
-    setCurrentModel((previous) => previous || getInitialModel(nextProviders))
+    setModelOptions(nextModelOptions)
+    setCurrentModel((previous) =>
+      previous && nextModelOptions.some((option) => option.id === previous)
+        ? previous
+        : getInitialModel(nextProviders),
+    )
     return nextProviders
   }, [])
 
@@ -673,7 +667,12 @@ export default function App() {
 
   const loadSessionMessages = useCallback(
     async (sessionPath: string) => {
+      const requestId = sessionRequestRef.current + 1
+      sessionRequestRef.current = requestId
       const response = await window.piDesktop.session.switch(sessionPath)
+      if (sessionRequestRef.current !== requestId) {
+        return
+      }
       if (!response.success || !response.data) {
         setMessages([])
         return
@@ -690,6 +689,9 @@ export default function App() {
         tokenCount: number
       }
       syncSessionDetail(detail)
+      if (sessionRequestRef.current !== requestId) {
+        return
+      }
       await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
     },
     [loadArtifacts, loadWorkspaceFiles, syncSessionDetail],
@@ -752,6 +754,20 @@ export default function App() {
     },
     [currentDir, sessions],
   )
+
+  const handlePickDirectory = useCallback(async () => {
+    const response = await window.piDesktop.files.pickDirectory(currentDirRef.current)
+    if (!response.success || typeof response.data !== 'string' || !response.data) {
+      return null
+    }
+    return response.data
+  }, [])
+
+  const handleBrowseDirectory = useCallback(async () => {
+    const selected = await handlePickDirectory()
+    if (!selected) return
+    await handleDirectoryChange(selected)
+  }, [handleDirectoryChange, handlePickDirectory])
 
   const { sendMessage } = useChatIPC({
     onAssistantMessage,
@@ -1074,6 +1090,7 @@ export default function App() {
           currentModel={currentModel}
           currentModelLabel={currentModelLabel}
           onDirectoryChange={(dir) => { void handleDirectoryChange(dir) }}
+          onBrowseDirectory={() => { void handleBrowseDirectory() }}
           modelOptions={modelOptions}
           onModelChange={(model) => { void updateSessionRuntime({ modelId: model }) }}
           thinkingLevel={thinkingLevel}
@@ -1164,6 +1181,7 @@ export default function App() {
         directoryOptions={directoryOptions}
         onClose={() => setShowNewSessionDialog(false)}
         onCreate={(cwd) => { void handleCreateSession(cwd) }}
+        onBrowseDirectory={handlePickDirectory}
       />
     </>
   )

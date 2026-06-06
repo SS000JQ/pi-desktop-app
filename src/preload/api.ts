@@ -278,6 +278,7 @@ export interface PiDesktopApi {
     read: (filePath: string) => Promise<IpcResponse<FilePreviewData>>
     save: (filePath: string, content: string) => Promise<IpcResponse>
     open: (filePath: string) => Promise<IpcResponse>
+    pickDirectory: (startPath?: string) => Promise<IpcResponse<string | null>>
   }
   artifacts: {
     list: (sessionId?: string) => Promise<IpcResponse<ArtifactEntity[]>>
@@ -286,6 +287,7 @@ export interface PiDesktopApi {
     refresh: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
     pin: (artifactId: string, pinned: boolean) => Promise<IpcResponse<ArtifactEntity | null>>
     markPrimary: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
+    view: (payload: { sessionId: string; path: string }) => Promise<IpcResponse<ArtifactEntity | null>>
   }
 }
 

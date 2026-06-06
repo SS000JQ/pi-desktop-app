@@ -48,7 +48,8 @@ const api: PiDesktopApi = {
     list: (dirPath) => ipcRenderer.invoke('files:list', dirPath),
     read: (filePath) => ipcRenderer.invoke('files:read', filePath),
     save: (filePath, content) => ipcRenderer.invoke('files:save', filePath, content),
-    open: (filePath) => ipcRenderer.invoke('files:open', filePath)
+    open: (filePath) => ipcRenderer.invoke('files:open', filePath),
+    pickDirectory: (startPath) => ipcRenderer.invoke('files:pickDirectory', startPath),
   },
   artifacts: {
     list: (sessionId) => ipcRenderer.invoke('artifacts:list', sessionId),
@@ -57,6 +58,7 @@ const api: PiDesktopApi = {
     refresh: (artifactId) => ipcRenderer.invoke('artifacts:refresh', artifactId),
     pin: (artifactId, pinned) => ipcRenderer.invoke('artifacts:pin', artifactId, pinned),
     markPrimary: (artifactId) => ipcRenderer.invoke('artifacts:markPrimary', artifactId),
+    view: (payload) => ipcRenderer.invoke('artifacts:view', payload),
   }
 }
 

@@ -885,6 +885,47 @@ body {
   }
 }
 
+/* Final right-rail stability overrides */
+.prev.workbench-mode .pv-body.pv-workbench-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.prev.workbench-mode .pv-workbench-body > .c-sec {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  z-index: 0;
+}
+
+.prev.workbench-mode .pv-workbench-body > .c-sec > .c-bd {
+  position: relative;
+  overflow-x: hidden;
+}
+
+.prev.workbench-mode .pv-workbench-body > .c-sec:nth-child(1) > .c-bd {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.prev.workbench-mode .pv-workbench-body > .c-sec:nth-child(2) > .c-bd {
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+}
+
+.prev.workbench-mode .pv-workbench-body > .c-sec:nth-child(3) > .c-bd {
+  max-height: min(38vh, 360px);
+  overflow-y: auto;
+}
+
+.prev.workbench-mode .ft {
+  min-width: 0;
+}
+
 /* Final right-panel collision fixes */
 .ft {
   align-items: center;

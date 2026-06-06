@@ -156,6 +156,7 @@ function createPiDesktopMock(overrides: Partial<Window['piDesktop']> = {}): Wind
       read: vi.fn().mockResolvedValue({ success: true, data: { type: 'text', content: '' } }),
       save: vi.fn().mockResolvedValue({ success: true }),
       open: vi.fn().mockResolvedValue({ success: true }),
+      pickDirectory: vi.fn().mockResolvedValue({ success: true, data: null }),
     },
     artifacts: {
       list: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -310,6 +311,120 @@ describe('App', () => {
     })
     await waitFor(() => {
       expect(configSetMock).toHaveBeenCalledWith('workingDirectory', 'D:/PI/client-a')
+    })
+  })
+
+  it('creates a new session in a known directory instead of always reusing the current one', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-4',
+        path: 'C:/Users/test/.pi/agent/sessions/project/session-4.jsonl',
+        cwd: 'D:/PI/client-b',
+        title: 'Client B Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'session-1',
+              path: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+              cwd: 'D:/PI/app',
+              title: 'Real Pi Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 3,
+              source: 'pi',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            {
+              id: 'session-2',
+              path: 'C:/Users/test/.pi/agent/sessions/client-b/session-2.jsonl',
+              cwd: 'D:/PI/client-b',
+              title: 'Client B Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 2,
+              source: 'pi',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        create: createMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+
+    const knownOption = (await screen.findAllByLabelText('Choose a known directory'))[0]
+    fireEvent.click(knownOption)
+    fireEvent.change(screen.getByDisplayValue('D:/PI/app'), {
+      target: { value: 'D:/PI/client-b' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({ cwd: 'D:/PI/client-b' })
+    })
+  })
+
+  it('lets the user browse for a folder instead of manually pasting a path when creating a session', async () => {
+    const pickDirectoryMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: 'D:/PI/client-c',
+    })
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-5',
+        path: 'C:/Users/test/.pi/agent/sessions/project/session-5.jsonl',
+        cwd: 'D:/PI/client-c',
+        title: 'Client C Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      files: {
+        ...createPiDesktopMock().files,
+        pickDirectory: pickDirectoryMock,
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        create: createMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Browse folders' }))
+
+    await waitFor(() => {
+      expect(pickDirectoryMock).toHaveBeenCalled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({ cwd: 'D:/PI/client-c' })
     })
   })
 

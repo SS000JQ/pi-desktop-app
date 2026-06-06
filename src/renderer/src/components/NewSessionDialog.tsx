@@ -6,6 +6,7 @@ interface NewSessionDialogProps {
   directoryOptions: string[]
   onClose: () => void
   onCreate: (cwd?: string) => void
+  onBrowseDirectory?: () => Promise<string | null | undefined>
 }
 
 export default function NewSessionDialog({
@@ -14,6 +15,7 @@ export default function NewSessionDialog({
   directoryOptions,
   onClose,
   onCreate,
+  onBrowseDirectory,
 }: NewSessionDialogProps) {
   const [selectedMode, setSelectedMode] = useState<'current' | 'known' | 'default' | 'custom'>('current')
   const [selectedDir, setSelectedDir] = useState('')
@@ -100,16 +102,30 @@ export default function NewSessionDialog({
             />
             <div style={{ flex: 1 }}>
               <div className="cit">Enter a custom directory</div>
-              <input
-                className="fi"
-                style={{ marginTop: 8 }}
-                value={customDir}
-                placeholder="D:/Work/My Project"
-                onChange={(event) => {
-                  setCustomDir(event.target.value)
-                  setSelectedMode('custom')
-                }}
-              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <input
+                  className="fi"
+                  value={customDir}
+                  placeholder="D:/Work/My Project"
+                  onChange={(event) => {
+                    setCustomDir(event.target.value)
+                    setSelectedMode('custom')
+                  }}
+                />
+                <button
+                  type="button"
+                  className="bs"
+                  aria-label="Browse folders"
+                  onClick={async () => {
+                    const selected = await onBrowseDirectory?.()
+                    if (!selected) return
+                    setCustomDir(selected)
+                    setSelectedMode('custom')
+                  }}
+                >
+                  Browse
+                </button>
+              </div>
             </div>
           </label>
 

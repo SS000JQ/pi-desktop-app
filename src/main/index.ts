@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeImage, dialog } from 'electron'
 import { join, extname } from 'path'
 import { readFileSync, readdirSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
@@ -44,6 +44,7 @@ import {
   listArtifacts,
   markArtifactPrimary,
   pinArtifact,
+  recordManualArtifactView,
   recordArtifactFailure,
   refreshArtifact,
   upsertArtifactFromPath,
@@ -589,6 +590,10 @@ ipcMain.handle('artifacts:markPrimary', async (_event, artifactId: string) => {
   return { success: true, data: markArtifactPrimary(artifactId) }
 })
 
+ipcMain.handle('artifacts:view', async (_event, payload: { sessionId: string; path: string }) => {
+  return { success: true, data: recordManualArtifactView(payload) }
+})
+
 ipcMain.handle('files:list', async (_event, dirPath: string) => {
   try {
     const entries = readdirSync(dirPath)
@@ -635,6 +640,24 @@ ipcMain.handle('files:save', async (_event, filePath: string, content: string) =
 ipcMain.handle('files:open', async (_event, filePath: string) => {
   await openInExternalEditor(filePath)
   return { success: true }
+})
+
+ipcMain.handle('files:pickDirectory', async (_event, startPath?: string) => {
+  const dialogOptions = {
+    title: 'Choose a folder',
+    defaultPath: startPath && existsSync(startPath) ? startPath : undefined,
+    properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+  }
+
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions)
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: true, data: null }
+  }
+
+  return { success: true, data: result.filePaths[0] }
 })
 
 ipcMain.handle('files:watch', async (_event, filePath: string) => {

@@ -11,6 +11,7 @@ interface TopBarProps {
   onModelChange?: (model: string) => void
   thinkingLevel?: string
   onThinkingLevelChange?: (thinkingLevel: string) => void
+  onBrowseDirectory?: () => void
   onOpenSettings?: () => void
   onOpenProfile?: () => void
   tokenCount?: number
@@ -29,6 +30,7 @@ export default function TopBar({
   onModelChange,
   thinkingLevel = 'medium',
   onThinkingLevelChange,
+  onBrowseDirectory,
   onOpenSettings,
   onOpenProfile,
   tokenCount = 0,
@@ -55,19 +57,30 @@ export default function TopBar({
             {directoryOptions.length === 0 ? (
               <div className="topbar-menu-empty">No directories available</div>
             ) : (
-              directoryOptions.map((dir) => (
+              <>
+                {directoryOptions.map((dir) => (
+                  <button
+                    key={dir}
+                    className={`topbar-menu-item ${dir === currentDir ? 'active' : ''}`}
+                    title={dir}
+                    onClick={() => {
+                      onDirectoryChange?.(dir)
+                      setShowDirPicker(false)
+                    }}
+                  >
+                    {dir}
+                  </button>
+                ))}
                 <button
-                  key={dir}
-                  className={`topbar-menu-item ${dir === currentDir ? 'active' : ''}`}
-                  title={dir}
+                  className="topbar-menu-item"
                   onClick={() => {
-                    onDirectoryChange?.(dir)
+                    onBrowseDirectory?.()
                     setShowDirPicker(false)
                   }}
                 >
-                  {dir}
+                  Browse folders...
                 </button>
-              ))
+              </>
             )}
           </div>
         )}
