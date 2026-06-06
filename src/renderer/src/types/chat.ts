@@ -122,6 +122,31 @@ export interface WorkspaceFileEntry {
   modifiedAt: string
 }
 
+export type FilePreviewData =
+  | { type: 'text'; content: string }
+  | { type: 'image'; content: string }
+  | { type: 'pdf'; content: string }
+  | { type: 'docx'; content: string }
+  | {
+      type: 'pptx'
+      slides: Array<{
+        index: number
+        title: string
+        summary: string
+      }>
+    }
+  | {
+      type: 'xlsx'
+      workbook: {
+        sheetNames: string[]
+        sheets: Array<{
+          name: string
+          rows: string[][]
+        }>
+      }
+    }
+  | { type: 'binary'; ext?: string; reason?: string }
+
 export type ResultItemKind = 'created' | 'updated' | 'exported' | 'viewed' | 'failed'
 
 export interface ResultItem {
@@ -226,6 +251,14 @@ export interface StateSummaryEntry {
 }
 
 export interface SkillSummaryEntry {
+  id: string
+  label: string
+  value: string
+  source: string
+  status: 'active' | 'inactive'
+}
+
+export interface ConnectorSummaryEntry {
   id: string
   label: string
   value: string

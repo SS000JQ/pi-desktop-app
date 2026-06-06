@@ -13,12 +13,15 @@ import Shortcuts from './screens/Shortcuts'
 import Skills from './screens/Skills'
 import type {
   ArtifactEntity,
+  ConnectorSummaryEntry,
+  FilePreviewData,
   Message,
   ModelOption,
   ProviderSummary,
   ResultItem,
   RuntimeStatus,
   Session,
+  SkillSummaryEntry,
   WorkspaceFileEntry,
 } from './types/chat'
 import { useChatIPC } from './hooks/useChatIPC'
@@ -63,9 +66,26 @@ interface StoredMessage {
   fullOutputPath?: string
 }
 
-interface FileReadResponse {
-  type: 'text' | 'image' | 'binary'
-  content?: string
+interface ContextResourceItem {
+  id: string
+  label: string
+  path?: string
+  meta?: string
+}
+
+interface WorkspaceViewModel {
+  files: WorkspaceFileEntry[]
+  directories: WorkspaceFileEntry[]
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+function isPathWithinRoot(path: string, root: string): boolean {
+  const normalizedPath = normalizePath(path)
+  const normalizedRoot = normalizePath(root)
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)
 }
 
 function buildModelOptions(providers: ProviderSummary[]): ModelOption[] {
@@ -217,6 +237,90 @@ function sortWorkspaceFiles(files: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
   })
 }
 
+function uniqueWorkspaceEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
+  const seen = new Set<string>()
+  return entries.filter((entry) => {
+    if (seen.has(entry.path)) return false
+    seen.add(entry.path)
+    return true
+  })
+}
+
+function isDocumentLike(path: string): boolean {
+  return /\.(pdf|doc|docx|ppt|pptx|pptm|md|txt|xlsx|csv)$/i.test(path)
+}
+
+function buildWorkspaceViewModel(
+  files: WorkspaceFileEntry[],
+  activeArtifacts: ArtifactEntity[],
+  recentOpenedPaths: string[],
+): WorkspaceViewModel {
+  const artifactPaths = new Set(activeArtifacts.map((artifact) => artifact.sourcePath).filter(Boolean) as string[])
+  const recentOpened = new Map(recentOpenedPaths.map((path, index) => [path, recentOpenedPaths.length - index]))
+
+  const scoreEntry = (entry: WorkspaceFileEntry): number => {
+    let score = entry.isDir ? 10 : 0
+    if (artifactPaths.has(entry.path)) score += 70
+    if (recentOpened.has(entry.path)) score += (recentOpened.get(entry.path) || 0) * 10
+    if (!entry.isDir && isDocumentLike(entry.path)) score += 30
+    const ageMinutes = Math.max(1, Math.round((Date.now() - new Date(entry.modifiedAt).getTime()) / 60000))
+    score += Math.max(0, 20 - Math.min(ageMinutes, 20))
+    return score
+  }
+
+  const sorted = uniqueWorkspaceEntries(files).sort((a, b) => {
+    const scoreDiff = scoreEntry(b) - scoreEntry(a)
+    if (scoreDiff !== 0) return scoreDiff
+    if (a.isDir !== b.isDir) return a.isDir ? 1 : -1
+    return a.name.localeCompare(b.name)
+  })
+
+  const filesOnly = sorted.filter((entry) => !entry.isDir)
+  const directories = sorted.filter((entry) => entry.isDir)
+
+  return { files: filesOnly, directories }
+}
+
+function buildUploadItems(
+  files: WorkspaceFileEntry[],
+  activeArtifacts: ArtifactEntity[],
+  recentOpenedPaths: string[],
+): ContextResourceItem[] {
+  const artifactFiles = activeArtifacts
+    .filter((artifact) => artifact.status !== 'failed' && artifact.sourcePath && isDocumentLike(artifact.sourcePath))
+    .map((artifact) => ({
+      id: artifact.id,
+      label: artifact.title,
+      path: artifact.sourcePath,
+      meta: artifact.metadata.actionLabel,
+    }))
+
+  const workspaceDocs = files
+    .filter((entry) => !entry.isDir && isDocumentLike(entry.path))
+    .sort((a, b) => {
+      const aRecent = recentOpenedPaths.includes(a.path) ? 1 : 0
+      const bRecent = recentOpenedPaths.includes(b.path) ? 1 : 0
+      if (aRecent !== bRecent) return bRecent - aRecent
+      return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    })
+    .map((entry) => ({
+      id: entry.path,
+      label: entry.name,
+      path: entry.path,
+      meta: entry.modifiedAt,
+    }))
+
+  const seen = new Set<string>()
+  return [...artifactFiles, ...workspaceDocs]
+    .filter((item) => item.path)
+    .filter((item) => {
+      if (!item.path || seen.has(item.path)) return false
+      seen.add(item.path)
+      return true
+    })
+    .slice(0, 6)
+}
+
 function normalizeArtifact(entity: any): ArtifactEntity {
   return {
     ...entity,
@@ -284,8 +388,12 @@ export default function App() {
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null)
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>([])
+  const [workspaceChildrenByDir, setWorkspaceChildrenByDir] = useState<Record<string, WorkspaceFileEntry[]>>({})
   const [artifactsBySession, setArtifactsBySession] = useState<Record<string, ArtifactEntity[]>>({})
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null)
+  const [recentOpenedPaths, setRecentOpenedPaths] = useState<string[]>([])
+  const [contextSkills, setContextSkills] = useState<SkillSummaryEntry[]>([])
+  const [contextConnectors, setContextConnectors] = useState<ConnectorSummaryEntry[]>([])
 
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -304,6 +412,10 @@ export default function App() {
 
   const directoryOptions = Array.from(new Set([currentDir, ...sessions.map((session) => session.cwd)].filter(Boolean)))
   const activeSession = sessions.find((session) => session.id === activeSessionId) || null
+  const activeArtifacts = useMemo(() => {
+    if (!activeSessionId) return []
+    return artifactsBySession[activeSessionId] || []
+  }, [activeSessionId, artifactsBySession])
 
   const onAssistantMessage = useCallback((message: Message) => {
     setMessages((previous) => {
@@ -358,6 +470,35 @@ export default function App() {
     return files
   }, [])
 
+  const loadWorkspaceDirectory = useCallback(async (dir: string): Promise<WorkspaceFileEntry[]> => {
+    const rootDir = currentDirRef.current
+    const response = await window.piDesktop.files.list(dir)
+    if (!isPathWithinRoot(dir, currentDirRef.current) || normalizePath(rootDir) !== normalizePath(currentDirRef.current)) {
+      return []
+    }
+
+    if (!response.success || !Array.isArray(response.data)) {
+      setWorkspaceChildrenByDir((previous) => ({ ...previous, [dir]: [] }))
+      return []
+    }
+
+    const files = sortWorkspaceFiles(response.data as WorkspaceFileEntry[])
+    setWorkspaceChildrenByDir((previous) => ({ ...previous, [dir]: files }))
+    return files
+  }, [])
+
+  const loadContextSummary = useCallback(async () => {
+    const response = await window.piDesktop.desktop.getStateSummary()
+    if (!response.success || !response.data) {
+      setContextSkills([])
+      setContextConnectors([])
+      return
+    }
+
+    setContextSkills(response.data.skills as SkillSummaryEntry[])
+    setContextConnectors((response.data.connectors || []) as ConnectorSummaryEntry[])
+  }, [])
+
   const loadArtifacts = useCallback(async (sessionId: string | null) => {
     if (!sessionId) {
       setActiveArtifactId(null)
@@ -406,16 +547,31 @@ export default function App() {
 
     const ext = path.includes('.') ? `.${path.split('.').pop()?.toLowerCase() || ''}` : ''
     const name = path.split(/[/\\]/).pop() || path
-    const data = response.data as FileReadResponse
-
     setPreviewFile({
       path,
       name,
       ext,
-      type: data.type,
-      content: data.content,
+      ...(response.data as FilePreviewData),
     })
+    setRightPanelCollapsed(false)
+    setRecentOpenedPaths((previous) => [path, ...previous.filter((entry) => entry !== path)].slice(0, 10))
   }, [])
+
+  const handleBrowseWorkspaceDirectory = useCallback(
+    async (path: string) => {
+      if (workspaceChildrenByDir[path]) {
+        setWorkspaceChildrenByDir((previous) => {
+          const next = { ...previous }
+          delete next[path]
+          return next
+        })
+        return
+      }
+
+      await loadWorkspaceDirectory(path)
+    },
+    [loadWorkspaceDirectory, workspaceChildrenByDir],
+  )
 
   const loadProviders = useCallback(async (): Promise<ProviderSummary[]> => {
     const response = await window.piDesktop.providers.list()
@@ -477,6 +633,7 @@ export default function App() {
       setActiveSessionId(detail.sessionId)
       setActiveSessionPath(detail.sessionPath)
       setCurrentDir(detail.cwd)
+      setWorkspaceChildrenByDir({})
       setThinkingLevel(detail.thinkingLevel || 'medium')
       if (detail.model) setCurrentModel(detail.model)
       setMessages(nextMessages)
@@ -577,6 +734,7 @@ export default function App() {
       if (!dir || dir === currentDir) return
 
       setCurrentDir(dir)
+      setWorkspaceChildrenByDir({})
       setPreviewFile(null)
       await window.piDesktop.config.set('workingDirectory', dir)
 
@@ -604,12 +762,7 @@ export default function App() {
       const targetSessionId = sessionId || activeSessionId
       if (!targetSessionId) return
 
-      void loadArtifacts(targetSessionId).then((artifacts) => {
-        const freshestArtifact = artifacts.find((artifact) => artifact.sourcePath === path) || pickPreferredArtifact(artifacts)
-        if (!previewFile && freshestArtifact?.sourcePath) {
-          void handleOpenPreviewFile(freshestArtifact.sourcePath)
-        }
-      })
+      void loadArtifacts(targetSessionId)
       void loadWorkspaceFiles(currentDirRef.current)
     },
     onSessionSynced: (detail) => {
@@ -632,6 +785,7 @@ export default function App() {
         window.piDesktop.config.get('wizardCompleted'),
         window.piDesktop.session.getActive(),
         loadSessions(),
+        loadContextSummary(),
       ])
 
       const workingDirectory =
@@ -657,7 +811,7 @@ export default function App() {
     }
 
     void initialize()
-  }, [hasRunnableProvider, loadProviders, loadSessions, loadWorkspaceFiles])
+  }, [hasRunnableProvider, loadContextSummary, loadProviders, loadSessions, loadWorkspaceFiles])
 
   useEffect(() => {
     if (!activeSessionPath) return
@@ -692,10 +846,8 @@ export default function App() {
       return
     }
     const preferred = pickPreferredArtifact(artifactsBySession[activeSessionId] || [])
-    if (preferred && !previewFile && preferred.sourcePath) {
-      void handleOpenPreviewFile(preferred.sourcePath)
-    }
-  }, [activeSessionId, artifactsBySession, handleOpenPreviewFile, previewFile])
+    setActiveArtifactId((previous) => previous || preferred?.id || null)
+  }, [activeSessionId, artifactsBySession])
 
   const handleSendMessage = useCallback(
     async (text: string) => {
@@ -775,6 +927,7 @@ export default function App() {
       setActiveSessionId(created.id)
       setActiveSessionPath(created.path)
       setCurrentDir(created.cwd)
+      setWorkspaceChildrenByDir({})
       setMessages([])
       setPreviewFile(null)
       setActiveArtifactId(null)
@@ -839,14 +992,39 @@ export default function App() {
   const selectedModelOption = modelOptions.find((option) => option.id === currentModel)
   const currentModelLabel = selectedModelOption?.label || (currentModel ? `${currentModel} (unconfigured)` : '')
 
-  const activeArtifacts = useMemo(() => {
-    if (!activeSessionId) return []
-    return artifactsBySession[activeSessionId] || []
-  }, [activeSessionId, artifactsBySession])
-
   const resultsForPanel = useMemo(() => {
     return activeArtifacts.map(artifactToResultItem).slice(0, 8)
   }, [activeArtifacts])
+
+  const workspaceView = useMemo(
+    () => buildWorkspaceViewModel(workspaceFiles, activeArtifacts, recentOpenedPaths),
+    [workspaceFiles, activeArtifacts, recentOpenedPaths],
+  )
+
+  const contextUploads = useMemo(
+    () => buildUploadItems(workspaceFiles, activeArtifacts, recentOpenedPaths),
+    [workspaceFiles, activeArtifacts, recentOpenedPaths],
+  )
+
+  const connectorItems = useMemo<ContextResourceItem[]>(
+    () =>
+      contextConnectors.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        meta: entry.value,
+      })),
+    [contextConnectors],
+  )
+
+  const skillItems = useMemo<ContextResourceItem[]>(
+    () =>
+      contextSkills.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        meta: entry.value,
+      })),
+    [contextSkills],
+  )
 
   if (!isInitialized) {
     return (
@@ -921,6 +1099,7 @@ export default function App() {
               const selected = sessions.find((session) => session.id === id)
               setActiveSessionId(id)
               setActiveSessionPath(selected?.path || null)
+              setWorkspaceChildrenByDir({})
               setPreviewFile(null)
               if (selected?.cwd) setCurrentDir(selected.cwd)
             }}
@@ -947,12 +1126,18 @@ export default function App() {
             panelWidth={rightPanelWidth}
             onResize={setRightPanelWidth}
             currentWorkspace={currentDir}
-            workspaceFiles={workspaceFiles}
+            workspaceFiles={workspaceView.files}
+            workspaceDirectories={workspaceView.directories}
+            workspaceChildrenByDir={workspaceChildrenByDir}
             recentResults={resultsForPanel}
             runtimeStatus={runtimeStatus}
             previewFile={previewFile}
+            contextUploads={contextUploads}
+            contextConnectors={connectorItems}
+            contextSkills={skillItems}
             onSelectResult={handleSelectArtifact}
             onSelectFile={(path) => { void handleOpenPreviewFile(path) }}
+            onToggleWorkspaceDirectory={(path) => { void handleBrowseWorkspaceDirectory(path) }}
             onClosePreview={() => setPreviewFile(null)}
             onOpenExternal={(path) => { void window.piDesktop.files.open(path) }}
             onOpenFolder={(path) => {
@@ -962,7 +1147,6 @@ export default function App() {
               void window.piDesktop.files.open(directory)
             }}
             onCopyPath={(path) => { void navigator.clipboard?.writeText(path) }}
-            onArtifactAction={handleArtifactAction}
           />
         </div>
 

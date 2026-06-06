@@ -183,6 +183,105 @@ export function upsertArtifactFromPath(input: {
   return artifact
 }
 
+export function upsertArtifact(input: {
+  sessionId: string
+  title: string
+  status: ArtifactStatus
+  artifactType?: ArtifactType
+  sourceKind?: ArtifactSourceKind
+  sourcePath?: string
+  snapshot?: string
+  errorSummary?: string
+}): ArtifactRecord {
+  if (input.sourcePath) {
+    return upsertArtifactFromPath({
+      sessionId: input.sessionId,
+      path: input.sourcePath,
+      status: input.status,
+      sourceKind: input.sourceKind,
+      snapshot: input.snapshot,
+      errorSummary: input.errorSummary,
+    })
+  }
+
+  const store = readStore()
+  const now = new Date().toISOString()
+  const artifactType = input.artifactType || 'file'
+  const existing = store.artifacts.find(
+    (artifact) =>
+      artifact.sessionId === input.sessionId
+      && artifact.title === input.title
+      && !artifact.sourcePath,
+  )
+
+  if (existing) {
+    existing.status = input.status
+    existing.updatedAt = now
+    existing.snapshot = input.snapshot ?? existing.snapshot
+    existing.metadata = {
+      ...existing.metadata,
+      errorSummary: input.errorSummary,
+      actionLabel: summarizeArtifact(artifactType, input.title, input.status),
+    }
+    existing.versions.unshift({
+      id: generateId('artifact-version'),
+      artifactId: existing.id,
+      createdAt: now,
+      summary: summarizeArtifact(artifactType, input.title, input.status),
+      snapshot: input.snapshot,
+    })
+    writeStore(store)
+    return existing
+  }
+
+  const artifact: ArtifactRecord = {
+    id: generateId('artifact'),
+    sessionId: input.sessionId,
+    title: input.title,
+    artifactType,
+    sourceKind: input.sourceKind || 'pi_generated',
+    status: input.status,
+    createdAt: now,
+    updatedAt: now,
+    snapshot: input.snapshot,
+    metadata: {
+      pinned: false,
+      primary: false,
+      actionLabel: summarizeArtifact(artifactType, input.title, input.status),
+      errorSummary: input.errorSummary,
+    },
+    versions: [
+      {
+        id: generateId('artifact-version'),
+        artifactId: '',
+        createdAt: now,
+        summary: summarizeArtifact(artifactType, input.title, input.status),
+        snapshot: input.snapshot,
+      },
+    ],
+  }
+  artifact.versions[0].artifactId = artifact.id
+  store.artifacts.push(artifact)
+  writeStore(store)
+  return artifact
+}
+
+export function recordArtifactFailure(input: {
+  sessionId: string
+  title?: string
+  artifactType?: ArtifactType
+  errorSummary: string
+}): ArtifactRecord {
+  return upsertArtifact({
+    sessionId: input.sessionId,
+    title: input.title || 'Failed run',
+    status: 'failed',
+    artifactType: input.artifactType || 'brief',
+    sourceKind: 'pi_generated',
+    errorSummary: input.errorSummary,
+  })
+}
+
 export function pinArtifact(artifactId: string, pinned: boolean): ArtifactRecord | null {
   const store = readStore()
   const artifact = store.artifacts.find((entry) => entry.id === artifactId)

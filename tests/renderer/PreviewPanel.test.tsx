@@ -3,6 +3,49 @@ import { describe, expect, it } from 'vitest'
 import PreviewPanel from '../../src/renderer/src/components/PreviewPanel'
 
 describe('PreviewPanel', () => {
+  it('renders the workbench sections with uploads, connectors, and skills', async () => {
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={360}
+        onResize={() => {}}
+        currentWorkspace="D:/PI/app/musicccc"
+        workspaceFiles={[
+          {
+            name: 'report_submit_ready.md',
+            path: 'D:/PI/app/musicccc/report_submit_ready.md',
+            isDir: false,
+            size: 100,
+            modifiedAt: new Date().toISOString(),
+          },
+        ]}
+        workspaceDirectories={[
+          {
+            name: 'assets',
+            path: 'D:/PI/app/musicccc/assets',
+            isDir: true,
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          },
+        ]}
+        contextUploads={[{ id: 'u1', label: '科学与社会结题报告.pdf', path: 'D:/PI/app/musicccc/report.pdf' }]}
+        contextConnectors={[{ id: 'c1', label: 'Web search' }]}
+        contextSkills={[{ id: 's1', label: 'writing-plans' }]}
+      />,
+    )
+
+    expect(screen.getByText('Progress')).toBeTruthy()
+    expect(screen.getByText('Workspace')).toBeTruthy()
+    expect(screen.getByText('Context')).toBeTruthy()
+    expect(screen.getByText('Uploads')).toBeTruthy()
+    expect(screen.getByText('Connectors')).toBeTruthy()
+    expect(screen.getByText('Skills')).toBeTruthy()
+    expect(screen.getByText('report_submit_ready.md')).toBeTruthy()
+    expect(screen.getByText('科学与社会结题报告.pdf')).toBeTruthy()
+    expect(screen.getByText('Web search')).toBeTruthy()
+  })
+
   it('renders a markdown preview from real file content', async () => {
     render(
       <PreviewPanel
@@ -49,6 +92,110 @@ describe('PreviewPanel', () => {
     const image = screen.getByAltText('image.png') as HTMLImageElement
     expect(image).toBeTruthy()
     expect(image.src).toContain('data:image/png;base64,abc123')
+  })
+
+  it('renders a pdf preview when given a file URL', async () => {
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: 'file:///D:/PI/app/report.pdf',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    const frame = screen.getByTitle('report.pdf') as HTMLIFrameElement
+    expect(frame).toBeTruthy()
+    expect(frame.src).toContain('file:///D:/PI/app/report.pdf')
+  })
+
+  it('renders office summaries for docx, pptx, and xlsx previews', async () => {
+    const { rerender } = render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/brief.docx',
+          name: 'brief.docx',
+          ext: '.docx',
+          type: 'docx',
+          content: '<h1>Quarterly Brief</h1><p>Prepared for review.</p>',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Quarterly Brief')).toBeTruthy()
+    expect(screen.getByText('Prepared for review.')).toBeTruthy()
+
+    rerender(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/slides.pptx',
+          name: 'slides.pptx',
+          ext: '.pptx',
+          type: 'pptx',
+          slides: [
+            { index: 1, title: 'Intro', summary: 'Overview of the plan' },
+            { index: 2, title: 'Next Step', summary: 'Implementation milestones' },
+          ],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Slide 1')).toBeTruthy()
+    expect(screen.getByText('Overview of the plan')).toBeTruthy()
+
+    rerender(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/tracker.xlsx',
+          name: 'tracker.xlsx',
+          ext: '.xlsx',
+          type: 'xlsx',
+          workbook: {
+            sheetNames: ['Sheet1'],
+            sheets: [
+              {
+                name: 'Sheet1',
+                rows: [
+                  ['Task', 'Owner'],
+                  ['Draft', 'Pi'],
+                ],
+              },
+            ],
+          },
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Sheet1')).toBeTruthy()
+    expect(screen.getByText('Task')).toBeTruthy()
+    expect(screen.getByText('Draft')).toBeTruthy()
   })
 
   it('uses readable controls instead of mojibake glyphs', async () => {

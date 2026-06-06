@@ -19,6 +19,14 @@ export interface DesktopSkillEntry {
   status: 'active' | 'inactive'
 }
 
+export interface DesktopConnectorEntry {
+  id: string
+  label: string
+  value: string
+  source: string
+  status: 'active' | 'inactive'
+}
+
 const RECOVERY_PATH = join(app.getPath('userData'), 'pi-desktop', 'active-session.json')
 
 function readActiveSessionId(): string | null {
@@ -52,6 +60,7 @@ export function getActiveSessionId(): string | null {
 export function getDesktopStateSummary(): {
   memory: DesktopStateEntry[]
   skills: DesktopSkillEntry[]
+  connectors: DesktopConnectorEntry[]
 } {
   const workingDirectory = getConfigValue('workingDirectory')
   const { agentDir, settingsPath, authPath, modelsPath } = getCliAgentPaths()
@@ -119,5 +128,15 @@ export function getDesktopStateSummary(): {
         },
       ]
 
-  return { memory, skills }
+  const connectors: DesktopConnectorEntry[] = [
+    {
+      id: 'web-search',
+      label: 'Web search',
+      value: 'Available in the current desktop runtime',
+      source: 'Desktop runtime',
+      status: 'active',
+    },
+  ]
+
+  return { memory, skills, connectors }
 }

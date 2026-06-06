@@ -952,6 +952,244 @@ body {
   min-width: 0;
 }
 
+.prev.preview-mode {
+  background: #181717;
+}
+
+.pv-workbench-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 10px 16px;
+  min-height: 0;
+}
+
+.c-sec {
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.025);
+  overflow: hidden;
+}
+
+.c-sec.is-collapsed {
+  background: rgba(255,255,255,0.02);
+}
+
+.c-hdr-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.c-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.c-hdr-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.c-hl {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.86);
+}
+
+.c-hc {
+  font-size: 11px;
+  color: rgba(255,255,255,0.34);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c-chevron {
+  font-size: 11px;
+  color: rgba(255,255,255,0.24);
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.c-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.c-bd {
+  padding: 0 12px 12px;
+}
+
+.pv-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pv-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.pv-group-label {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.2);
+  padding: 2px 0;
+}
+
+.pv-empty-inline {
+  padding: 2px 0 0;
+}
+
+.pv-dir-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ft-in {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255,255,255,0.05);
+  margin-left: 10px;
+}
+
+.pv-context-item {
+  display: flex;
+  min-width: 0;
+}
+
+.pv-context-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: none;
+  background: rgba(255,255,255,0.035);
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  color: rgba(255,255,255,0.66);
+  cursor: pointer;
+}
+
+.pv-context-button.passive {
+  cursor: default;
+}
+
+.pv-context-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pv-workbench-body .c-sec:nth-child(1) .c-bd {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.pv-workbench-body .c-sec:nth-child(2) .c-bd {
+  max-height: 460px;
+  overflow: auto;
+}
+
+.pv-workbench-body .c-sec:nth-child(3) .c-bd {
+  max-height: 400px;
+  overflow: auto;
+}
+
+.pv-pdf-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 720px;
+  border: none;
+  background: white;
+}
+
+.pv-office-doc {
+  max-width: 760px;
+}
+
+.pv-office-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.pv-office-card {
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.03);
+  padding: 14px 16px;
+}
+
+.pv-office-kicker {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.24);
+  margin-bottom: 8px;
+}
+
+.pv-office-title {
+  font-size: 13px;
+  color: rgba(255,255,255,0.72);
+  margin-bottom: 8px;
+}
+
+.pv-office-copy {
+  font-size: 12px;
+  line-height: 1.75;
+  color: rgba(255,255,255,0.42);
+}
+
+.pv-sheet-wrap {
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+}
+
+.pv-sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+}
+
+.pv-sheet-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-right: 1px solid rgba(255,255,255,0.04);
+  min-width: 88px;
+  vertical-align: top;
+}
+
+.pv-sheet-table tr:last-child td {
+  border-bottom: none;
+}
+
+.pv-sheet-table td:last-child {
+  border-right: none;
+}
+
 /* Layout stability overrides */
 .topbar {
   gap: 12px;

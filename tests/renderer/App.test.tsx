@@ -340,6 +340,13 @@ describe('App', () => {
           success: true,
           data: [
             {
+              name: 'assets',
+              path: 'D:/PI/app/assets',
+              isDir: true,
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            },
+            {
               name: 'report.md',
               path: 'D:/PI/app/report.md',
               isDir: false,
@@ -347,10 +354,10 @@ describe('App', () => {
               modifiedAt: new Date().toISOString(),
             },
             {
-              name: 'slides',
-              path: 'D:/PI/app/slides',
-              isDir: true,
-              size: 0,
+              name: 'brief.docx',
+              path: 'D:/PI/app/brief.docx',
+              isDir: false,
+              size: 2200,
               modifiedAt: new Date().toISOString(),
             },
           ],
@@ -367,8 +374,12 @@ describe('App', () => {
     expect(await screen.findByText('Progress')).toBeTruthy()
     expect(screen.getByText('Workspace')).toBeTruthy()
     expect(screen.getByText('Context')).toBeTruthy()
+    expect(screen.getByText('Uploads')).toBeTruthy()
+    expect(screen.getByText('Connectors')).toBeTruthy()
+    expect(screen.getAllByText('Skills').length).toBeGreaterThan(0)
     expect(screen.getAllByText('report.md').length).toBeGreaterThan(0)
-    expect(screen.getByText('slides')).toBeTruthy()
+    expect(screen.getAllByText('brief.docx').length).toBeGreaterThan(0)
+    expect(screen.getByText('assets')).toBeTruthy()
   })
 
   it('shows a preparing status immediately after the user sends a message', async () => {

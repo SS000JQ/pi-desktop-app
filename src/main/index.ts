@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, statSync, writeFileSync, watch, existsSync, 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { homedir } from 'os'
 import { openInExternalEditor } from './file-bridge'
+import { readPreviewFile } from './file-preview'
 import {
   IPC_CHANNELS,
   APP_NAME,
@@ -43,6 +44,7 @@ import {
   listArtifacts,
   markArtifactPrimary,
   pinArtifact,
+  recordArtifactFailure,
   refreshArtifact,
   upsertArtifactFromPath,
 } from './artifacts'
@@ -398,10 +400,9 @@ ipcMain.handle(
                   sessionId,
                   sessionPath,
                 })
-                upsertArtifactFromPath({
+                recordArtifactFailure({
                   sessionId,
-                  path: join(resolveWorkingDirectory(), `failed-run-${Date.now()}.txt`),
-                  status: 'failed',
+                  title: event.toolName ? `${event.toolName} failed` : 'Failed run',
                   errorSummary: summarizeError(event.error || `${event.toolName || 'Pi'} failed`),
                 })
                 mainWindow?.webContents.send(IPC_CHANNELS.AGENT_EVENT, {
@@ -508,7 +509,7 @@ ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, payload?: { cwd?: str
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async () => {
-  return { success: true, data: false }
+  return { success: false, error: 'Deleting Pi native sessions is not implemented yet' }
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_SEARCH, async (_event, query: string) => {
@@ -616,32 +617,7 @@ ipcMain.handle('files:list', async (_event, dirPath: string) => {
 
 ipcMain.handle('files:read', async (_event, filePath: string) => {
   try {
-    const ext = extname(filePath)
-    const isText = [
-      '.md',
-      '.txt',
-      '.ts',
-      '.tsx',
-      '.js',
-      '.py',
-      '.go',
-      '.rs',
-      '.json',
-      '.css',
-      '.html',
-      '.yaml',
-      '.xml',
-      '.sh',
-    ].includes(ext.toLowerCase())
-    if (isText) {
-      return { success: true, data: { type: 'text', content: readFileSync(filePath, 'utf-8') } }
-    }
-    if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'].includes(ext.toLowerCase())) {
-      const base64 = readFileSync(filePath).toString('base64')
-      const mime = ext === '.svg' ? 'image/svg+xml' : `image/${ext.slice(1)}`
-      return { success: true, data: { type: 'image', content: `data:${mime};base64,${base64}` } }
-    }
-    return { success: true, data: { type: 'binary', ext } }
+    return { success: true, data: await readPreviewFile(filePath) }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }

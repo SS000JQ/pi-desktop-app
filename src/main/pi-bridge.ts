@@ -39,6 +39,7 @@ export interface PiBridgeEvent {
 }
 
 interface SessionBinding {
+  sessionId: string
   session: AgentSession
   unsubscribe?: () => void
   cwd: string
@@ -90,7 +91,7 @@ export class PiBridge {
       || Array.from(this.bindings.values()).find((entry) => entry.sessionPath === sessionKey)
     if (!binding) return
     await binding.session.abort()
-    emit({ type: 'run_aborted', sessionId: binding.sessionPath })
+    emit({ type: 'run_aborted', sessionId: binding.sessionId })
   }
 
   async dispose(): Promise<void> {
@@ -154,6 +155,7 @@ export class PiBridge {
     })
 
     const binding: SessionBinding = {
+      sessionId,
       session,
       unsubscribe,
       cwd,

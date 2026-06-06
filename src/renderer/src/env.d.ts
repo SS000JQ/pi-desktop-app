@@ -80,6 +80,31 @@ interface ArtifactEntity {
   versions: ArtifactVersion[]
 }
 
+type FilePreviewData =
+  | { type: 'text'; content: string }
+  | { type: 'image'; content: string }
+  | { type: 'pdf'; content: string }
+  | { type: 'docx'; content: string }
+  | {
+      type: 'pptx'
+      slides: Array<{
+        index: number
+        title: string
+        summary: string
+      }>
+    }
+  | {
+      type: 'xlsx'
+      workbook: {
+        sheetNames: string[]
+        sheets: Array<{
+          name: string
+          rows: string[][]
+        }>
+      }
+    }
+  | { type: 'binary'; ext?: string; reason?: string }
+
 interface PiDesktopApi {
   chat: {
     send: (payload: {
@@ -173,6 +198,13 @@ interface PiDesktopApi {
         source: string
         status: 'active' | 'inactive'
       }>
+      connectors: Array<{
+        id: string
+        label: string
+        value: string
+        source: string
+        status: 'active' | 'inactive'
+      }>
     }>>
   }
   onAgentEvent: (callback: (event: AgentEvent) => void) => () => void
@@ -185,7 +217,7 @@ interface PiDesktopApi {
   }
   files: {
     list: (dirPath: string) => Promise<IpcResponse>
-    read: (filePath: string) => Promise<IpcResponse>
+    read: (filePath: string) => Promise<IpcResponse<FilePreviewData>>
     save: (filePath: string, content: string) => Promise<IpcResponse>
     open: (filePath: string) => Promise<IpcResponse>
   }

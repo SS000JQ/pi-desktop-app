@@ -1,13 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import hljs from 'highlight.js'
-import type { ResultItem, RuntimeStatus, WorkspaceFileEntry } from '../types/chat'
+import type {
+  FilePreviewData,
+  ResultItem,
+  RuntimeStatus,
+  WorkspaceFileEntry,
+} from '../types/chat'
 
-export interface PreviewFile {
+export type PreviewFile = FilePreviewData & {
   path: string
   name: string
   ext: string
-  type: 'text' | 'image' | 'binary'
-  content?: string
+}
+
+interface ContextResourceItem {
+  id: string
+  label: string
+  path?: string
+  meta?: string
 }
 
 interface PreviewPanelProps {
@@ -17,16 +27,21 @@ interface PreviewPanelProps {
   onResize: (w: number) => void
   currentWorkspace?: string
   workspaceFiles?: WorkspaceFileEntry[]
+  workspaceDirectories?: WorkspaceFileEntry[]
+  workspaceChildrenByDir?: Record<string, WorkspaceFileEntry[]>
   recentResults?: ResultItem[]
   runtimeStatus?: RuntimeStatus | null
   previewFile?: PreviewFile | null
+  contextUploads?: ContextResourceItem[]
+  contextConnectors?: ContextResourceItem[]
+  contextSkills?: ContextResourceItem[]
   onSelectFile?: (path: string) => void
   onSelectResult?: (path: string) => void
+  onToggleWorkspaceDirectory?: (path: string) => void
   onClosePreview?: () => void
   onOpenExternal?: (path: string) => void
   onOpenFolder?: (path: string) => void
   onCopyPath?: (path: string) => void
-  onArtifactAction?: (action: 'improve' | 'regenerate' | 'summarize' | 'new_task', path: string) => void
 }
 
 function escapeHtml(value: string): string {
@@ -130,58 +145,29 @@ function formatTimestamp(value: string): string {
   return `${diffDays}d ago`
 }
 
-function getResultBadge(kind: ResultItem['kind']): string {
-  switch (kind) {
-    case 'updated':
-      return 'UPDATED'
-    case 'exported':
-      return 'EXPORTED'
-    case 'viewed':
-      return 'VIEWED'
-    case 'failed':
-      return 'FAILED'
-    default:
-      return 'CREATED'
-  }
-}
-
-function WorkspaceSection({
+function SectionShell({
   title,
   badge,
-  items,
-  emptyText,
-  onSelectFile,
+  collapsed,
+  onToggle,
+  children,
 }: {
   title: string
   badge?: string
-  items: WorkspaceFileEntry[]
-  emptyText: string
-  onSelectFile?: (path: string) => void
+  collapsed: boolean
+  onToggle: () => void
+  children: ReactNode
 }) {
   return (
-    <div className="c-sec">
-      <div className="c-hdr">
+    <div className={`c-sec ${collapsed ? 'is-collapsed' : ''}`}>
+      <button className="c-hdr c-hdr-btn" onClick={onToggle} type="button">
         <span className="c-hl">{title}</span>
-        <span className="c-hc">{badge || String(items.length)}</span>
-      </div>
-      <div className="c-bd">
-        {items.length === 0 ? (
-          <div className="pv-empty-note">{emptyText}</div>
-        ) : (
-          items.map((entry) => (
-            <div key={entry.path} className="ft" title={entry.path}>
-              <button
-                className="pv-file-button"
-                onClick={() => !entry.isDir && onSelectFile?.(entry.path)}
-                disabled={entry.isDir}
-              >
-                <span className="n">{entry.name}</span>
-              </button>
-              <span className="ft-dd">{entry.isDir ? 'Folder' : formatTimestamp(entry.modifiedAt)}</span>
-            </div>
-          ))
-        )}
-      </div>
+        <span className="c-hdr-right">
+          {badge && <span className="c-hc">{badge}</span>}
+          <span className={`c-chevron ${collapsed ? 'collapsed' : ''}`}>v</span>
+        </span>
+      </button>
+      {!collapsed && <div className="c-bd">{children}</div>}
     </div>
   )
 }
@@ -202,85 +188,144 @@ function ProgressSection({
     (currentArtifact ? currentArtifact.action : 'Waiting for the next task.')
 
   return (
-    <div className="c-sec">
-      <div className="c-hdr">
-        <span className="c-hl">Progress</span>
-        <span className="c-hc">{title}</span>
+    <div className={`pv-result-card ${isFailed ? 'failed' : ''}`}>
+      <div className="pv-result-main">
+        <span className="pv-result-title">{currentArtifact?.title || 'Current run'}</span>
+        {runtimeStatus?.status && runtimeStatus.status !== 'idle' && (
+          <span className={`pv-result-badge ${isFailed ? 'failed' : 'updated'}`}>{title}</span>
+        )}
       </div>
-      <div className="c-bd">
-        <div className={`pv-result-card ${isFailed ? 'failed' : ''}`}>
-          <div className="pv-result-main">
-            <span className="pv-result-title">{currentArtifact?.title || 'Current run'}</span>
-            {runtimeStatus?.status && runtimeStatus.status !== 'idle' && (
-              <span className={`pv-result-badge ${isFailed ? 'failed' : 'updated'}`}>{title}</span>
-            )}
-          </div>
-          <div className="pv-result-meta">
-            <span className="pv-result-action">{detail}</span>
-            <span className="pv-result-time">
-              {runtimeStatus?.startedAt ? formatTimestamp(new Date(runtimeStatus.startedAt).toISOString()) : 'Now'}
-            </span>
-          </div>
-        </div>
+      <div className="pv-result-meta">
+        <span className="pv-result-action">{detail}</span>
+        <span className="pv-result-time">
+          {runtimeStatus?.startedAt ? formatTimestamp(new Date(runtimeStatus.startedAt).toISOString()) : 'Now'}
+        </span>
       </div>
     </div>
   )
 }
 
-function ResultSection({
-  items,
+function WorkspaceSection({
+  files,
+  directories,
+  expandedDirectories,
   onSelectFile,
-  onSelectResult,
-  onOpenExternal,
-  onOpenFolder,
-  onCopyPath,
+  onToggleDirectory,
 }: {
-  items: ResultItem[]
+  files: WorkspaceFileEntry[]
+  directories: WorkspaceFileEntry[]
+  expandedDirectories: Record<string, WorkspaceFileEntry[]>
   onSelectFile?: (path: string) => void
-  onSelectResult?: (path: string) => void
-  onOpenExternal?: (path: string) => void
-  onOpenFolder?: (path: string) => void
-  onCopyPath?: (path: string) => void
+  onToggleDirectory?: (path: string) => void
 }) {
-  const contextItems = items.slice(0, 8)
+  return (
+    <div className="pv-stack">
+      {files.length > 0 && (
+        <div className="pv-group">
+          <div className="pv-group-label">Files</div>
+          {files.map((entry) => (
+            <div key={entry.path} className="ft" title={entry.path}>
+              <button className="pv-file-button" onClick={() => onSelectFile?.(entry.path)}>
+                <span className="n">{entry.name}</span>
+              </button>
+              <span className="ft-dd">{formatTimestamp(entry.modifiedAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {directories.length > 0 && (
+        <div className="pv-group">
+          <div className="pv-group-label">Folders</div>
+          {directories.map((entry) => {
+            const expanded = Boolean(expandedDirectories[entry.path])
+            const children = expandedDirectories[entry.path] || []
+
+            return (
+              <div key={entry.path} className="pv-dir-wrap">
+                <div className="ft" title={entry.path}>
+                  <button className="pv-file-button" onClick={() => onToggleDirectory?.(entry.path)}>
+                    <span className="n">{entry.name}</span>
+                  </button>
+                  <span className="ft-dd">{expanded ? 'Hide' : 'Show'}</span>
+                </div>
+                {expanded && (
+                  <div className="ft-in">
+                    {children.length === 0 ? (
+                      <div className="pv-empty-note pv-empty-inline">No items in this folder.</div>
+                    ) : (
+                      children.map((child) => (
+                        <div key={child.path} className="ft" title={child.path}>
+                          <button
+                            className="pv-file-button"
+                            onClick={() => !child.isDir && onSelectFile?.(child.path)}
+                            disabled={child.isDir}
+                          >
+                            <span className="n">{child.name}</span>
+                          </button>
+                          <span className="ft-dd">{child.isDir ? 'Folder' : formatTimestamp(child.modifiedAt)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {files.length === 0 && directories.length === 0 && (
+        <div className="pv-empty-note">No files found in the current workspace yet.</div>
+      )}
+    </div>
+  )
+}
+
+function ContextSection({
+  uploads,
+  connectors,
+  skills,
+  onSelectFile,
+}: {
+  uploads: ContextResourceItem[]
+  connectors: ContextResourceItem[]
+  skills: ContextResourceItem[]
+  onSelectFile?: (path: string) => void
+}) {
+  const renderItems = (items: ContextResourceItem[], kind: 'file' | 'meta') => {
+    if (items.length === 0) {
+      return <div className="pv-empty-note pv-empty-inline">No items yet.</div>
+    }
+
+    return items.map((item) => (
+      <div key={item.id} className="pv-context-item" title={item.path || item.label}>
+        {kind === 'file' && item.path ? (
+          <button className="pv-context-button" onClick={() => onSelectFile?.(item.path!)}>
+            <span className="pv-context-title">{item.label}</span>
+          </button>
+        ) : (
+          <div className="pv-context-button passive">
+            <span className="pv-context-title">{item.label}</span>
+          </div>
+        )}
+      </div>
+    ))
+  }
 
   return (
-    <div className="c-sec">
-      <div className="c-hdr">
-        <span className="c-hl">Context</span>
-        <span className="c-hc">{contextItems.length}</span>
+    <div className="pv-stack">
+      <div className="pv-group">
+        <div className="pv-group-label">Uploads</div>
+        {renderItems(uploads, 'file')}
       </div>
-      <div className="c-bd">
-        {contextItems.length === 0 ? (
-          <div className="pv-empty-note">Context files and recent outputs from this session will appear here.</div>
-        ) : (
-          contextItems.map((item) => (
-            <div key={item.id} className={`pv-result-card ${item.isNew ? 'is-new' : ''}`} title={item.path}>
-              <div className="pv-result-main">
-                <button
-                  className="pv-result-open"
-                  onClick={() => {
-                    onSelectResult?.(item.path)
-                    onSelectFile?.(item.path)
-                  }}
-                >
-                  <span className="pv-result-title">{item.title}</span>
-                </button>
-                <span className={`pv-result-badge ${item.kind}`}>{getResultBadge(item.kind)}</span>
-              </div>
-              <div className="pv-result-meta">
-                <span className="pv-result-action">{item.errorSummary || item.action}</span>
-                <span className="pv-result-time">{formatTimestamp(item.updatedAt)}</span>
-              </div>
-              <div className="pv-result-actions">
-                <button onClick={() => onSelectFile?.(item.path)}>Preview</button>
-                <button onClick={() => onOpenExternal?.(item.path)}>Open</button>
-                <button onClick={() => onOpenFolder?.(item.path)}>Folder</button>
-                <button onClick={() => onCopyPath?.(item.path)}>Copy Path</button>
-              </div>
-            </div>
-          ))
-        )}
+      <div className="pv-group">
+        <div className="pv-group-label">Connectors</div>
+        {renderItems(connectors, 'meta')}
+      </div>
+      <div className="pv-group">
+        <div className="pv-group-label">Skills</div>
+        {renderItems(skills, 'meta')}
       </div>
     </div>
   )
@@ -293,23 +338,38 @@ export default function PreviewPanel({
   onResize,
   currentWorkspace,
   workspaceFiles = [],
+  workspaceDirectories = [],
+  workspaceChildrenByDir = {},
   recentResults = [],
   runtimeStatus,
   previewFile,
+  contextUploads = [],
+  contextConnectors = [],
+  contextSkills = [],
   onSelectFile,
   onSelectResult,
+  onToggleWorkspaceDirectory,
   onClosePreview,
   onOpenExternal,
   onOpenFolder,
   onCopyPath,
 }: PreviewPanelProps) {
   const [previewMode, setPreviewMode] = useState<'preview' | 'source'>('preview')
+  const [sections, setSections] = useState({
+    progress: false,
+    workspace: false,
+    context: false,
+  })
   const isDraggingRight = useRef(false)
+  const workbenchBodyRef = useRef<HTMLDivElement | null>(null)
+  const savedWorkbenchScrollRef = useRef(0)
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!isDraggingRight.current) return
-      const newWidth = Math.min(Math.max(window.innerWidth - event.clientX, 280), 620)
+      const minWidth = previewFile ? 520 : 320
+      const maxWidth = previewFile ? 760 : 620
+      const newWidth = Math.min(Math.max(window.innerWidth - event.clientX, minWidth), maxWidth)
       onResize(newWidth)
     }
 
@@ -323,11 +383,22 @@ export default function PreviewPanel({
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [onResize])
+  }, [onResize, previewFile])
 
   useEffect(() => {
     setPreviewMode('preview')
   }, [previewFile?.path])
+
+  useEffect(() => {
+    if (previewFile) {
+      savedWorkbenchScrollRef.current = workbenchBodyRef.current?.scrollTop || 0
+      return
+    }
+
+    if (workbenchBodyRef.current) {
+      workbenchBodyRef.current.scrollTop = savedWorkbenchScrollRef.current
+    }
+  }, [previewFile])
 
   const highlightedContent = useMemo(() => {
     if (!previewFile || previewFile.type !== 'text' || !previewFile.content) return ''
@@ -343,7 +414,7 @@ export default function PreviewPanel({
   }, [previewFile])
 
   const markdownHtml = useMemo(() => {
-    if (!previewFile || previewFile.ext.toLowerCase() !== '.md' || !previewFile.content) return ''
+    if (!previewFile || previewFile.type !== 'text' || previewFile.ext.toLowerCase() !== '.md' || !previewFile.content) return ''
     return renderMarkdown(previewFile.content)
   }, [previewFile])
 
@@ -381,16 +452,21 @@ export default function PreviewPanel({
     )
   }
 
-  const hasPreview = previewFile?.type === 'image' || previewFile?.ext.toLowerCase() === '.md'
+  const hasPreview =
+    previewFile?.type === 'image'
+    || previewFile?.type === 'pdf'
+    || previewFile?.type === 'docx'
+    || previewFile?.ext.toLowerCase() === '.md'
   const canShowSource = previewFile?.type === 'text'
   const currentArtifact = recentResults[0] || null
   const workspaceLabel =
     currentWorkspace?.split(/[\\/]/).filter(Boolean).pop() ||
     currentWorkspace ||
     'No folder'
+  const effectiveWidth = previewFile ? Math.max(panelWidth, 560) : panelWidth
 
   return (
-    <div className="prev" style={{ width: panelWidth, position: 'relative', overflow: 'hidden' }}>
+    <div className={`prev ${previewFile ? 'preview-mode' : 'workbench-mode'}`} style={{ width: effectiveWidth, position: 'relative', overflow: 'hidden' }}>
       <div
         className="resize-h"
         style={{ left: -2 }}
@@ -427,14 +503,32 @@ export default function PreviewPanel({
               </button>
             )}
             {previewFile && (
-              <button
-                className="pv-op a pv-op-text"
-                title="Open externally"
-                aria-label="Open externally"
-                onClick={() => onOpenExternal?.(previewFile.path)}
-              >
-                Open
-              </button>
+              <>
+                <button
+                  className="pv-op a pv-op-text"
+                  title="Open externally"
+                  aria-label="Open externally"
+                  onClick={() => onOpenExternal?.(previewFile.path)}
+                >
+                  Open
+                </button>
+                <button
+                  className="pv-op a pv-op-text"
+                  title="Open folder"
+                  aria-label="Open folder"
+                  onClick={() => onOpenFolder?.(previewFile.path)}
+                >
+                  Folder
+                </button>
+                <button
+                  className="pv-op a pv-op-text"
+                  title="Copy path"
+                  aria-label="Copy path"
+                  onClick={() => onCopyPath?.(previewFile.path)}
+                >
+                  Copy
+                </button>
+              </>
             )}
             <button onClick={onToggleCollapse} className="pv-op" title="Hide panel" aria-label="Hide panel">
               x
@@ -449,7 +543,7 @@ export default function PreviewPanel({
                 <img
                   src={previewFile.content}
                   alt={previewFile.name}
-                  style={{ maxWidth: '100%', maxHeight: 380, objectFit: 'contain' }}
+                  style={{ maxWidth: '100%', maxHeight: 520, objectFit: 'contain' }}
                 />
               </div>
             )}
@@ -476,33 +570,109 @@ export default function PreviewPanel({
               </div>
             )}
 
+            {previewFile.type === 'pdf' && (
+              <iframe
+                title={previewFile.name}
+                src={previewFile.content}
+                className="pv-pdf-frame"
+              />
+            )}
+
+            {previewFile.type === 'docx' && (
+              <div className="pv-md pv-office-doc" dangerouslySetInnerHTML={{ __html: previewFile.content }} />
+            )}
+
+            {previewFile.type === 'pptx' && (
+              <div className="pv-office-stack">
+                {previewFile.slides.length === 0 ? (
+                  <div className="pv-empty-note">No slide text could be extracted from this presentation.</div>
+                ) : (
+                  previewFile.slides.map((slide) => (
+                    <div key={`${previewFile.path}-${slide.index}`} className="pv-office-card">
+                      <div className="pv-office-kicker">{`Slide ${slide.index}`}</div>
+                      <div className="pv-office-title">{slide.title}</div>
+                      <div className="pv-office-copy">{slide.summary}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {previewFile.type === 'xlsx' && (
+              <div className="pv-office-stack">
+                {previewFile.workbook.sheets.map((sheet) => (
+                  <div key={`${previewFile.path}-${sheet.name}`} className="pv-office-card">
+                    <div className="pv-office-title">{sheet.name}</div>
+                    {sheet.rows.length === 0 ? (
+                      <div className="pv-empty-note pv-empty-inline">No visible rows in this sheet preview.</div>
+                    ) : (
+                      <div className="pv-sheet-wrap">
+                        <table className="pv-sheet-table">
+                          <tbody>
+                            {sheet.rows.map((row, rowIndex) => (
+                              <tr key={`${sheet.name}-${rowIndex}`}>
+                                {row.map((cell, cellIndex) => (
+                                  <td key={`${sheet.name}-${rowIndex}-${cellIndex}`}>{cell}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {previewFile.type === 'binary' && (
               <div style={{ padding: 20, color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>
-                <div style={{ marginBottom: 8 }}>Preview not available for this file type.</div>
+                <div style={{ marginBottom: 8 }}>{previewFile.reason || 'Preview not available for this file type.'}</div>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{previewFile.path}</div>
               </div>
             )}
           </div>
         ) : (
-          <div className="pv-body">
-            <ProgressSection runtimeStatus={runtimeStatus} currentArtifact={currentArtifact} />
+          <div ref={workbenchBodyRef} className="pv-body pv-workbench-body">
+            <SectionShell
+              title="Progress"
+              badge={runtimeStatus?.statusLabel || 'Idle'}
+              collapsed={sections.progress}
+              onToggle={() => setSections((previous) => ({ ...previous, progress: !previous.progress }))}
+            >
+              <ProgressSection runtimeStatus={runtimeStatus} currentArtifact={currentArtifact} />
+            </SectionShell>
 
-            <WorkspaceSection
+            <SectionShell
               title="Workspace"
               badge={workspaceLabel}
-              items={workspaceFiles}
-              emptyText="No files found in the current workspace yet."
-              onSelectFile={onSelectFile}
-            />
+              collapsed={sections.workspace}
+              onToggle={() => setSections((previous) => ({ ...previous, workspace: !previous.workspace }))}
+            >
+              <WorkspaceSection
+                files={workspaceFiles}
+                directories={workspaceDirectories}
+                expandedDirectories={workspaceChildrenByDir}
+                onSelectFile={onSelectFile}
+                onToggleDirectory={onToggleWorkspaceDirectory}
+              />
+            </SectionShell>
 
-            <ResultSection
-              items={recentResults}
-              onSelectFile={onSelectFile}
-              onSelectResult={onSelectResult}
-              onOpenExternal={onOpenExternal}
-              onOpenFolder={onOpenFolder}
-              onCopyPath={onCopyPath}
-            />
+            <SectionShell
+              title="Context"
+              collapsed={sections.context}
+              onToggle={() => setSections((previous) => ({ ...previous, context: !previous.context }))}
+            >
+              <ContextSection
+                uploads={contextUploads}
+                connectors={contextConnectors}
+                skills={contextSkills}
+                onSelectFile={(path) => {
+                  onSelectResult?.(path)
+                  onSelectFile?.(path)
+                }}
+              />
+            </SectionShell>
           </div>
         )}
       </div>
