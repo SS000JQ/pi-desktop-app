@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { vi } from 'vitest'
 import PreviewPanel from '../../src/renderer/src/components/PreviewPanel'
 
 describe('PreviewPanel', () => {
@@ -113,9 +114,9 @@ describe('PreviewPanel', () => {
       />,
     )
 
-    const frame = screen.getByTitle('report.pdf') as HTMLIFrameElement
+    const frame = screen.getByLabelText('report.pdf') as HTMLObjectElement
     expect(frame).toBeTruthy()
-    expect(frame.src).toContain('file:///D:/PI/app/report.pdf')
+    expect(frame.getAttribute('data')).toContain('file:///D:/PI/app/report.pdf')
   })
 
   it('renders office summaries for docx, pptx, and xlsx previews', async () => {
@@ -220,5 +221,59 @@ describe('PreviewPanel', () => {
     expect(screen.getByRole('button', { name: 'Open externally' }).textContent).toBe('Open')
     expect(screen.getByRole('button', { name: 'Hide panel' }).textContent).toBe('x')
     expect(screen.getByRole('button', { name: 'Back to results' }).textContent).toBe('Back')
+  })
+
+  it('allows nested workspace folders to keep expanding and nested files to be previewed', async () => {
+    const toggleDirectory = vi.fn()
+    const selectFile = vi.fn()
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={360}
+        onResize={() => {}}
+        currentWorkspace="D:/PI/app"
+        workspaceDirectories={[
+          {
+            name: 'projects',
+            path: 'D:/PI/app/projects',
+            isDir: true,
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          },
+        ]}
+        workspaceChildrenByDir={{
+          'D:/PI/app/projects': [
+            {
+              name: 'client-a',
+              path: 'D:/PI/app/projects/client-a',
+              isDir: true,
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            },
+          ],
+          'D:/PI/app/projects/client-a': [
+            {
+              name: 'brief.md',
+              path: 'D:/PI/app/projects/client-a/brief.md',
+              isDir: false,
+              size: 120,
+              modifiedAt: new Date().toISOString(),
+            },
+          ],
+        }}
+        onToggleWorkspaceDirectory={toggleDirectory}
+        onSelectFile={selectFile}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'projects' }))
+    fireEvent.click(screen.getByRole('button', { name: 'client-a' }))
+    fireEvent.click(screen.getByRole('button', { name: 'brief.md' }))
+
+    expect(toggleDirectory).toHaveBeenCalledWith('D:/PI/app/projects')
+    expect(toggleDirectory).toHaveBeenCalledWith('D:/PI/app/projects/client-a')
+    expect(selectFile).toHaveBeenCalledWith('D:/PI/app/projects/client-a/brief.md')
   })
 })

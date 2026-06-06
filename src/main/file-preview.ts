@@ -32,7 +32,23 @@ export type FilePreviewData =
   | { type: 'binary'; ext?: string; reason?: string }
 
 const textExtensions = new Set([
+  '.bat',
+  '.c',
+  '.cpp',
+  '.cjs',
+  '.conf',
+  '.env',
+  '.gitignore',
+  '.ini',
+  '.java',
+  '.jsx',
+  '.log',
   '.md',
+  '.mdx',
+  '.mjs',
+  '.ps1',
+  '.scss',
+  '.sql',
   '.txt',
   '.ts',
   '.tsx',
@@ -43,7 +59,10 @@ const textExtensions = new Set([
   '.json',
   '.css',
   '.html',
+  '.htm',
+  '.toml',
   '.yaml',
+  '.yml',
   '.xml',
   '.sh',
 ])
@@ -156,18 +175,26 @@ export async function readPreviewFile(filePath: string): Promise<FilePreviewData
   }
 
   if (ext === '.pdf') {
-    return { type: 'pdf', content: pathToFileURL(filePath).toString() }
+    return { type: 'pdf', content: `${pathToFileURL(filePath).toString()}#toolbar=0&navpanes=0` }
   }
 
   if (ext === '.docx') {
     return readDocxPreview(filePath)
   }
 
-  if (ext === '.xlsx' || ext === '.xls' || ext === '.csv') {
+  if (ext === '.doc' || ext === '.ppt' || ext === '.xls') {
+    return {
+      type: 'binary',
+      ext,
+      reason: 'Legacy Office files are not supported for in-app preview yet. Use Open to view them externally.',
+    }
+  }
+
+  if (ext === '.xlsx' || ext === '.csv') {
     return readXlsxPreview(filePath)
   }
 
-  if (ext === '.pptx' || ext === '.ppt') {
+  if (ext === '.pptx') {
     return readPptxPreview(filePath)
   }
 

@@ -443,7 +443,7 @@ export default function App() {
       return []
     }
 
-    if (!response.success || !Array.isArray(response.data)) {
+    if (!response?.success || !Array.isArray(response.data)) {
       setWorkspaceFiles([])
       return []
     }
@@ -460,7 +460,7 @@ export default function App() {
       return []
     }
 
-    if (!response.success || !Array.isArray(response.data)) {
+    if (!response?.success || !Array.isArray(response.data)) {
       setWorkspaceChildrenByDir((previous) => ({ ...previous, [dir]: [] }))
       return []
     }
@@ -526,7 +526,20 @@ export default function App() {
 
   const handleOpenPreviewFile = useCallback(async (path: string) => {
     const response = await window.piDesktop.files.read(path)
-    if (!response.success || !response.data) return
+    const ext = path.includes('.') ? `.${path.split('.').pop()?.toLowerCase() || ''}` : ''
+    const name = path.split(/[/\\]/).pop() || path
+
+    if (!response.success || !response.data) {
+      setPreviewFile({
+        path,
+        name,
+        ext,
+        type: 'binary',
+        reason: response.error || 'Preview unavailable',
+      })
+      setRightPanelCollapsed(false)
+      return
+    }
 
     if (activeSessionId && window.piDesktop.artifacts?.view) {
       void window.piDesktop.artifacts.view({ sessionId: activeSessionId, path }).then(() => {
@@ -534,8 +547,6 @@ export default function App() {
       })
     }
 
-    const ext = path.includes('.') ? `.${path.split('.').pop()?.toLowerCase() || ''}` : ''
-    const name = path.split(/[/\\]/).pop() || path
     setPreviewFile({
       path,
       name,
@@ -938,18 +949,37 @@ export default function App() {
         updatedAt: string
       }
 
-      await loadSessions()
-      await window.piDesktop.config.set('workingDirectory', created.cwd)
-      setActiveSessionId(created.id)
-      setActiveSessionPath(created.path)
-      setCurrentDir(created.cwd)
       setWorkspaceChildrenByDir({})
       setMessages([])
       setPreviewFile(null)
       setActiveArtifactId(null)
       setShowNewSessionDialog(false)
+      await window.piDesktop.config.set('workingDirectory', created.cwd)
+
+      const detailResponse = await window.piDesktop.session.switch(created.path)
+      if (detailResponse.success && detailResponse.data) {
+        const detail = detailResponse.data as {
+          sessionId: string
+          sessionPath: string
+          cwd: string
+          title: string
+          messages: unknown[]
+          model: string | null
+          thinkingLevel: string
+          tokenCount: number
+        }
+        syncSessionDetail(detail)
+        await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
+      } else {
+        setActiveSessionId(created.id)
+        setActiveSessionPath(created.path)
+        setCurrentDir(created.cwd)
+        await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.id)])
+      }
+
+      await loadSessions()
     },
-    [loadSessions],
+    [loadArtifacts, loadSessions, loadWorkspaceFiles, syncSessionDetail],
   )
 
   const handleComposerCommand = useCallback((command: string) => {

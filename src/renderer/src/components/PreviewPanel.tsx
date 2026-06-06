@@ -218,6 +218,43 @@ function WorkspaceSection({
   onSelectFile?: (path: string) => void
   onToggleDirectory?: (path: string) => void
 }) {
+  const renderEntries = (entries: WorkspaceFileEntry[], depth = 0): ReactNode =>
+    entries.map((entry) => {
+      const expanded = entry.isDir && Boolean(expandedDirectories[entry.path])
+      const children = entry.isDir ? expandedDirectories[entry.path] || [] : []
+
+      return (
+        <div key={entry.path} className="pv-dir-wrap">
+          <div className="ft" title={entry.path}>
+            <button
+              className="pv-file-button"
+              onClick={() => {
+                if (entry.isDir) {
+                  onToggleDirectory?.(entry.path)
+                  return
+                }
+                onSelectFile?.(entry.path)
+              }}
+            >
+              <span className="n">{entry.name}</span>
+            </button>
+            <span className="ft-dd">
+              {entry.isDir ? (expanded ? 'Hide' : 'Show') : formatTimestamp(entry.modifiedAt)}
+            </span>
+          </div>
+          {entry.isDir && expanded && (
+            <div className="ft-in" style={{ marginLeft: Math.min(depth, 4) * 8 }}>
+              {children.length === 0 ? (
+                <div className="pv-empty-note pv-empty-inline">No items in this folder.</div>
+              ) : (
+                renderEntries(children, depth + 1)
+              )}
+            </div>
+          )}
+        </div>
+      )
+    })
+
   return (
     <div className="pv-stack">
       {files.length > 0 && (
@@ -237,41 +274,7 @@ function WorkspaceSection({
       {directories.length > 0 && (
         <div className="pv-group">
           <div className="pv-group-label">Folders</div>
-          {directories.map((entry) => {
-            const expanded = Boolean(expandedDirectories[entry.path])
-            const children = expandedDirectories[entry.path] || []
-
-            return (
-              <div key={entry.path} className="pv-dir-wrap">
-                <div className="ft" title={entry.path}>
-                  <button className="pv-file-button" onClick={() => onToggleDirectory?.(entry.path)}>
-                    <span className="n">{entry.name}</span>
-                  </button>
-                  <span className="ft-dd">{expanded ? 'Hide' : 'Show'}</span>
-                </div>
-                {expanded && (
-                  <div className="ft-in">
-                    {children.length === 0 ? (
-                      <div className="pv-empty-note pv-empty-inline">No items in this folder.</div>
-                    ) : (
-                      children.map((child) => (
-                        <div key={child.path} className="ft" title={child.path}>
-                          <button
-                            className="pv-file-button"
-                            onClick={() => !child.isDir && onSelectFile?.(child.path)}
-                            disabled={child.isDir}
-                          >
-                            <span className="n">{child.name}</span>
-                          </button>
-                          <span className="ft-dd">{child.isDir ? 'Folder' : formatTimestamp(child.modifiedAt)}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {renderEntries(directories)}
         </div>
       )}
 
@@ -571,11 +574,22 @@ export default function PreviewPanel({
             )}
 
             {previewFile.type === 'pdf' && (
-              <iframe
-                title={previewFile.name}
-                src={previewFile.content}
-                className="pv-pdf-frame"
-              />
+              <div className="pv-pdf-wrap">
+                <div className="pv-empty-note pv-empty-inline">
+                  PDF preview depends on the local Chromium PDF renderer. If this file shows blank, use `Open`.
+                </div>
+                <object
+                  aria-label={previewFile.name}
+                  data={previewFile.content}
+                  type="application/pdf"
+                  className="pv-pdf-frame"
+                >
+                  <div style={{ padding: 20, color: 'rgba(255,255,255,0.42)', fontSize: 12 }}>
+                    <div style={{ marginBottom: 8 }}>Preview unavailable for this PDF in the current renderer.</div>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{previewFile.path}</div>
+                  </div>
+                </object>
+              </div>
             )}
 
             {previewFile.type === 'docx' && (
@@ -627,6 +641,7 @@ export default function PreviewPanel({
 
             {previewFile.type === 'binary' && (
               <div style={{ padding: 20, color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>
+                <div style={{ marginBottom: 8, color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>Preview unavailable</div>
                 <div style={{ marginBottom: 8 }}>{previewFile.reason || 'Preview not available for this file type.'}</div>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{previewFile.path}</div>
               </div>

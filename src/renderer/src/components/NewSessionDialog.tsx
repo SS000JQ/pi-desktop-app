@@ -23,10 +23,15 @@ export default function NewSessionDialog({
 
   useEffect(() => {
     if (!isOpen) return
-    setSelectedMode(currentDir ? 'current' : 'default')
-    setSelectedDir(currentDir || directoryOptions[0] || '')
-    setCustomDir('')
-  }, [currentDir, directoryOptions, isOpen])
+    setSelectedDir((previous) => previous || currentDir || directoryOptions[0] || '')
+    setCustomDir((previous) => previous)
+    setSelectedMode((previous) => {
+      if (previous === 'custom' && customDir.trim()) return previous
+      if (previous === 'known' && selectedDir) return previous
+      if (previous === 'default') return previous
+      return currentDir ? 'current' : 'default'
+    })
+  }, [currentDir, customDir, directoryOptions, isOpen, selectedDir])
 
   if (!isOpen) {
     return null
@@ -41,7 +46,7 @@ export default function NewSessionDialog({
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.26)', lineHeight: 1.6 }}>
-            Choose where this Pi session should live.
+            Choose the working folder this Pi session should use.
             {' '}
             If you skip directory selection, Pi Desktop will create it under Pi-Desktop-Session.
           </div>

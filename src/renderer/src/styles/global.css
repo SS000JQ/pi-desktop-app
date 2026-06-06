@@ -1003,6 +1003,7 @@ body {
   gap: 10px;
   padding: 10px 10px 16px;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .c-sec {
@@ -1010,6 +1011,7 @@ body {
   border-radius: 12px;
   background: rgba(255,255,255,0.025);
   overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .c-sec.is-collapsed {
@@ -1106,6 +1108,7 @@ body {
   padding-left: 12px;
   border-left: 1px solid rgba(255,255,255,0.05);
   margin-left: 10px;
+  min-width: 0;
 }
 
 .pv-context-item {
@@ -1142,26 +1145,34 @@ body {
 }
 
 .pv-workbench-body .c-sec:nth-child(1) .c-bd {
-  max-height: 220px;
+  max-height: 260px;
   overflow: auto;
 }
 
 .pv-workbench-body .c-sec:nth-child(2) .c-bd {
-  max-height: 460px;
+  max-height: 520px;
   overflow: auto;
 }
 
 .pv-workbench-body .c-sec:nth-child(3) .c-bd {
-  max-height: 400px;
+  max-height: 440px;
   overflow: auto;
+}
+
+.pv-pdf-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
 }
 
 .pv-pdf-frame {
   width: 100%;
-  height: 100%;
+  height: 78vh;
   min-height: 720px;
   border: none;
   background: white;
+  border-radius: 12px;
 }
 
 .pv-office-doc {

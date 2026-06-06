@@ -299,7 +299,7 @@ describe('App', () => {
     expect(await screen.findByText('Real Pi Session')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
-    expect(await screen.findByText(/Choose where this Pi session should live/)).toBeTruthy()
+    expect(await screen.findByText(/Choose the working folder this Pi session should use/)).toBeTruthy()
 
     fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
       target: { value: 'D:/PI/client-a' },
@@ -428,6 +428,93 @@ describe('App', () => {
     })
   })
 
+  it('keeps the last manually chosen folder in the new chat dialog instead of resetting to the current workspace every time', async () => {
+    window.piDesktop = createPiDesktopMock()
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-z' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    expect(screen.getByDisplayValue('D:/PI/client-z')).toBeTruthy()
+  })
+
+  it('rehydrates a newly created session from Pi session detail instead of keeping the old workspace state', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-6',
+        path: 'C:/Users/test/.pi/agent/sessions/client-d/session-6.jsonl',
+        cwd: 'D:/PI/client-d',
+        title: 'Client D Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+    const switchMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        sessionId: 'session-6',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/client-d/session-6.jsonl',
+        cwd: 'D:/PI/client-d',
+        title: 'Client D Session',
+        model: 'openai/gpt-4o-mini',
+        thinkingLevel: 'medium',
+        messages: [],
+        tokenCount: 0,
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        create: createMock,
+        switch: switchMock,
+      },
+      files: {
+        ...createPiDesktopMock().files,
+        list: vi
+          .fn()
+          .mockResolvedValueOnce({ success: true, data: [] })
+          .mockResolvedValueOnce({
+            success: true,
+            data: [
+              {
+                name: 'client-d-brief.md',
+                path: 'D:/PI/client-d/client-d-brief.md',
+                isDir: false,
+                size: 400,
+                modifiedAt: new Date().toISOString(),
+              },
+            ],
+          }),
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-d' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({ cwd: 'D:/PI/client-d' })
+    })
+    await waitFor(() => {
+      expect(switchMock).toHaveBeenCalledWith('C:/Users/test/.pi/agent/sessions/client-d/session-6.jsonl')
+    })
+    expect(screen.getAllByText('D:/PI/client-d').length).toBeGreaterThan(0)
+  })
+
   it('keeps the left sidebar focused on sessions with models and skills as secondary actions', async () => {
     window.piDesktop = createPiDesktopMock()
 
@@ -495,6 +582,40 @@ describe('App', () => {
     expect(screen.getAllByText('report.md').length).toBeGreaterThan(0)
     expect(screen.getAllByText('brief.docx').length).toBeGreaterThan(0)
     expect(screen.getByText('assets')).toBeTruthy()
+  })
+
+  it('shows an explicit preview failure instead of silently doing nothing when a file cannot be read', async () => {
+    window.piDesktop = createPiDesktopMock({
+      files: {
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              name: 'report.pdf',
+              path: 'D:/PI/app/report.pdf',
+              isDir: false,
+              size: 2048,
+              modifiedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        read: vi.fn().mockResolvedValue({
+          success: false,
+          error: 'Permission denied while reading preview',
+        }),
+        save: vi.fn().mockResolvedValue({ success: true }),
+        open: vi.fn().mockResolvedValue({ success: true }),
+        pickDirectory: vi.fn().mockResolvedValue({ success: true, data: null }),
+      },
+    })
+
+    render(<App />)
+
+    expect((await screen.findAllByText('report.pdf')).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getAllByText('report.pdf')[0])
+
+    expect(await screen.findByText('Preview unavailable')).toBeTruthy()
+    expect(screen.getByText('Permission denied while reading preview')).toBeTruthy()
   })
 
   it('shows a preparing status immediately after the user sends a message', async () => {

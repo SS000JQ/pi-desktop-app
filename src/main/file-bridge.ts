@@ -59,6 +59,8 @@ export function canPreview(ext: string): boolean {
   const e = ext.toLowerCase()
   return [
     '.md',
+    '.csv',
+    '.pdf',
     '.pptx',
     '.docx',
     '.xlsx',
