@@ -1213,6 +1213,341 @@ body {
   color: rgba(255,255,255,0.42);
 }
 
+.pv-viewer-shell,
+.pv-pptx-viewer,
+.pv-image-viewer {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.pv-viewer-toolbar,
+.pv-pptx-toolbar,
+.pv-image-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 18px 0;
+}
+
+.pv-mini-btn,
+.pv-pptx-nav,
+.pv-mode-chip {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.62);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.pv-mini-btn:hover:not(:disabled),
+.pv-pptx-nav:hover:not(:disabled),
+.pv-mode-chip:hover:not(:disabled),
+.pv-mode-chip.active {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+}
+
+.pv-mode-chip.active {
+  color: rgba(255,255,255,0.84);
+}
+
+.pv-mini-btn:disabled,
+.pv-pptx-nav:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pv-viewer-status,
+.pv-pptx-status {
+  min-width: 72px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.34);
+}
+
+.pv-viewer-stage,
+.pv-pptx-stage,
+.pv-image-stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 18px;
+}
+
+.pv-viewer-loading,
+.pv-pptx-loading {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.32);
+}
+
+.pv-canvas-shell,
+.pv-pptx-canvas-shell,
+.pv-image-stage,
+.pv-docx-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 420px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top, rgba(255,255,255,0.05), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+}
+
+.pv-doc-canvas,
+.pv-pptx-canvas,
+.pv-image-canvas {
+  max-width: 100%;
+  max-height: 72vh;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.24);
+}
+
+.pv-pptx-frame {
+  width: min(100%, 920px);
+  height: min(72vh, 680px);
+  border: none;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.24);
+}
+
+.pv-pptx-stage-shell {
+  justify-content: flex-start;
+  padding: 12px 12px 16px;
+}
+
+.pv-pptx-frame-wrap {
+  align-items: stretch;
+  justify-content: stretch;
+  flex: 1;
+  min-height: 520px;
+  height: calc(100vh - 190px);
+  padding: 0;
+  overflow: hidden;
+}
+
+.pv-pptx-frame {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.pv-body.pv-pptx-preview-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pv-pptx-shell {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.pv-pptx-shell .pv-viewer-toolbar {
+  flex-shrink: 0;
+  padding: 12px 18px 8px;
+}
+
+.pv-pptx-stage-shell {
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.pv-pptx-frame-wrap {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  flex: 1;
+}
+
+.pv-pptx-fallback-shell {
+  overflow-y: auto;
+}
+
+.pv-fallback-alert,
+.pv-pptx-alert {
+  margin: 18px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,159,10,0.18);
+  border-radius: 12px;
+  background: rgba(255,159,10,0.08);
+  color: rgba(255,214,153,0.88);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.pv-html-wrap {
+  padding: 16px;
+}
+
+.pv-html-frame {
+  width: 100%;
+  min-height: 78vh;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.pv-md {
+  max-width: 760px;
+}
+
+.pv-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+  color: rgba(255,255,255,0.54);
+}
+
+.pv-md th,
+.pv-md td {
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.pv-md th {
+  color: rgba(255,255,255,0.78);
+  background: rgba(255,255,255,0.04);
+  text-align: left;
+}
+
+.pv-md blockquote {
+  margin: 12px 0;
+  padding-left: 14px;
+  border-left: 2px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.38);
+}
+
+.pv-md a {
+  color: rgba(98,176,255,0.92);
+}
+
+.pv-md code {
+  font-family: var(--font);
+  background: rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+.pv-md-code {
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  margin: 12px 0;
+}
+
+.pv-md-code code {
+  background: transparent;
+  padding: 0;
+}
+
+.pv-md-image {
+  display: block;
+  max-width: 100%;
+  border-radius: 12px;
+  margin: 14px 0;
+}
+
+.pv-docx-wrap {
+  align-items: flex-start;
+  overflow: auto;
+}
+
+.pv-docx-root {
+  width: 100%;
+}
+
+.pv-docx-root .pv-docx-stage-wrapper,
+.pv-docx-root .pv-docx-stage {
+  width: 100%;
+}
+
+.pv-sheet-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 18px 18px 0;
+}
+
+.pv-sheet-tab {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.02);
+  color: rgba(255,255,255,0.42);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.pv-sheet-tab.active {
+  background: rgba(0,122,255,0.08);
+  border-color: rgba(0,122,255,0.2);
+  color: rgba(152,208,255,0.94);
+}
+
+.pv-sheet-stage {
+  padding: 18px;
+}
+
+.pv-sheet-grid-wrap {
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.015);
+}
+
+.pv-sheet-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  color: rgba(255,255,255,0.56);
+}
+
+.pv-sheet-grid td {
+  min-width: 96px;
+  padding: 8px 10px;
+  border-right: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: top;
+  background: rgba(255,255,255,0.015);
+}
+
+.pv-sheet-grid td.is-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #232222;
+  color: rgba(255,255,255,0.8);
+}
+
+.pv-image-stage {
+  overflow: auto;
+  align-items: flex-start;
+}
+
 .pv-sheet-wrap {
   overflow: auto;
   border: 1px solid rgba(255,255,255,0.05);

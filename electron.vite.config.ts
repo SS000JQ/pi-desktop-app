@@ -33,7 +33,8 @@ export default defineConfig({
       outDir: 'out/renderer',
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/renderer/index.html')
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          'pptx-viewer': resolve(__dirname, 'src/renderer/pptx-viewer.html')
         }
       }
     },

@@ -39,6 +39,7 @@ export default function TopBar({
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showDirPicker, setShowDirPicker] = useState(false)
   const [showThinkingPicker, setShowThinkingPicker] = useState(false)
+  const currentDirLabel = currentDir || 'Choose workspace...'
 
   return (
     <div className="topbar drag-region">
@@ -47,15 +48,15 @@ export default function TopBar({
       <div className="topbar-path-wrap">
         <button
           className="topbar-path-btn no-drag"
-          title={currentDir}
+          title={currentDirLabel}
           onClick={() => setShowDirPicker((state) => !state)}
         >
-          {currentDir}
+          {currentDirLabel}
         </button>
         {showDirPicker && (
           <div className="topbar-menu topbar-menu-left no-drag">
             {directoryOptions.length === 0 ? (
-              <div className="topbar-menu-empty">No directories available</div>
+              <div className="topbar-menu-empty">No directories available yet</div>
             ) : (
               <>
                 {directoryOptions.map((dir) => (
@@ -71,17 +72,17 @@ export default function TopBar({
                     {dir}
                   </button>
                 ))}
-                <button
-                  className="topbar-menu-item"
-                  onClick={() => {
-                    onBrowseDirectory?.()
-                    setShowDirPicker(false)
-                  }}
-                >
-                  Browse folders...
-                </button>
               </>
             )}
+            <button
+              className="topbar-menu-item"
+              onClick={() => {
+                onBrowseDirectory?.()
+                setShowDirPicker(false)
+              }}
+            >
+              Browse folders...
+            </button>
           </div>
         )}
       </div>

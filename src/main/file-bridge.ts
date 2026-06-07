@@ -70,6 +70,7 @@ export function canPreview(ext: string): boolean {
     '.gif',
     '.svg',
     '.html',
+    '.htm',
     '.txt',
     '.ts',
     '.tsx',
@@ -104,12 +105,12 @@ export function canEdit(ext: string): boolean {
 
 export function hasPreview(ext: string): boolean {
   const e = ext.toLowerCase()
-  return ['.md', '.html'].includes(e)
+  return ['.md', '.html', '.htm'].includes(e)
 }
 
 export function hasSource(ext: string): boolean {
   const e = ext.toLowerCase()
-  return ['.md'].includes(e)
+  return ['.md', '.html', '.htm'].includes(e)
 }
 
 export async function openInExternalEditor(filePath: string): Promise<void> {

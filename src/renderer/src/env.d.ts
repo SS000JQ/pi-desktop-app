@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   ProviderCatalogEntry,
   ProviderConnectionResult,
+  FilePreviewData,
   ProviderModel,
   ProviderSummary,
 } from './types/chat'
@@ -80,35 +81,11 @@ interface ArtifactEntity {
   versions: ArtifactVersion[]
 }
 
-type FilePreviewData =
-  | { type: 'text'; content: string }
-  | { type: 'image'; content: string }
-  | { type: 'pdf'; content: string }
-  | { type: 'docx'; content: string }
-  | {
-      type: 'pptx'
-      slides: Array<{
-        index: number
-        title: string
-        summary: string
-      }>
-    }
-  | {
-      type: 'xlsx'
-      workbook: {
-        sheetNames: string[]
-        sheets: Array<{
-          name: string
-          rows: string[][]
-        }>
-      }
-    }
-  | { type: 'binary'; ext?: string; reason?: string }
-
 interface PiDesktopApi {
   chat: {
     send: (payload: {
       text: string
+      cwd?: string
       modelId?: string
       sessionId?: string
       sessionPath?: string
@@ -129,8 +106,14 @@ interface PiDesktopApi {
     create: (payload?: { cwd?: string }) => Promise<IpcResponse<{
       id: string
       path: string
+      sessionId?: string
+      sessionPath?: string
       cwd: string
       title: string
+      messages?: unknown[]
+      model?: string | null
+      thinkingLevel?: string
+      tokenCount?: number
       source: 'pi'
       createdAt: string
       updatedAt: string

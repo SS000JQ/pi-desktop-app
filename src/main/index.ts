@@ -257,11 +257,12 @@ ipcMain.handle(
       text: string
       sessionId?: string
       sessionPath?: string
+      cwd?: string
       modelId?: string
       thinkingLevel?: string
     },
   ) => {
-    const cwd = resolveWorkingDirectory()
+    const cwd = payload.cwd?.trim() || resolveWorkingDirectory()
     const sessionDetail = payload.sessionPath ? await openPiSession(payload.sessionPath) : await createPiSession(cwd)
     const sessionId = sessionDetail.sessionId
     const sessionPath = sessionDetail.sessionPath
@@ -500,8 +501,14 @@ ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, payload?: { cwd?: str
     data: {
       id: session.sessionId,
       path: session.sessionPath,
+      sessionId: session.sessionId,
+      sessionPath: session.sessionPath,
       cwd: session.cwd,
       title: session.title,
+      messages: session.messages,
+      model: session.model,
+      thinkingLevel: session.thinkingLevel,
+      tokenCount: session.tokenCount,
       source: 'pi',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

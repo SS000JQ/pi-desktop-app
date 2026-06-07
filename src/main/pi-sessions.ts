@@ -1,4 +1,5 @@
-import { basename } from 'path'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { basename, dirname } from 'path'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { loadPiCodingAgentModule } from './pi-sdk'
 import { getProviderByModelKey } from './providers'
@@ -33,6 +34,16 @@ type SupportedSessionMessage = AgentMessage & {
 
 interface UsageLike {
   totalTokens?: number
+}
+
+function persistSessionHeaderIfNeeded(
+  sessionPath: string,
+  header: object | null,
+): void {
+  if (!header || existsSync(sessionPath)) return
+
+  mkdirSync(dirname(sessionPath), { recursive: true })
+  writeFileSync(sessionPath, `${JSON.stringify(header)}\n`, { flag: 'wx' })
 }
 
 function extractTextContent(content: unknown): string {
@@ -149,6 +160,8 @@ export async function createPiSession(cwd: string): Promise<PiSessionDetail> {
   if (!sessionPath) {
     throw new Error('Failed to create Pi session file')
   }
+
+  persistSessionHeaderIfNeeded(sessionPath, sessionManager.getHeader())
 
   return {
     sessionId: sessionManager.getSessionId(),

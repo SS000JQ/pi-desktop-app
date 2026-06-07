@@ -192,6 +192,28 @@ describe('App', () => {
     expect(screen.getAllByText('OpenAI / GPT-4o Mini').length).toBeGreaterThan(0)
   })
 
+  it('does not fall back to the developer workspace path when no working directory is configured', async () => {
+    window.piDesktop = createPiDesktopMock({
+      config: {
+        get: vi.fn().mockResolvedValue({ success: true, data: null }),
+        set: vi.fn().mockResolvedValue({ success: true }),
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+        getActive: vi.fn().mockResolvedValue({ success: true, data: null }),
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Choose workspace...')).toBeTruthy()
+    expect(screen.queryByText('D:/PI/app')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose workspace...' }))
+    expect(await screen.findByRole('button', { name: 'Browse folders...' })).toBeTruthy()
+  })
+
   it('creates a Pi session implicitly when the user sends a message with no existing sessions', async () => {
     const sendMock = vi.fn().mockResolvedValue({
       success: true,
@@ -260,7 +282,54 @@ describe('App', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
-      expect(sendMock).toHaveBeenCalled()
+      expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+        text: 'continue this task',
+        cwd: 'D:/PI/app',
+      }))
+    })
+  })
+
+  it('passes the selected working directory when the first message creates a new Pi session', async () => {
+    const sendMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        sessionId: 'session-implicit',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-implicit.jsonl',
+        createdNewSession: true,
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      chat: {
+        send: sendMock,
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      config: {
+        get: vi.fn(async (key: string) => {
+          if (key === 'workingDirectory') return { success: true, data: 'D:/PI/client-implicit' }
+          if (key === 'wizardCompleted') return { success: true, data: 'true' }
+          return { success: true, data: null }
+        }),
+        set: vi.fn().mockResolvedValue({ success: true }),
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+        getActive: vi.fn().mockResolvedValue({ success: true, data: null }),
+      },
+    })
+
+    render(<App />)
+
+    const input = await screen.findByPlaceholderText(/Ask Pi/)
+    fireEvent.change(input, { target: { value: 'start in the selected folder' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+        text: 'start in the selected folder',
+        cwd: 'D:/PI/client-implicit',
+      }))
     })
   })
 
@@ -312,6 +381,64 @@ describe('App', () => {
     await waitFor(() => {
       expect(configSetMock).toHaveBeenCalledWith('workingDirectory', 'D:/PI/client-a')
     })
+  })
+
+  it('accepts session details returned directly from create and updates the workspace immediately', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-direct',
+        path: 'C:/Users/test/.pi/agent/sessions/project/session-direct.jsonl',
+        sessionId: 'session-direct',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-direct.jsonl',
+        cwd: 'D:/PI/client-direct',
+        title: 'Direct Session',
+        messages: [],
+        model: null,
+        thinkingLevel: 'medium',
+        tokenCount: 0,
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+    const switchMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        sessionId: 'session-direct',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-direct.jsonl',
+        cwd: 'D:/PI/client-direct',
+        title: 'Direct Session',
+        model: null,
+        thinkingLevel: 'medium',
+        messages: [],
+        tokenCount: 0,
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        create: createMock,
+        switch: switchMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-direct' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({ cwd: 'D:/PI/client-direct' })
+    })
+
+    expect(createMock).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByText('D:/PI/client-direct').length).toBeGreaterThan(0)
   })
 
   it('creates a new session in a known directory instead of always reusing the current one', async () => {
@@ -371,7 +498,7 @@ describe('App', () => {
 
     const knownOption = (await screen.findAllByLabelText('Choose a known directory'))[0]
     fireEvent.click(knownOption)
-    fireEvent.change(screen.getByDisplayValue('D:/PI/app'), {
+    fireEvent.change(screen.getByRole('combobox'), {
       target: { value: 'D:/PI/client-b' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
@@ -442,6 +569,125 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
     expect(screen.getByDisplayValue('D:/PI/client-z')).toBeTruthy()
+  })
+
+  it('respects a known directory selection after the user previously typed a custom path', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-5b',
+        path: 'C:/Users/test/.pi/agent/sessions/project/session-5b.jsonl',
+        cwd: 'D:/PI/client-b',
+        title: 'Client B Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'session-1',
+              path: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+              cwd: 'D:/PI/app',
+              title: 'Real Pi Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 3,
+              source: 'pi',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            {
+              id: 'session-2',
+              path: 'C:/Users/test/.pi/agent/sessions/client-b/session-2.jsonl',
+              cwd: 'D:/PI/client-b',
+              title: 'Client B Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 2,
+              source: 'pi',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        create: createMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-z' },
+    })
+
+    const knownOption = (await screen.findAllByLabelText('Choose a known directory'))[0]
+    fireEvent.click(knownOption)
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'D:/PI/client-b' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({ cwd: 'D:/PI/client-b' })
+    })
+  })
+
+  it('uses the Pi Desktop default folder after the user switches away from a remembered custom path', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-5c',
+        path: 'C:/Users/test/.pi/agent/sessions/project/session-5c.jsonl',
+        cwd: 'C:/Users/test/Pi-Desktop-Session',
+        title: 'Default Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        create: createMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-z' },
+    })
+    fireEvent.click(screen.getByLabelText('Use Pi Desktop default folder'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith(undefined)
+    })
+  })
+
+  it('does not default a new chat back to the current app workspace when opening the dialog', async () => {
+    window.piDesktop = createPiDesktopMock()
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+    expect(radios[radios.length - 1]?.checked).toBe(true)
+    expect(radios[0]?.checked).toBe(false)
   })
 
   it('rehydrates a newly created session from Pi session detail instead of keeping the old workspace state', async () => {
@@ -515,6 +761,91 @@ describe('App', () => {
     expect(screen.getAllByText('D:/PI/client-d').length).toBeGreaterThan(0)
   })
 
+  it('keeps a newly created session visible even if the next session scan has not picked it up yet', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-7',
+        path: 'C:/Users/test/.pi/agent/sessions/client-e/session-7.jsonl',
+        cwd: 'D:/PI/client-e',
+        title: 'Client E Session',
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+    const switchMock = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        sessionId: 'session-7',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/client-e/session-7.jsonl',
+        cwd: 'D:/PI/client-e',
+        title: 'Client E Session',
+        model: 'openai/gpt-4o-mini',
+        thinkingLevel: 'medium',
+        messages: [],
+        tokenCount: 0,
+      },
+    })
+    const listMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          {
+            id: 'session-1',
+            path: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+            cwd: 'D:/PI/app',
+            title: 'Real Pi Session',
+            model: 'openai/gpt-4o-mini',
+            tokenCount: 0,
+            messageCount: 3,
+            source: 'pi',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          {
+            id: 'session-1',
+            path: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+            cwd: 'D:/PI/app',
+            title: 'Real Pi Session',
+            model: 'openai/gpt-4o-mini',
+            tokenCount: 0,
+            messageCount: 3,
+            source: 'pi',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        list: listMock,
+        create: createMock,
+        switch: switchMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.change(screen.getByPlaceholderText('D:/Work/My Project'), {
+      target: { value: 'D:/PI/client-e' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText('Client E Session')).toBeTruthy()
+    expect(screen.getAllByText('D:/PI/client-e').length).toBeGreaterThan(0)
+  })
+
   it('keeps the left sidebar focused on sessions with models and skills as secondary actions', async () => {
     window.piDesktop = createPiDesktopMock()
 
@@ -579,9 +910,9 @@ describe('App', () => {
     expect(screen.getByText('Uploads')).toBeTruthy()
     expect(screen.getByText('Connectors')).toBeTruthy()
     expect(screen.getAllByText('Skills').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('report.md').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('brief.docx').length).toBeGreaterThan(0)
-    expect(screen.getByText('assets')).toBeTruthy()
+    expect((await screen.findAllByText('report.md')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('brief.docx')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('assets')).toBeTruthy()
   })
 
   it('shows an explicit preview failure instead of silently doing nothing when a file cannot be read', async () => {

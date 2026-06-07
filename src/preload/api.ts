@@ -1,4 +1,5 @@
 import { IPC_CHANNELS } from '../shared/constants'
+import type { FilePreviewData } from '../shared/preview-types'
 
 export interface IpcResponse<T = unknown> {
   success: boolean
@@ -138,35 +139,11 @@ export interface ArtifactEntity {
   versions: ArtifactVersion[]
 }
 
-export type FilePreviewData =
-  | { type: 'text'; content: string }
-  | { type: 'image'; content: string }
-  | { type: 'pdf'; content: string }
-  | { type: 'docx'; content: string }
-  | {
-      type: 'pptx'
-      slides: Array<{
-        index: number
-        title: string
-        summary: string
-      }>
-    }
-  | {
-      type: 'xlsx'
-      workbook: {
-        sheetNames: string[]
-        sheets: Array<{
-          name: string
-          rows: string[][]
-        }>
-      }
-    }
-  | { type: 'binary'; ext?: string; reason?: string }
-
 export interface PiDesktopApi {
   chat: {
     send: (payload: {
       text: string
+      cwd?: string
       modelId?: string
       sessionId?: string
       sessionPath?: string
@@ -187,8 +164,14 @@ export interface PiDesktopApi {
     create: (payload?: { cwd?: string }) => Promise<IpcResponse<{
       id: string
       path: string
+      sessionId?: string
+      sessionPath?: string
       cwd: string
       title: string
+      messages?: unknown[]
+      model?: string | null
+      thinkingLevel?: string
+      tokenCount?: number
       source: 'pi'
       createdAt: string
       updatedAt: string

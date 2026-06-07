@@ -1,35 +1,14 @@
 import { extname } from 'path'
-import { pathToFileURL } from 'url'
 import { readFileSync } from 'fs'
 import mammoth from 'mammoth'
 import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
 import { DOMParser } from '@xmldom/xmldom'
-
-export type FilePreviewData =
-  | { type: 'text'; content: string }
-  | { type: 'image'; content: string }
-  | { type: 'pdf'; content: string }
-  | { type: 'docx'; content: string }
-  | {
-      type: 'pptx'
-      slides: Array<{
-        index: number
-        title: string
-        summary: string
-      }>
-    }
-  | {
-      type: 'xlsx'
-      workbook: {
-        sheetNames: string[]
-        sheets: Array<{
-          name: string
-          rows: string[][]
-        }>
-      }
-    }
-  | { type: 'binary'; ext?: string; reason?: string }
+import type {
+  FilePreviewData,
+  SlidePreviewSummary,
+  WorkbookPreviewSummary,
+} from '../shared/preview-types'
 
 const textExtensions = new Set([
   '.bat',
@@ -83,15 +62,24 @@ function readImagePreview(filePath: string, ext: string): FilePreviewData {
 }
 
 async function readDocxPreview(filePath: string): Promise<FilePreviewData> {
-  const result = await mammoth.convertToHtml({ path: filePath })
-  return {
-    type: 'docx',
-    content: result.value || '<p>No preview content found in this document.</p>',
+  const rawContent = readFileSync(filePath)
+
+  try {
+    const result = await mammoth.convertToHtml({ buffer: rawContent })
+    return {
+      type: 'docx',
+      content: Array.from(rawContent),
+      fallbackHtml: result.value || '<p>No preview content found in this document.</p>',
+    }
+  } catch {
+    return {
+      type: 'docx',
+      content: Array.from(rawContent),
+    }
   }
 }
 
-function readXlsxPreview(filePath: string): FilePreviewData {
-  const workbook = XLSX.readFile(filePath, { cellDates: false })
+function buildWorkbookSummary(workbook: XLSX.WorkBook): WorkbookPreviewSummary {
   const sheetNames = workbook.SheetNames.slice(0, 6)
   const sheets = sheetNames.slice(0, 3).map((name) => {
     const sheet = workbook.Sheets[name]
@@ -112,11 +100,33 @@ function readXlsxPreview(filePath: string): FilePreviewData {
   })
 
   return {
-    type: 'xlsx',
-    workbook: {
-      sheetNames,
-      sheets,
-    },
+    sheetNames,
+    sheets,
+  }
+}
+
+function readXlsxPreview(filePath: string): FilePreviewData {
+  const rawContent = readFileSync(filePath)
+
+  try {
+    const workbook = XLSX.read(rawContent, { type: 'buffer', cellDates: true })
+    return {
+      type: 'xlsx',
+      content: Array.from(rawContent),
+      summary: buildWorkbookSummary(workbook),
+    }
+  } catch {
+    return {
+      type: 'xlsx',
+      content: Array.from(rawContent),
+    }
+  }
+}
+
+function readPdfPreview(filePath: string): FilePreviewData {
+  return {
+    type: 'pdf',
+    content: Array.from(readFileSync(filePath)),
   }
 }
 
@@ -134,32 +144,43 @@ function extractPptxText(xml: string): string[] {
 }
 
 async function readPptxPreview(filePath: string): Promise<FilePreviewData> {
-  const zip = await JSZip.loadAsync(readFileSync(filePath))
-  const slidePaths = Object.keys(zip.files)
-    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
-    .sort((left, right) => {
-      const leftNumber = Number(left.match(/slide(\d+)/i)?.[1] || 0)
-      const rightNumber = Number(right.match(/slide(\d+)/i)?.[1] || 0)
-      return leftNumber - rightNumber
-    })
+  const rawContent = readFileSync(filePath)
+  const content = Array.from(rawContent)
 
-  const slides = await Promise.all(
-    slidePaths.slice(0, 12).map(async (slidePath, index) => {
-      const xml = await zip.file(slidePath)?.async('string')
-      const texts = xml ? extractPptxText(xml) : []
-      const title = texts[0] || `Slide ${index + 1}`
-      const summary = texts.slice(1).join(' ').trim() || 'No text summary available for this slide.'
-      return {
-        index: index + 1,
-        title,
-        summary,
-      }
-    }),
-  )
+  try {
+    const zip = await JSZip.loadAsync(rawContent)
+    const slidePaths = Object.keys(zip.files)
+      .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+      .sort((left, right) => {
+        const leftNumber = Number(left.match(/slide(\d+)/i)?.[1] || 0)
+        const rightNumber = Number(right.match(/slide(\d+)/i)?.[1] || 0)
+        return leftNumber - rightNumber
+      })
 
-  return {
-    type: 'pptx',
-    slides,
+    const summary: SlidePreviewSummary[] = await Promise.all(
+      slidePaths.slice(0, 12).map(async (slidePath, index) => {
+        const xml = await zip.file(slidePath)?.async('string')
+        const texts = xml ? extractPptxText(xml) : []
+        const title = texts[0] || `Slide ${index + 1}`
+        const summary = texts.slice(1).join(' ').trim() || 'No text summary available for this slide.'
+        return {
+          index: index + 1,
+          title,
+          summary,
+        }
+      }),
+    )
+
+    return {
+      type: 'pptx',
+      content,
+      summary,
+    }
+  } catch {
+    return {
+      type: 'pptx',
+      content,
+    }
   }
 }
 
@@ -175,7 +196,7 @@ export async function readPreviewFile(filePath: string): Promise<FilePreviewData
   }
 
   if (ext === '.pdf') {
-    return { type: 'pdf', content: `${pathToFileURL(filePath).toString()}#toolbar=0&navpanes=0` }
+    return readPdfPreview(filePath)
   }
 
   if (ext === '.docx') {

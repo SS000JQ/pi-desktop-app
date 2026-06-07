@@ -27,6 +27,7 @@ export function useChatIPC({
   onArtifactCreated,
   onSessionSynced,
   currentModel = 'openai/gpt-4',
+  currentDir,
   currentSessionId,
   currentSessionPath,
   thinkingLevel = 'medium',
@@ -34,6 +35,7 @@ export function useChatIPC({
   currentModel?: string
   currentSessionId?: string
   currentSessionPath?: string
+  currentDir?: string
   thinkingLevel?: string
 }) {
   const accumulatedRef = useRef('')
@@ -41,13 +43,15 @@ export function useChatIPC({
   const toolCallsRef = useRef<ToolCall[]>([])
   const currentSessionIdRef = useRef(currentSessionId)
   const currentSessionPathRef = useRef(currentSessionPath)
+  const currentDirRef = useRef(currentDir)
   const lastRuntimeUpdateRef = useRef<number>(0)
   const runtimeStatusRef = useRef<RuntimeStatus | null>(null)
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId
     currentSessionPathRef.current = currentSessionPath
-  }, [currentSessionId, currentSessionPath])
+    currentDirRef.current = currentDir
+  }, [currentDir, currentSessionId, currentSessionPath])
 
   const setRuntimeStatus = useCallback((next: RuntimeStatus | ((previous: RuntimeStatus | null) => RuntimeStatus | null)) => {
     const resolved = typeof next === 'function' ? next(runtimeStatusRef.current) : next
@@ -258,6 +262,7 @@ export function useChatIPC({
       try {
         const response = await window.piDesktop.chat.send({
           text,
+          cwd: currentDirRef.current || undefined,
           modelId: currentModel,
           sessionId: currentSessionId,
           sessionPath: currentSessionPath,

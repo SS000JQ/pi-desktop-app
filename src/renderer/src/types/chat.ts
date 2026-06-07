@@ -1,3 +1,5 @@
+export type { FilePreviewData } from '../../../shared/preview-types'
+
 export interface ToolCall {
   id: string
   name: string
@@ -121,31 +123,6 @@ export interface WorkspaceFileEntry {
   size: number
   modifiedAt: string
 }
-
-export type FilePreviewData =
-  | { type: 'text'; content: string }
-  | { type: 'image'; content: string }
-  | { type: 'pdf'; content: string }
-  | { type: 'docx'; content: string }
-  | {
-      type: 'pptx'
-      slides: Array<{
-        index: number
-        title: string
-        summary: string
-      }>
-    }
-  | {
-      type: 'xlsx'
-      workbook: {
-        sheetNames: string[]
-        sheets: Array<{
-          name: string
-          rows: string[][]
-        }>
-      }
-    }
-  | { type: 'binary'; ext?: string; reason?: string }
 
 export type ResultItemKind = 'created' | 'updated' | 'exported' | 'viewed' | 'failed'
 

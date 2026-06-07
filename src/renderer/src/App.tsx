@@ -247,7 +247,7 @@ function uniqueWorkspaceEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEnt
 }
 
 function isDocumentLike(path: string): boolean {
-  return /\.(pdf|doc|docx|ppt|pptx|pptm|md|txt|xlsx|csv)$/i.test(path)
+  return /\.(pdf|doc|docx|ppt|pptx|pptm|md|txt|xlsx|csv|html|htm)$/i.test(path)
 }
 
 function buildWorkspaceViewModel(
@@ -364,7 +364,7 @@ export default function App() {
   const [providers, setProviders] = useState<ProviderSummary[]>([])
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [currentModel, setCurrentModel] = useState('')
-  const [currentDir, setCurrentDir] = useState('D:/PI/app')
+  const [currentDir, setCurrentDir] = useState('')
   const [thinkingLevel, setThinkingLevel] = useState('medium')
   const [isInitialized, setIsInitialized] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
@@ -386,8 +386,10 @@ export default function App() {
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [hasProvider, setHasProvider] = useState(false)
   const currentDirRef = useRef(currentDir)
+  const activeSessionPathRef = useRef<string | null>(activeSessionPath)
   const workspaceRequestRef = useRef(0)
   const sessionRequestRef = useRef(0)
+  const skipNextSessionReloadRef = useRef<string | null>(null)
 
   const hasRunnableProvider = useCallback((providerList: ProviderSummary[]) => {
     return providerList.some((provider) => provider.hasAuth && provider.models.length > 0)
@@ -601,7 +603,7 @@ export default function App() {
       return []
     }
 
-    const nextSessions = (response.data as SessionListItem[]).map((session) => ({
+    const nextSessions: Session[] = (response.data as SessionListItem[]).map((session) => ({
       id: session.id,
       path: session.path,
       cwd: session.cwd,
@@ -619,8 +621,21 @@ export default function App() {
       status: buildSessionStatus(runtimeStatus, session.path),
     }))
 
-    setSessions(nextSessions)
-    return nextSessions
+    let mergedSessions = nextSessions
+    setSessions((previous) => {
+      const activePath = activeSessionPathRef.current
+      if (!activePath) return nextSessions
+
+      const hasActiveSession = nextSessions.some((session) => session.path === activePath)
+      if (hasActiveSession) return nextSessions
+
+      const previousActive = previous.find((session) => session.path === activePath)
+      if (!previousActive) return nextSessions
+
+      mergedSessions = [previousActive, ...nextSessions].sort((a, b) => b.updatedAt - a.updatedAt)
+      return mergedSessions
+    })
+    return mergedSessions
   }, [runtimeStatus])
 
   const syncSessionDetail = useCallback(
@@ -678,6 +693,11 @@ export default function App() {
 
   const loadSessionMessages = useCallback(
     async (sessionPath: string) => {
+      if (skipNextSessionReloadRef.current === sessionPath) {
+        skipNextSessionReloadRef.current = null
+        return
+      }
+
       const requestId = sessionRequestRef.current + 1
       sessionRequestRef.current = requestId
       const response = await window.piDesktop.session.switch(sessionPath)
@@ -799,6 +819,7 @@ export default function App() {
       void loadArtifacts(detail.sessionId)
     },
     currentModel,
+    currentDir,
     currentSessionId: activeSessionId || undefined,
     currentSessionPath: activeSessionPath || undefined,
     thinkingLevel,
@@ -818,7 +839,7 @@ export default function App() {
       const workingDirectory =
         workingDirRes.success && typeof workingDirRes.data === 'string' && workingDirRes.data
           ? workingDirRes.data
-          : 'D:/PI/app'
+          : sessionsLoaded[0]?.cwd || ''
       const wizardCompleted = wizardRes.success ? wizardRes.data === 'true' || wizardRes.data === true : false
 
       setCurrentDir(workingDirectory)
@@ -852,6 +873,10 @@ export default function App() {
   useEffect(() => {
     currentDirRef.current = currentDir
   }, [currentDir])
+
+  useEffect(() => {
+    activeSessionPathRef.current = activeSessionPath
+  }, [activeSessionPath])
 
   useEffect(() => {
     if (!currentDir) return
@@ -942,8 +967,14 @@ export default function App() {
       const created = response.data as {
         id: string
         path: string
+        sessionId?: string
+        sessionPath?: string
         cwd: string
         title: string
+        messages?: unknown[]
+        model?: string | null
+        thinkingLevel?: string
+        tokenCount?: number
         source: 'pi'
         createdAt: string
         updatedAt: string
@@ -956,25 +987,41 @@ export default function App() {
       setShowNewSessionDialog(false)
       await window.piDesktop.config.set('workingDirectory', created.cwd)
 
-      const detailResponse = await window.piDesktop.session.switch(created.path)
-      if (detailResponse.success && detailResponse.data) {
-        const detail = detailResponse.data as {
-          sessionId: string
-          sessionPath: string
-          cwd: string
-          title: string
-          messages: unknown[]
-          model: string | null
-          thinkingLevel: string
-          tokenCount: number
-        }
-        syncSessionDetail(detail)
-        await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
+      if (created.sessionId && created.sessionPath && Array.isArray(created.messages)) {
+        skipNextSessionReloadRef.current = created.sessionPath
+        syncSessionDetail({
+          sessionId: created.sessionId,
+          sessionPath: created.sessionPath,
+          cwd: created.cwd,
+          title: created.title,
+          messages: created.messages,
+          model: created.model || null,
+          thinkingLevel: created.thinkingLevel || 'medium',
+          tokenCount: created.tokenCount || 0,
+        })
+        await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.sessionId)])
       } else {
-        setActiveSessionId(created.id)
-        setActiveSessionPath(created.path)
-        setCurrentDir(created.cwd)
-        await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.id)])
+        const detailResponse = await window.piDesktop.session.switch(created.path)
+        if (detailResponse.success && detailResponse.data) {
+          const detail = detailResponse.data as {
+            sessionId: string
+            sessionPath: string
+            cwd: string
+            title: string
+            messages: unknown[]
+            model: string | null
+            thinkingLevel: string
+            tokenCount: number
+          }
+          skipNextSessionReloadRef.current = detail.sessionPath
+          syncSessionDetail(detail)
+          await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
+        } else {
+          setActiveSessionId(created.id)
+          setActiveSessionPath(created.path)
+          setCurrentDir(created.cwd)
+          await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.id)])
+        }
       }
 
       await loadSessions()

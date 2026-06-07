@@ -3,6 +3,7 @@
 
 # Session data
 .claude/session-data/
+.run-logs/
 
 # Local settings override
 .claude/settings.local.json

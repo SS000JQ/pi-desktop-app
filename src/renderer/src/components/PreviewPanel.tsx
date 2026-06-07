@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import hljs from 'highlight.js'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import * as XLSX from 'xlsx'
 import type {
   FilePreviewData,
   ResultItem,
@@ -12,6 +22,9 @@ export type PreviewFile = FilePreviewData & {
   name: string
   ext: string
 }
+
+const PPTX_VIEWER_CHANNEL = 'pi-pptx-preview'
+const pptxViewerPageUrl = new URL('../../pptx-viewer.html', import.meta.url).toString()
 
 interface ContextResourceItem {
   id: string
@@ -44,69 +57,68 @@ interface PreviewPanelProps {
   onCopyPath?: (path: string) => void
 }
 
+interface PdfPageViewportLike {
+  width: number
+  height: number
+}
+
+interface PdfPageProxyLike {
+  getViewport: (params: { scale: number }) => PdfPageViewportLike
+  render: (params: {
+    canvasContext: CanvasRenderingContext2D
+    viewport: PdfPageViewportLike
+    transform?: number[]
+  }) => { promise: Promise<unknown> }
+  cleanup?: () => void
+}
+
+interface PdfDocumentProxyLike {
+  numPages: number
+  getPage: (pageNumber: number) => Promise<PdfPageProxyLike>
+  destroy?: () => void
+  cleanup?: () => void
+}
+
+interface PdfLoadingTaskLike {
+  promise: Promise<PdfDocumentProxyLike>
+  destroy?: () => void
+}
+
+interface SpreadsheetCellView {
+  key: string
+  value: string
+  colSpan?: number
+  rowSpan?: number
+  width?: number
+  isHeader: boolean
+}
+
+interface SpreadsheetSheetView {
+  name: string
+  rows: SpreadsheetCellView[][]
+}
+
+interface PptxViewMemory {
+  currentSlide: number
+  scrollTop: number
+}
+
+interface PptxViewerMessage {
+  source?: string
+  type?: 'ready' | 'loaded' | 'rendered' | 'status' | 'error'
+  fileKey?: string
+  requestId?: number
+  slideCount?: number
+  currentSlide?: number
+  scrollTop?: number
+  message?: string
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-}
-
-function renderMarkdown(markdown: string): string {
-  const lines = markdown.split('\n')
-  const html: string[] = []
-  let inList = false
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    if (!trimmed) {
-      if (inList) {
-        html.push('</ul>')
-        inList = false
-      }
-      continue
-    }
-
-    if (trimmed.startsWith('# ')) {
-      if (inList) {
-        html.push('</ul>')
-        inList = false
-      }
-      html.push(`<h1>${escapeHtml(trimmed.slice(2))}</h1>`)
-      continue
-    }
-
-    if (trimmed.startsWith('## ')) {
-      if (inList) {
-        html.push('</ul>')
-        inList = false
-      }
-      html.push(`<h2>${escapeHtml(trimmed.slice(3))}</h2>`)
-      continue
-    }
-
-    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      if (!inList) {
-        html.push('<ul>')
-        inList = true
-      }
-      html.push(`<li>${escapeHtml(trimmed.slice(2))}</li>`)
-      continue
-    }
-
-    if (inList) {
-      html.push('</ul>')
-      inList = false
-    }
-
-    html.push(`<p>${escapeHtml(trimmed)}</p>`)
-  }
-
-  if (inList) {
-    html.push('</ul>')
-  }
-
-  return html.join('')
 }
 
 function inferLanguage(ext: string): string {
@@ -122,6 +134,7 @@ function inferLanguage(ext: string): string {
     case '.css':
       return 'css'
     case '.html':
+    case '.htm':
       return 'html'
     case '.py':
       return 'python'
@@ -143,6 +156,123 @@ function formatTimestamp(value: string): string {
   if (diffHours < 24) return `${diffHours}h ago`
   const diffDays = Math.round(diffHours / 24)
   return `${diffDays}d ago`
+}
+
+function toFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  if (/^[a-zA-Z]:\//.test(normalized)) {
+    return `file:///${normalized}`
+  }
+  return `file://${normalized}`
+}
+
+function getDirectoryFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  const directory = normalized.replace(/\/[^/\\]*$/, '/')
+  return toFileUrl(directory)
+}
+
+function isAbsoluteResourceUrl(value: string): boolean {
+  return /^(?:[a-z]+:|#|\/\/)/i.test(value)
+}
+
+function resolvePreviewResourceUrl(value: string | undefined, filePath: string): string | undefined {
+  if (!value || isAbsoluteResourceUrl(value)) return value
+
+  try {
+    return new URL(value, getDirectoryFileUrl(filePath)).toString()
+  } catch {
+    return value
+  }
+}
+
+function buildHtmlSrcDoc(html: string, filePath: string): string {
+  const baseHref = getDirectoryFileUrl(filePath)
+  const baseTag = `<base href="${baseHref}">`
+  const metaTag = '<meta charset="utf-8">'
+
+  if (/<html[\s>]/i.test(html)) {
+    if (/<head[\s>]/i.test(html)) {
+      return html.replace(/<head(\s*[^>]*)>/i, `<head$1>${metaTag}${baseTag}`)
+    }
+
+    return html.replace(/<html(\s*[^>]*)>/i, `<html$1><head>${metaTag}${baseTag}</head>`)
+  }
+
+  return `<!doctype html><html><head>${metaTag}${baseTag}</head><body>${html}</body></html>`
+}
+
+function getRenderErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+  return fallback
+}
+
+function toArrayBuffer(bytes: number[]): ArrayBuffer {
+  const array = Uint8Array.from(bytes)
+  return array.buffer.slice(array.byteOffset, array.byteOffset + array.byteLength)
+}
+
+function buildSpreadsheetSheetView(sheetName: string, sheet: XLSX.WorkSheet): SpreadsheetSheetView {
+  const reference = sheet['!ref']
+
+  if (!reference) {
+    return { name: sheetName, rows: [] }
+  }
+
+  const range = XLSX.utils.decode_range(reference)
+  const mergeOrigins = new Map<string, { colSpan: number; rowSpan: number }>()
+  const coveredCells = new Set<string>()
+  const columnWidths = sheet['!cols'] || []
+
+  for (const merge of sheet['!merges'] || []) {
+    mergeOrigins.set(`${merge.s.r}:${merge.s.c}`, {
+      colSpan: merge.e.c - merge.s.c + 1,
+      rowSpan: merge.e.r - merge.s.r + 1,
+    })
+
+    for (let rowIndex = merge.s.r; rowIndex <= merge.e.r; rowIndex += 1) {
+      for (let columnIndex = merge.s.c; columnIndex <= merge.e.c; columnIndex += 1) {
+        if (rowIndex === merge.s.r && columnIndex === merge.s.c) continue
+        coveredCells.add(`${rowIndex}:${columnIndex}`)
+      }
+    }
+  }
+
+  const rows: SpreadsheetCellView[][] = []
+
+  for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
+    const row: SpreadsheetCellView[] = []
+
+    for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+      const cellKey = `${rowIndex}:${columnIndex}`
+      if (coveredCells.has(cellKey)) continue
+
+      const cellRef = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })
+      const cell = sheet[cellRef]
+      const merge = mergeOrigins.get(cellKey)
+      const column = columnWidths[columnIndex] as
+        | { wpx?: number; wch?: number; width?: number }
+        | undefined
+
+      row.push({
+        key: `${sheetName}-${cellKey}`,
+        value: cell ? XLSX.utils.format_cell(cell) : '',
+        colSpan: merge?.colSpan,
+        rowSpan: merge?.rowSpan,
+        width: column?.wpx ?? (column?.wch ? Math.round(column.wch * 9 + 16) : undefined),
+        isHeader: rowIndex === range.s.r,
+      })
+    }
+
+    rows.push(row)
+  }
+
+  return {
+    name: sheetName,
+    rows,
+  }
 }
 
 function SectionShell({
@@ -334,6 +464,10 @@ function ContextSection({
   )
 }
 
+function SummaryAlert({ message }: { message: string }) {
+  return <div className="pv-fallback-alert">{message}</div>
+}
+
 export default function PreviewPanel({
   collapsed,
   onToggleCollapse,
@@ -365,13 +499,53 @@ export default function PreviewPanel({
   })
   const isDraggingRight = useRef(false)
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null)
+  const previewBodyRef = useRef<HTMLDivElement | null>(null)
   const savedWorkbenchScrollRef = useRef(0)
+  const savedPreviewScrollRef = useRef(0)
+
+  const imageViewMemoryRef = useRef<Record<string, { mode: 'fit' | 'actual'; zoom: number }>>({})
+  const [imageViewMode, setImageViewMode] = useState<'fit' | 'actual'>('fit')
+  const [imageZoom, setImageZoom] = useState(1)
+
+  const pptxFrameRef = useRef<HTMLIFrameElement | null>(null)
+  const pptxViewMemoryRef = useRef<Record<string, PptxViewMemory>>({})
+  const pptxRequestIdRef = useRef(0)
+  const pptxActiveRequestRef = useRef<{ fileKey: string; requestId: number } | null>(null)
+  const pptxFrameReadyRef = useRef(false)
+  const pptxRequestTimeoutRef = useRef<number | null>(null)
+  const pptxLastAutoLoadFileRef = useRef<string | null>(null)
+  const [pptxCurrentSlide, setPptxCurrentSlide] = useState(0)
+  const [pptxSlideCount, setPptxSlideCount] = useState(0)
+  const [pptxScrollTop, setPptxScrollTop] = useState(0)
+  const [pptxIsRendering, setPptxIsRendering] = useState(false)
+  const [pptxRenderError, setPptxRenderError] = useState<string | null>(null)
+  const [pptxFrameReadyTick, setPptxFrameReadyTick] = useState(0)
+
+  const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pdfStageRef = useRef<HTMLDivElement | null>(null)
+  const pdfDocumentRef = useRef<PdfDocumentProxyLike | null>(null)
+  const pdfLoadingTaskRef = useRef<PdfLoadingTaskLike | null>(null)
+  const pdfPageMemoryRef = useRef<Record<string, number>>({})
+  const [pdfCurrentPage, setPdfCurrentPage] = useState(1)
+  const [pdfPageCount, setPdfPageCount] = useState(0)
+  const [pdfIsRendering, setPdfIsRendering] = useState(false)
+  const [pdfRenderError, setPdfRenderError] = useState<string | null>(null)
+
+  const docxContainerRef = useRef<HTMLDivElement | null>(null)
+  const [docxIsRendering, setDocxIsRendering] = useState(false)
+  const [docxRenderError, setDocxRenderError] = useState<string | null>(null)
+
+  const spreadsheetSheetMemoryRef = useRef<Record<string, string>>({})
+  const [spreadsheetActiveSheet, setSpreadsheetActiveSheet] = useState('')
+  const [spreadsheetRenderError, setSpreadsheetRenderError] = useState<string | null>(null)
+  const pdfContent = previewFile?.type === 'pdf' ? previewFile.content : null
+  const pptxContent = previewFile?.type === 'pptx' ? previewFile.content : null
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!isDraggingRight.current) return
       const minWidth = previewFile ? 520 : 320
-      const maxWidth = previewFile ? 760 : 620
+      const maxWidth = previewFile ? 960 : 620
       const newWidth = Math.min(Math.max(window.innerWidth - event.clientX, minWidth), maxWidth)
       onResize(newWidth)
     }
@@ -403,6 +577,215 @@ export default function PreviewPanel({
     }
   }, [previewFile])
 
+  useEffect(() => {
+    if (collapsed) {
+      if (previewFile) {
+        savedPreviewScrollRef.current = previewBodyRef.current?.scrollTop || 0
+      }
+      return
+    }
+
+    if (previewFile && previewBodyRef.current) {
+      requestAnimationFrame(() => {
+        if (previewBodyRef.current) {
+          previewBodyRef.current.scrollTop = savedPreviewScrollRef.current
+        }
+      })
+    }
+  }, [collapsed, previewFile?.path, previewFile])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'image') {
+      setImageViewMode('fit')
+      setImageZoom(1)
+      return
+    }
+
+    const saved = imageViewMemoryRef.current[previewFile.path]
+    setImageViewMode(saved?.mode || 'fit')
+    setImageZoom(saved?.zoom || 1)
+  }, [previewFile?.path, previewFile?.type])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'image') return
+    imageViewMemoryRef.current[previewFile.path] = {
+      mode: imageViewMode,
+      zoom: imageZoom,
+    }
+  }, [imageViewMode, imageZoom, previewFile])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'pptx') {
+      pptxFrameReadyRef.current = false
+      pptxActiveRequestRef.current = null
+      pptxLastAutoLoadFileRef.current = null
+      if (pptxRequestTimeoutRef.current !== null) {
+        window.clearTimeout(pptxRequestTimeoutRef.current)
+        pptxRequestTimeoutRef.current = null
+      }
+      setPptxCurrentSlide(0)
+      setPptxSlideCount(0)
+      setPptxScrollTop(0)
+      setPptxIsRendering(false)
+      setPptxRenderError(null)
+      return
+    }
+
+    const savedView = pptxViewMemoryRef.current[previewFile.path] || {
+      currentSlide: 0,
+      scrollTop: 0,
+    }
+    pptxLastAutoLoadFileRef.current = null
+    setPptxCurrentSlide(savedView.currentSlide)
+    setPptxSlideCount(0)
+    setPptxScrollTop(savedView.scrollTop)
+    setPptxIsRendering(false)
+    setPptxRenderError(null)
+  }, [previewFile?.path, previewFile?.type, pptxContent])
+
+  useEffect(() => {
+    const handlePptxViewerMessage = (event: MessageEvent) => {
+      const payload = event.data as PptxViewerMessage | undefined
+
+      if (!payload || payload.source !== PPTX_VIEWER_CHANNEL || !payload.type) return
+
+      if (payload.type === 'ready') {
+        pptxFrameReadyRef.current = true
+        setPptxFrameReadyTick((value) => value + 1)
+        return
+      }
+
+      if (!previewFile || previewFile.type !== 'pptx' || payload.fileKey !== previewFile.path) return
+
+      const syncPptxStatus = () => {
+        if (typeof payload.slideCount === 'number') {
+          setPptxSlideCount(payload.slideCount)
+        }
+
+        if (typeof payload.currentSlide === 'number' || typeof payload.scrollTop === 'number') {
+          const previousView = pptxViewMemoryRef.current[previewFile.path] || {
+            currentSlide: 0,
+            scrollTop: 0,
+          }
+          const nextView = {
+            currentSlide:
+              typeof payload.currentSlide === 'number' ? payload.currentSlide : previousView.currentSlide,
+            scrollTop: typeof payload.scrollTop === 'number' ? payload.scrollTop : previousView.scrollTop,
+          }
+          pptxViewMemoryRef.current[previewFile.path] = nextView
+          setPptxCurrentSlide(nextView.currentSlide)
+          setPptxScrollTop(nextView.scrollTop)
+        }
+      }
+
+      if (payload.type === 'status') {
+        syncPptxStatus()
+        return
+      }
+
+      const activeRequest = pptxActiveRequestRef.current
+      if (!activeRequest) return
+      if (payload.fileKey !== activeRequest.fileKey || payload.requestId !== activeRequest.requestId) return
+
+      if (payload.type === 'error') {
+        clearPptxRequestTimeout()
+        pptxActiveRequestRef.current = null
+        setPptxSlideCount(0)
+        setPptxIsRendering(false)
+        setPptxRenderError(payload.message || 'This presentation could not be rendered in the viewer.')
+        return
+      }
+
+      syncPptxStatus()
+      clearPptxRequestTimeout()
+      pptxActiveRequestRef.current = null
+      setPptxRenderError(null)
+      setPptxIsRendering(false)
+    }
+
+    window.addEventListener('message', handlePptxViewerMessage)
+    return () => window.removeEventListener('message', handlePptxViewerMessage)
+  }, [previewFile])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'pdf') {
+      setPdfCurrentPage(1)
+      setPdfPageCount(0)
+      setPdfIsRendering(false)
+      setPdfRenderError(null)
+      return
+    }
+
+    const savedPage = pdfPageMemoryRef.current[previewFile.path] ?? 1
+    setPdfCurrentPage(savedPage)
+    setPdfPageCount(0)
+    setPdfIsRendering(false)
+    setPdfRenderError(null)
+  }, [previewFile?.path, previewFile?.type])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'docx') {
+      setDocxIsRendering(false)
+      setDocxRenderError(null)
+      return
+    }
+
+    setDocxIsRendering(false)
+    setDocxRenderError(null)
+  }, [previewFile?.path, previewFile?.type])
+
+  const spreadsheetWorkbook = useMemo(() => {
+    if (!previewFile || previewFile.type !== 'xlsx') return null
+
+    try {
+      const workbook = XLSX.read(Uint8Array.from(previewFile.content), {
+        type: 'array',
+        cellDates: true,
+        cellNF: true,
+        cellText: true,
+      })
+
+      return {
+        workbook,
+        error: null,
+      }
+    } catch (error) {
+      return {
+        workbook: null,
+        error: getRenderErrorMessage(error, 'This workbook could not be parsed for preview.'),
+      }
+    }
+  }, [previewFile])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'xlsx') {
+      setSpreadsheetActiveSheet('')
+      setSpreadsheetRenderError(null)
+      return
+    }
+
+    if (!spreadsheetWorkbook?.workbook) {
+      setSpreadsheetActiveSheet('')
+      setSpreadsheetRenderError(spreadsheetWorkbook?.error || null)
+      return
+    }
+
+    const savedSheet = spreadsheetSheetMemoryRef.current[previewFile.path]
+    const firstSheet = spreadsheetWorkbook.workbook.SheetNames[0] || ''
+    const nextSheet =
+      savedSheet && spreadsheetWorkbook.workbook.SheetNames.includes(savedSheet)
+        ? savedSheet
+        : firstSheet
+
+    setSpreadsheetActiveSheet(nextSheet)
+    setSpreadsheetRenderError(null)
+  }, [previewFile?.path, previewFile?.type, spreadsheetWorkbook])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'xlsx' || !spreadsheetActiveSheet) return
+    spreadsheetSheetMemoryRef.current[previewFile.path] = spreadsheetActiveSheet
+  }, [previewFile, spreadsheetActiveSheet])
+
   const highlightedContent = useMemo(() => {
     if (!previewFile || previewFile.type !== 'text' || !previewFile.content) return ''
     const language = inferLanguage(previewFile.ext)
@@ -416,10 +799,635 @@ export default function PreviewPanel({
     }
   }, [previewFile])
 
-  const markdownHtml = useMemo(() => {
-    if (!previewFile || previewFile.type !== 'text' || previewFile.ext.toLowerCase() !== '.md' || !previewFile.content) return ''
-    return renderMarkdown(previewFile.content)
-  }, [previewFile])
+  const spreadsheetSheetView = useMemo(() => {
+    if (!previewFile || previewFile.type !== 'xlsx' || !spreadsheetWorkbook?.workbook || !spreadsheetActiveSheet) {
+      return null
+    }
+
+    const sheet = spreadsheetWorkbook.workbook.Sheets[spreadsheetActiveSheet]
+    if (!sheet) return null
+
+    return buildSpreadsheetSheetView(spreadsheetActiveSheet, sheet)
+  }, [previewFile, spreadsheetWorkbook, spreadsheetActiveSheet])
+
+  const postPptxViewerMessage = (message: Record<string, unknown>) => {
+    pptxFrameRef.current?.contentWindow?.postMessage(
+      {
+        source: PPTX_VIEWER_CHANNEL,
+        ...message,
+      },
+      '*',
+    )
+  }
+
+  const clearPptxRequestTimeout = () => {
+    if (pptxRequestTimeoutRef.current !== null) {
+      window.clearTimeout(pptxRequestTimeoutRef.current)
+      pptxRequestTimeoutRef.current = null
+    }
+  }
+
+  const armPptxRequestTimeout = (fileKey: string, requestId: number) => {
+    clearPptxRequestTimeout()
+    pptxRequestTimeoutRef.current = window.setTimeout(() => {
+      const activeRequest = pptxActiveRequestRef.current
+      if (!activeRequest || activeRequest.fileKey !== fileKey || activeRequest.requestId !== requestId) {
+        return
+      }
+
+      setPptxSlideCount(0)
+      setPptxIsRendering(false)
+      setPptxRenderError('The presentation viewer did not respond. Showing the text fallback instead.')
+    }, 8000)
+  }
+
+  const requestPptxLoad = (slideIndex?: number, mode: 'auto' | 'manual' = 'auto') => {
+    if (!previewFile || previewFile.type !== 'pptx' || collapsed || !pptxFrameReadyRef.current) return
+
+    if (mode === 'auto' && pptxLastAutoLoadFileRef.current === previewFile.path) {
+      return
+    }
+
+    const requestId = pptxRequestIdRef.current + 1
+    pptxRequestIdRef.current = requestId
+    const fileKey = previewFile.path
+    const savedView = pptxViewMemoryRef.current[fileKey] || { currentSlide: 0, scrollTop: 0 }
+    const targetSlide =
+      typeof slideIndex === 'number'
+        ? slideIndex
+        : Math.max(0, savedView.currentSlide)
+
+    if (mode === 'auto') {
+      pptxLastAutoLoadFileRef.current = fileKey
+    }
+
+    pptxActiveRequestRef.current = { fileKey, requestId }
+    setPptxIsRendering(true)
+    setPptxRenderError(null)
+    armPptxRequestTimeout(fileKey, requestId)
+    postPptxViewerMessage({
+      type: 'load',
+      fileKey,
+      requestId,
+      slideIndex: targetSlide,
+      initialScrollTop: savedView.scrollTop,
+      content: previewFile.content,
+    })
+  }
+
+  const renderPdfPage = async (documentProxy: PdfDocumentProxyLike, pageNumber: number) => {
+    const canvas = pdfCanvasRef.current
+    const stage = pdfStageRef.current
+
+    if (!canvas || !stage) {
+      throw new Error('The PDF canvas is not available.')
+    }
+
+    const page = await documentProxy.getPage(pageNumber)
+    const baseViewport = page.getViewport({ scale: 1 })
+    const availableWidth = Math.max(stage.clientWidth - 48, 320)
+    const scale = Math.max(Math.min(availableWidth / baseViewport.width, 2), 0.75)
+    const viewport = page.getViewport({ scale })
+    const outputScale = window.devicePixelRatio || 1
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      throw new Error('The PDF canvas context is unavailable.')
+    }
+
+    canvas.width = Math.floor(viewport.width * outputScale)
+    canvas.height = Math.floor(viewport.height * outputScale)
+    canvas.style.width = `${viewport.width}px`
+    canvas.style.height = `${viewport.height}px`
+    context.setTransform(1, 0, 0, 1, 0, 0)
+    context.clearRect(0, 0, canvas.width, canvas.height)
+
+    await page.render({
+      canvasContext: context,
+      viewport,
+      transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
+    }).promise
+
+    page.cleanup?.()
+  }
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'pptx' || collapsed || !pptxFrameReadyRef.current) {
+      return
+    }
+
+    requestPptxLoad()
+  }, [collapsed, previewFile?.path, previewFile?.type, pptxFrameReadyTick, pptxContent])
+
+  useEffect(() => {
+    return () => {
+      clearPptxRequestTimeout()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'pdf' || collapsed || !pdfCanvasRef.current || !pdfStageRef.current) {
+      return
+    }
+
+    let cancelled = false
+
+    const destroyPdf = () => {
+      pdfLoadingTaskRef.current?.destroy?.()
+      pdfDocumentRef.current?.cleanup?.()
+      pdfDocumentRef.current?.destroy?.()
+      pdfLoadingTaskRef.current = null
+      pdfDocumentRef.current = null
+    }
+
+    const loadPdf = async () => {
+      destroyPdf()
+      setPdfIsRendering(true)
+      setPdfRenderError(null)
+
+      try {
+        const { getPdfDocumentLoadingTask } = await import('../lib/pdf-preview')
+        const loadingTask = getPdfDocumentLoadingTask(previewFile.content) as unknown as PdfLoadingTaskLike
+
+        pdfLoadingTaskRef.current = loadingTask
+        const documentProxy = await loadingTask.promise
+        if (cancelled) {
+          documentProxy.destroy?.()
+          return
+        }
+
+        pdfDocumentRef.current = documentProxy
+        setPdfPageCount(documentProxy.numPages)
+        const targetPage = Math.min(
+          Math.max(pdfPageMemoryRef.current[previewFile.path] ?? 1, 1),
+          documentProxy.numPages,
+        )
+
+        await renderPdfPage(documentProxy, targetPage)
+        if (cancelled) return
+
+        pdfPageMemoryRef.current[previewFile.path] = targetPage
+        setPdfCurrentPage(targetPage)
+      } catch (error) {
+        if (!cancelled) {
+          setPdfPageCount(0)
+          setPdfRenderError(getRenderErrorMessage(error, 'This PDF could not be rendered in the viewer.'))
+        }
+      } finally {
+        if (!cancelled) {
+          setPdfIsRendering(false)
+        }
+      }
+    }
+
+    void loadPdf()
+
+    return () => {
+      cancelled = true
+      destroyPdf()
+    }
+  }, [collapsed, previewFile?.path, previewFile?.type, pdfContent])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'docx' || collapsed || !docxContainerRef.current) {
+      return
+    }
+
+    let cancelled = false
+    const container = docxContainerRef.current
+    container.innerHTML = ''
+
+    const renderDocx = async () => {
+      setDocxIsRendering(true)
+      setDocxRenderError(null)
+
+      try {
+        const { renderAsync } = await import('docx-preview')
+        if (cancelled || !docxContainerRef.current) return
+
+        await renderAsync(toArrayBuffer(previewFile.content), docxContainerRef.current, undefined, {
+          className: 'pv-docx-stage',
+          inWrapper: true,
+          useBase64URL: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+        })
+      } catch (error) {
+        if (!cancelled) {
+          setDocxRenderError(getRenderErrorMessage(error, 'This document could not be rendered in the viewer.'))
+        }
+      } finally {
+        if (!cancelled) {
+          setDocxIsRendering(false)
+        }
+      }
+    }
+
+    void renderDocx()
+
+    return () => {
+      cancelled = true
+      container.innerHTML = ''
+    }
+  }, [collapsed, previewFile?.path, previewFile?.type])
+
+  const handlePptxNavigate = async (targetSlide: number) => {
+    if (!previewFile || previewFile.type !== 'pptx' || !pptxFrameReadyRef.current) return
+
+    const nextSlide = Math.max(0, Math.min(targetSlide, Math.max(pptxSlideCount - 1, 0)))
+    const requestId = pptxRequestIdRef.current + 1
+    pptxRequestIdRef.current = requestId
+    pptxActiveRequestRef.current = { fileKey: previewFile.path, requestId }
+
+    setPptxIsRendering(true)
+    setPptxRenderError(null)
+    armPptxRequestTimeout(previewFile.path, requestId)
+
+    postPptxViewerMessage({
+      type: 'navigate',
+      fileKey: previewFile.path,
+      requestId,
+      slideIndex: nextSlide,
+    })
+  }
+
+  const handlePdfNavigate = async (targetPage: number) => {
+    if (!previewFile || previewFile.type !== 'pdf') return
+    const documentProxy = pdfDocumentRef.current
+    if (!documentProxy) return
+
+    const nextPage = Math.max(1, Math.min(targetPage, Math.max(pdfPageCount, 1)))
+    setPdfIsRendering(true)
+    setPdfRenderError(null)
+
+    try {
+      await renderPdfPage(documentProxy, nextPage)
+      pdfPageMemoryRef.current[previewFile.path] = nextPage
+      setPdfCurrentPage(nextPage)
+    } catch (error) {
+      setPdfRenderError(getRenderErrorMessage(error, 'This PDF could not be rendered in the viewer.'))
+    } finally {
+      setPdfIsRendering(false)
+    }
+  }
+
+  const renderMarkdownPreview = () => {
+    if (!previewFile || previewFile.type !== 'text') return null
+
+    return (
+      <div className="pv-md">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ href, children, ...props }: any) => (
+              <a
+                {...props}
+                href={resolvePreviewResourceUrl(href, previewFile.path)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {children}
+              </a>
+            ),
+            img: ({ src, alt, ...props }: any) => (
+              <img
+                {...props}
+                src={resolvePreviewResourceUrl(src, previewFile.path)}
+                alt={alt || ''}
+                className="pv-md-image"
+              />
+            ),
+            code: ({ inline, className, children, ...props }: any) => {
+              if (inline) {
+                return (
+                  <code {...props} className={className}>
+                    {children}
+                  </code>
+                )
+              }
+
+              return (
+                <pre className="pv-md-code">
+                  <code {...props} className={className}>
+                    {children}
+                  </code>
+                </pre>
+              )
+            },
+          }}
+        >
+          {previewFile.content}
+        </ReactMarkdown>
+      </div>
+    )
+  }
+
+  const renderHtmlPreview = () => {
+    if (!previewFile || previewFile.type !== 'text') return null
+
+    return (
+      <div className="pv-html-wrap">
+        <iframe
+          className="pv-html-frame"
+          title={previewFile.name}
+          sandbox="allow-same-origin"
+          referrerPolicy="no-referrer"
+          srcDoc={buildHtmlSrcDoc(previewFile.content, previewFile.path)}
+        />
+      </div>
+    )
+  }
+
+  const renderImagePreview = () => {
+    if (!previewFile || previewFile.type !== 'image') return null
+
+    const isActualSize = imageViewMode === 'actual'
+    const imageStyle: CSSProperties = isActualSize
+      ? {
+          transform: `scale(${imageZoom})`,
+          transformOrigin: 'top center',
+          maxWidth: 'none',
+          width: 'auto',
+        }
+      : {
+          width: `${imageZoom * 100}%`,
+          maxWidth: 'none',
+          height: 'auto',
+        }
+
+    return (
+      <div className="pv-image-viewer">
+        <div className="pv-image-toolbar">
+          <button
+            type="button"
+            className={`pv-mode-chip ${imageViewMode === 'fit' ? 'active' : ''}`}
+            onClick={() => setImageViewMode('fit')}
+          >
+            Fit Width
+          </button>
+          <button
+            type="button"
+            className={`pv-mode-chip ${imageViewMode === 'actual' ? 'active' : ''}`}
+            onClick={() => setImageViewMode('actual')}
+          >
+            Actual Size
+          </button>
+          <button type="button" className="pv-mini-btn" onClick={() => setImageZoom((value) => Math.max(0.5, value - 0.1))}>
+            -
+          </button>
+          <div className="pv-viewer-status">{`${Math.round(imageZoom * 100)}%`}</div>
+          <button type="button" className="pv-mini-btn" onClick={() => setImageZoom((value) => Math.min(3, value + 0.1))}>
+            +
+          </button>
+        </div>
+        <div className="pv-image-stage">
+          <img src={previewFile.content} alt={previewFile.name} style={imageStyle} className="pv-image-canvas" />
+        </div>
+      </div>
+    )
+  }
+
+  const renderPdfPreview = () => {
+    if (!previewFile || previewFile.type !== 'pdf') return null
+
+    const canGoPrevious = pdfCurrentPage > 1 && !pdfIsRendering
+    const canGoNext = pdfCurrentPage < pdfPageCount && !pdfIsRendering
+
+    if (pdfRenderError) {
+      return (
+        <div className="pv-viewer-shell">
+          <SummaryAlert message="PDF rendering failed. Use Open for the native viewer if needed." />
+          <div className="pv-empty-note">{pdfRenderError}</div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="pv-viewer-shell">
+        <div className="pv-viewer-toolbar">
+          <button
+            type="button"
+            className="pv-mini-btn"
+            aria-label="Previous page"
+            disabled={!canGoPrevious}
+            onClick={() => {
+              void handlePdfNavigate(pdfCurrentPage - 1)
+            }}
+          >
+            Previous
+          </button>
+          <div className="pv-viewer-status">
+            {pdfPageCount > 0 ? `${pdfCurrentPage} / ${pdfPageCount}` : '0 / 0'}
+          </div>
+          <button
+            type="button"
+            className="pv-mini-btn"
+            aria-label="Next page"
+            disabled={!canGoNext}
+            onClick={() => {
+              void handlePdfNavigate(pdfCurrentPage + 1)
+            }}
+          >
+            Next
+          </button>
+        </div>
+        <div className="pv-viewer-stage" ref={pdfStageRef}>
+          {pdfIsRendering && <div className="pv-viewer-loading">Loading PDF...</div>}
+          <div className="pv-canvas-shell">
+            <canvas ref={pdfCanvasRef} className="pv-doc-canvas" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderDocxPreview = () => {
+    if (!previewFile || previewFile.type !== 'docx') return null
+
+    if (docxRenderError) {
+      return (
+        <div className="pv-viewer-shell">
+          <SummaryAlert message="Document rendering failed. Showing HTML fallback instead." />
+          {previewFile.fallbackHtml ? (
+            <div className="pv-md pv-office-doc" dangerouslySetInnerHTML={{ __html: previewFile.fallbackHtml }} />
+          ) : (
+            <div className="pv-empty-note">{docxRenderError}</div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <div className="pv-viewer-shell">
+        {docxIsRendering && <div className="pv-viewer-loading">Loading document...</div>}
+        <div className="pv-docx-wrap">
+          <div ref={docxContainerRef} className="pv-docx-root" />
+        </div>
+      </div>
+    )
+  }
+
+  const renderPptxPreview = () => {
+    if (!previewFile || previewFile.type !== 'pptx') return null
+
+    const pptxSummary = previewFile.summary ?? []
+    const canGoPrevious = pptxCurrentSlide > 0 && !pptxIsRendering
+    const canGoNext = pptxCurrentSlide < pptxSlideCount - 1 && !pptxIsRendering
+
+    if (pptxRenderError) {
+      return (
+        <div className="pv-viewer-shell pv-pptx-shell pv-pptx-fallback-shell">
+          <SummaryAlert message="Slide rendering failed. Showing extracted text instead." />
+          <div className="pv-empty-note pv-empty-inline">{pptxRenderError}</div>
+          {pptxSummary.length > 0 ? (
+            <div className="pv-office-stack">
+              {pptxSummary.map((slide: { index: number; title: string; summary: string }) => (
+                <div key={slide.index} className="pv-office-card">
+                  <div className="pv-office-kicker">{`Slide ${slide.index}`}</div>
+                  <div className="pv-office-title">{slide.title}</div>
+                  <div className="pv-office-copy">{slide.summary}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )
+    }
+
+    return (
+      <div className="pv-viewer-shell pv-pptx-shell">
+        <div className="pv-viewer-toolbar">
+          <button
+            type="button"
+            className="pv-mini-btn"
+            aria-label="Previous slide"
+            disabled={!canGoPrevious}
+            onClick={() => {
+              void handlePptxNavigate(pptxCurrentSlide - 1)
+            }}
+          >
+            Previous
+          </button>
+          <div className="pv-viewer-status">
+            {pptxSlideCount > 0 ? `${pptxCurrentSlide + 1} / ${pptxSlideCount}` : '0 / 0'}
+          </div>
+          <button
+            type="button"
+            className="pv-mini-btn"
+            aria-label="Next slide"
+            disabled={!canGoNext}
+            onClick={() => {
+              void handlePptxNavigate(pptxCurrentSlide + 1)
+            }}
+          >
+            Next
+          </button>
+        </div>
+        <div className="pv-viewer-stage pv-pptx-stage-shell">
+          {pptxIsRendering && <div className="pv-viewer-loading">Loading presentation...</div>}
+          <div className="pv-canvas-shell pv-pptx-frame-wrap">
+            <iframe
+              ref={pptxFrameRef}
+              title={`${previewFile.name} viewer`}
+              src={pptxViewerPageUrl}
+              className="pv-pptx-frame"
+              sandbox="allow-scripts allow-same-origin"
+              onLoad={() => {
+                pptxFrameReadyRef.current = true
+                setPptxFrameReadyTick((value) => value + 1)
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSpreadsheetFallback = (message: string | null) => {
+    if (!previewFile || previewFile.type !== 'xlsx') return null
+
+    return (
+      <div className="pv-office-stack">
+        {message && <SummaryAlert message="Workbook rendering failed. Showing extracted sheet summary instead." />}
+        {previewFile.summary?.sheets?.length ? (
+          previewFile.summary.sheets.map((sheet: { name: string; rows: string[][] }) => (
+            <div key={`${previewFile.path}-${sheet.name}`} className="pv-office-card">
+              <div className="pv-office-title">{sheet.name}</div>
+              {sheet.rows.length === 0 ? (
+                <div className="pv-empty-note pv-empty-inline">No visible rows in this sheet preview.</div>
+              ) : (
+                <div className="pv-sheet-wrap">
+                  <table className="pv-sheet-table">
+                    <tbody>
+                      {sheet.rows.map((row: string[], rowIndex: number) => (
+                        <tr key={`${sheet.name}-${rowIndex}`}>
+                          {row.map((cell: string, cellIndex: number) => (
+                            <td key={`${sheet.name}-${rowIndex}-${cellIndex}`}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="pv-empty-note">{message || 'No sheet data could be extracted from this workbook.'}</div>
+        )}
+      </div>
+    )
+  }
+
+  const renderSpreadsheetPreview = () => {
+    if (!previewFile || previewFile.type !== 'xlsx') return null
+
+    if (spreadsheetRenderError || !spreadsheetWorkbook?.workbook || !spreadsheetSheetView) {
+      return renderSpreadsheetFallback(spreadsheetRenderError)
+    }
+
+    return (
+      <div className="pv-viewer-shell">
+        <div className="pv-sheet-tabs">
+          {spreadsheetWorkbook.workbook.SheetNames.map((sheetName) => (
+            <button
+              key={sheetName}
+              type="button"
+              className={`pv-sheet-tab ${sheetName === spreadsheetActiveSheet ? 'active' : ''}`}
+              onClick={() => setSpreadsheetActiveSheet(sheetName)}
+            >
+              {sheetName}
+            </button>
+          ))}
+        </div>
+        <div className="pv-sheet-stage">
+          <div className="pv-sheet-grid-wrap">
+            <table className="pv-sheet-grid">
+              <tbody>
+                {spreadsheetSheetView.rows.map((row, rowIndex) => (
+                  <tr key={`${spreadsheetSheetView.name}-${rowIndex}`}>
+                    {row.map((cell) => (
+                      <td
+                        key={cell.key}
+                        colSpan={cell.colSpan}
+                        rowSpan={cell.rowSpan}
+                        className={cell.isHeader ? 'is-header' : ''}
+                        style={cell.width ? { minWidth: `${cell.width}px` } : undefined}
+                      >
+                        {cell.value}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (collapsed) {
     return (
@@ -455,21 +1463,29 @@ export default function PreviewPanel({
     )
   }
 
+  const isMarkdownFile = previewFile?.type === 'text' && previewFile.ext.toLowerCase() === '.md'
+  const isHtmlFile = previewFile?.type === 'text' && ['.html', '.htm'].includes(previewFile.ext.toLowerCase())
   const hasPreview =
-    previewFile?.type === 'image'
-    || previewFile?.type === 'pdf'
-    || previewFile?.type === 'docx'
-    || previewFile?.ext.toLowerCase() === '.md'
-  const canShowSource = previewFile?.type === 'text'
+    previewFile?.type === 'image' ||
+    previewFile?.type === 'pdf' ||
+    previewFile?.type === 'docx' ||
+    previewFile?.type === 'pptx' ||
+    previewFile?.type === 'xlsx' ||
+    isMarkdownFile ||
+    isHtmlFile
+  const canShowSource = Boolean(previewFile?.type === 'text' && (isMarkdownFile || isHtmlFile))
   const currentArtifact = recentResults[0] || null
   const workspaceLabel =
     currentWorkspace?.split(/[\\/]/).filter(Boolean).pop() ||
     currentWorkspace ||
     'No folder'
-  const effectiveWidth = previewFile ? Math.max(panelWidth, 560) : panelWidth
+  const effectiveWidth = previewFile ? Math.max(panelWidth, 640) : panelWidth
 
   return (
-    <div className={`prev ${previewFile ? 'preview-mode' : 'workbench-mode'}`} style={{ width: effectiveWidth, position: 'relative', overflow: 'hidden' }}>
+    <div
+      className={`prev ${previewFile ? 'preview-mode' : 'workbench-mode'}`}
+      style={{ width: effectiveWidth, position: 'relative', overflow: 'hidden' }}
+    >
       <div
         className="resize-h"
         style={{ left: -2 }}
@@ -540,22 +1556,17 @@ export default function PreviewPanel({
         </div>
 
         {previewFile ? (
-          <div className="pv-body">
-            {previewFile.type === 'image' && previewFile.content && (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-                <img
-                  src={previewFile.content}
-                  alt={previewFile.name}
-                  style={{ maxWidth: '100%', maxHeight: 520, objectFit: 'contain' }}
-                />
-              </div>
-            )}
+          <div
+            ref={previewBodyRef}
+            className={`pv-body ${previewFile.type === 'pptx' ? 'pv-pptx-preview-body' : ''}`}
+          >
+            {previewFile.type === 'image' && renderImagePreview()}
 
-            {previewFile.type === 'text' && previewFile.ext.toLowerCase() === '.md' && previewMode === 'preview' && (
-              <div className="pv-md" dangerouslySetInnerHTML={{ __html: markdownHtml }} />
-            )}
+            {isMarkdownFile && previewMode === 'preview' && renderMarkdownPreview()}
 
-            {previewFile.type === 'text' && (previewFile.ext.toLowerCase() !== '.md' || previewMode === 'source') && (
+            {isHtmlFile && previewMode === 'preview' && renderHtmlPreview()}
+
+            {previewFile.type === 'text' && (!hasPreview || previewMode === 'source' || (!isMarkdownFile && !isHtmlFile)) && (
               <div className="pv-src" style={{ padding: 0 }}>
                 <pre
                   style={{
@@ -573,71 +1584,13 @@ export default function PreviewPanel({
               </div>
             )}
 
-            {previewFile.type === 'pdf' && (
-              <div className="pv-pdf-wrap">
-                <div className="pv-empty-note pv-empty-inline">
-                  PDF preview depends on the local Chromium PDF renderer. If this file shows blank, use `Open`.
-                </div>
-                <object
-                  aria-label={previewFile.name}
-                  data={previewFile.content}
-                  type="application/pdf"
-                  className="pv-pdf-frame"
-                >
-                  <div style={{ padding: 20, color: 'rgba(255,255,255,0.42)', fontSize: 12 }}>
-                    <div style={{ marginBottom: 8 }}>Preview unavailable for this PDF in the current renderer.</div>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{previewFile.path}</div>
-                  </div>
-                </object>
-              </div>
-            )}
+            {previewFile.type === 'pdf' && renderPdfPreview()}
 
-            {previewFile.type === 'docx' && (
-              <div className="pv-md pv-office-doc" dangerouslySetInnerHTML={{ __html: previewFile.content }} />
-            )}
+            {previewFile.type === 'docx' && renderDocxPreview()}
 
-            {previewFile.type === 'pptx' && (
-              <div className="pv-office-stack">
-                {previewFile.slides.length === 0 ? (
-                  <div className="pv-empty-note">No slide text could be extracted from this presentation.</div>
-                ) : (
-                  previewFile.slides.map((slide) => (
-                    <div key={`${previewFile.path}-${slide.index}`} className="pv-office-card">
-                      <div className="pv-office-kicker">{`Slide ${slide.index}`}</div>
-                      <div className="pv-office-title">{slide.title}</div>
-                      <div className="pv-office-copy">{slide.summary}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+            {previewFile.type === 'pptx' && renderPptxPreview()}
 
-            {previewFile.type === 'xlsx' && (
-              <div className="pv-office-stack">
-                {previewFile.workbook.sheets.map((sheet) => (
-                  <div key={`${previewFile.path}-${sheet.name}`} className="pv-office-card">
-                    <div className="pv-office-title">{sheet.name}</div>
-                    {sheet.rows.length === 0 ? (
-                      <div className="pv-empty-note pv-empty-inline">No visible rows in this sheet preview.</div>
-                    ) : (
-                      <div className="pv-sheet-wrap">
-                        <table className="pv-sheet-table">
-                          <tbody>
-                            {sheet.rows.map((row, rowIndex) => (
-                              <tr key={`${sheet.name}-${rowIndex}`}>
-                                {row.map((cell, cellIndex) => (
-                                  <td key={`${sheet.name}-${rowIndex}-${cellIndex}`}>{cell}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            {previewFile.type === 'xlsx' && renderSpreadsheetPreview()}
 
             {previewFile.type === 'binary' && (
               <div style={{ padding: 20, color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 interface NewSessionDialogProps {
   isOpen: boolean
@@ -20,16 +20,28 @@ export default function NewSessionDialog({
   const [selectedMode, setSelectedMode] = useState<'current' | 'known' | 'default' | 'custom'>('current')
   const [selectedDir, setSelectedDir] = useState('')
   const [customDir, setCustomDir] = useState('')
+  const wasOpenRef = useRef(false)
 
-  useEffect(() => {
-    if (!isOpen) return
-    setSelectedDir((previous) => previous || currentDir || directoryOptions[0] || '')
-    setCustomDir((previous) => previous)
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      wasOpenRef.current = false
+      return
+    }
+
+    if (wasOpenRef.current) {
+      return
+    }
+
+    wasOpenRef.current = true
+    const preferredKnownDir =
+      directoryOptions.find((dir) => dir && dir !== currentDir) || currentDir || directoryOptions[0] || ''
+
+    setSelectedDir((previous) => previous || preferredKnownDir)
     setSelectedMode((previous) => {
-      if (previous === 'custom' && customDir.trim()) return previous
-      if (previous === 'known' && selectedDir) return previous
-      if (previous === 'default') return previous
-      return currentDir ? 'current' : 'default'
+      if (previous === 'custom' && customDir.trim()) return 'custom'
+      if (previous === 'known' && (selectedDir || preferredKnownDir)) return 'known'
+      if (previous === 'default') return 'default'
+      return 'default'
     })
   }, [currentDir, customDir, directoryOptions, isOpen, selectedDir])
 
@@ -158,17 +170,20 @@ export default function NewSessionDialog({
               onClick={() => {
                 const trimmedCustomDir = customDir.trim()
                 const resolvedCwd =
-                  trimmedCustomDir
+                  selectedMode === 'custom'
                     ? trimmedCustomDir
                     : selectedMode === 'current'
-                    ? currentDir
-                    : selectedMode === 'known'
-                      ? selectedDir
-                      : undefined
+                      ? currentDir
+                      : selectedMode === 'known'
+                        ? selectedDir
+                        : undefined
                 onCreate(resolvedCwd || undefined)
               }}
               className="bp"
-              disabled={selectedMode === 'custom' && !customDir.trim()}
+              disabled={
+                (selectedMode === 'custom' && !customDir.trim())
+                || (selectedMode === 'known' && !selectedDir)
+              }
             >
               Create
             </button>
