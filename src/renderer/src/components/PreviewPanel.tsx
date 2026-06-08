@@ -539,6 +539,7 @@ export default function PreviewPanel({
   const pdfLoadingTaskRef = useRef<PdfLoadingTaskLike | null>(null)
   const pdfActiveRenderTaskRef = useRef<PdfRenderTaskLike | null>(null)
   const pdfRenderInFlightRef = useRef<Promise<unknown> | null>(null)
+  const pdfResizeRerenderTimeoutRef = useRef<number | null>(null)
   const pdfRenderRequestIdRef = useRef(0)
   const pdfLastObservedStageWidthRef = useRef<number | null>(null)
   const pdfPageMemoryRef = useRef<Record<string, number>>({})
@@ -735,6 +736,7 @@ export default function PreviewPanel({
     if (!previewFile || previewFile.type !== 'pdf') {
       pdfRenderRequestIdRef.current += 1
       pdfLastObservedStageWidthRef.current = null
+      clearPdfResizeRerender()
       pdfActiveRenderTaskRef.current?.cancel?.()
       pdfLoadingTaskRef.current?.destroy?.()
       pdfDocumentRef.current?.cleanup?.()
@@ -857,6 +859,13 @@ export default function PreviewPanel({
     if (pptxRequestTimeoutRef.current !== null) {
       window.clearTimeout(pptxRequestTimeoutRef.current)
       pptxRequestTimeoutRef.current = null
+    }
+  }
+
+  const clearPdfResizeRerender = () => {
+    if (pdfResizeRerenderTimeoutRef.current !== null) {
+      window.clearTimeout(pdfResizeRerenderTimeoutRef.current)
+      pdfResizeRerenderTimeoutRef.current = null
     }
   }
 
@@ -1031,6 +1040,7 @@ export default function PreviewPanel({
     let cancelled = false
 
     const destroyPdf = () => {
+      clearPdfResizeRerender()
       pdfActiveRenderTaskRef.current?.cancel?.()
       pdfLoadingTaskRef.current?.destroy?.()
       pdfDocumentRef.current?.cleanup?.()
@@ -1095,16 +1105,21 @@ export default function PreviewPanel({
   }, [collapsed, previewFile?.path, previewFile?.type, pdfContent, pdfRenderError])
 
   useEffect(() => {
-    if (!previewFile || previewFile.type !== 'pdf' || collapsed || !pdfStageRef.current) {
+    if (!previewFile || previewFile.type !== 'pdf' || collapsed) {
       return
     }
 
-    if (typeof ResizeObserver === 'undefined') return
+    const documentProxy = pdfDocumentRef.current
+    if (!documentProxy || !pdfCanvasRef.current || !pdfStageRef.current) {
+      return
+    }
 
-    const observer = new ResizeObserver(() => {
-      const documentProxy = pdfDocumentRef.current
+    clearPdfResizeRerender()
+    pdfResizeRerenderTimeoutRef.current = window.setTimeout(() => {
+      pdfResizeRerenderTimeoutRef.current = null
+      const activeDocument = pdfDocumentRef.current
       const stage = pdfStageRef.current
-      if (!documentProxy || !stage) return
+      if (!activeDocument || !pdfCanvasRef.current || !stage) return
 
       const nextWidth = stage.clientWidth
       const previousWidth = pdfLastObservedStageWidthRef.current
@@ -1118,7 +1133,7 @@ export default function PreviewPanel({
       setPdfIsRendering(true)
       setPdfRenderError(null)
 
-      void renderPdfPage(documentProxy, pdfCurrentPage, requestId)
+      void renderPdfPage(activeDocument, pdfCurrentPage, requestId)
         .catch((error) => {
           if (requestId === pdfRenderRequestIdRef.current) {
             setPdfRenderError(getRenderErrorMessage(error, 'This PDF could not be rendered in the viewer.'))
@@ -1129,11 +1144,10 @@ export default function PreviewPanel({
             setPdfIsRendering(false)
           }
         })
-    })
+    }, 120)
 
-    observer.observe(pdfStageRef.current)
-    return () => observer.disconnect()
-  }, [collapsed, pdfCurrentPage, previewFile?.path, previewFile?.type])
+    return clearPdfResizeRerender
+  }, [collapsed, panelWidth, previewFile?.path, previewFile?.type])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'docx' || collapsed || !docxContainerRef.current) {

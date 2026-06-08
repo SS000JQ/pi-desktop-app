@@ -404,7 +404,7 @@ describe('PreviewPanel', () => {
     expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
   })
 
-  it('keeps a loaded pdf visible after ResizeObserver requests a redraw', async () => {
+  it('does not attach a ResizeObserver for pdf redraws', async () => {
     render(
       <PreviewPanel
         collapsed={false}
@@ -427,65 +427,12 @@ describe('PreviewPanel', () => {
       expect(screen.getByText('1 / 2')).toBeTruthy()
     })
 
-    await act(async () => {
-      for (const callback of resizeObserverCallbacks) {
-        callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
-      }
-      await Promise.resolve()
-    })
-
-    await waitFor(() => {
-      expect(screen.getByText('1 / 2')).toBeTruthy()
-    })
+    expect(resizeObserverCallbacks).toHaveLength(0)
     expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
   })
 
-  it('ignores ResizeObserver callbacks caused only by pdf canvas height changes', async () => {
-    render(
-      <PreviewPanel
-        collapsed={false}
-        onToggleCollapse={() => {}}
-        panelWidth={300}
-        onResize={() => {}}
-        previewFile={{
-          path: 'D:/PI/app/report.pdf',
-          name: 'report.pdf',
-          ext: '.pdf',
-          type: 'pdf',
-          content: [37, 80, 68, 70],
-        }}
-        onClosePreview={() => {}}
-        onOpenExternal={() => {}}
-      />,
-    )
-
-    await waitFor(() => {
-      expect(pdfRenderMock).toHaveBeenCalledTimes(1)
-    })
-
-    await act(async () => {
-      for (let index = 0; index < 5; index += 1) {
-        for (const callback of resizeObserverCallbacks) {
-          callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
-        }
-      }
-      await Promise.resolve()
-    })
-
-    expect(pdfRenderMock).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
-  })
-
-  it('serializes pdf redraws so ResizeObserver cannot render into an active canvas', async () => {
-    let finishFirstRender: (() => void) | null = null
-    pdfBehavior.renderPromises = [
-      new Promise((resolve) => {
-        finishFirstRender = () => resolve(undefined)
-      }),
-      Promise.resolve(),
-    ]
-
-    render(
+  it('redraws pdf only after explicit panel width changes', async () => {
+    const { rerender } = render(
       <PreviewPanel
         collapsed={false}
         onToggleCollapse={() => {}}
@@ -514,10 +461,88 @@ describe('PreviewPanel', () => {
     })
 
     await act(async () => {
-      for (const callback of resizeObserverCallbacks) {
-        callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
-      }
-      await Promise.resolve()
+      rerender(
+        <PreviewPanel
+          collapsed={false}
+          onToggleCollapse={() => {}}
+          panelWidth={720}
+          onResize={() => {}}
+          previewFile={{
+            path: 'D:/PI/app/report.pdf',
+            name: 'report.pdf',
+            ext: '.pdf',
+            type: 'pdf',
+            content: [37, 80, 68, 70],
+          }}
+          onClosePreview={() => {}}
+          onOpenExternal={() => {}}
+        />,
+      )
+      await new Promise((resolve) => window.setTimeout(resolve, 150))
+    })
+
+    await waitFor(() => {
+      expect(pdfRenderMock).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
+  })
+
+  it('serializes pdf panel-width redraws so they cannot render into an active canvas', async () => {
+    let finishFirstRender: (() => void) | null = null
+    pdfBehavior.renderPromises = [
+      new Promise((resolve) => {
+        finishFirstRender = () => resolve(undefined)
+      }),
+      Promise.resolve(),
+    ]
+
+    const { rerender } = render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(pdfRenderMock).toHaveBeenCalledTimes(1)
+    })
+
+    const stage = document.querySelector('.pv-viewer-stage') as HTMLElement
+    Object.defineProperty(stage, 'clientWidth', {
+      configurable: true,
+      value: 700,
+    })
+
+    await act(async () => {
+      rerender(
+        <PreviewPanel
+          collapsed={false}
+          onToggleCollapse={() => {}}
+          panelWidth={720}
+          onResize={() => {}}
+          previewFile={{
+            path: 'D:/PI/app/report.pdf',
+            name: 'report.pdf',
+            ext: '.pdf',
+            type: 'pdf',
+            content: [37, 80, 68, 70],
+          }}
+          onClosePreview={() => {}}
+          onOpenExternal={() => {}}
+        />,
+      )
+      await new Promise((resolve) => window.setTimeout(resolve, 150))
     })
 
     expect(pdfRenderMock).toHaveBeenCalledTimes(1)
