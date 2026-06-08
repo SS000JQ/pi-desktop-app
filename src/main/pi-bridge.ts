@@ -19,6 +19,9 @@ import type {
   AgentSessionEvent,
 } from '@earendil-works/pi-coding-agent'
 
+const ARTIFACT_SCAN_MAX_DEPTH = 8
+const ARTIFACT_SCAN_MAX_FILES = 5000
+
 export interface PiBridgeEvent {
   type:
     | 'run_started'
@@ -253,7 +256,7 @@ export class PiBridge {
     const files: string[] = []
     const ignoredDirectories = new Set(['.git', 'node_modules', 'out', 'dist', 'build', '.run-logs'])
     const visit = (dir: string, depth: number): void => {
-      if (depth > 4 || files.length >= 2000) return
+      if (depth > ARTIFACT_SCAN_MAX_DEPTH || files.length >= ARTIFACT_SCAN_MAX_FILES) return
       let entries: string[]
       try {
         entries = readdirSync(dir)
@@ -262,7 +265,7 @@ export class PiBridge {
       }
 
       for (const name of entries) {
-        if (files.length >= 2000) return
+        if (files.length >= ARTIFACT_SCAN_MAX_FILES) return
         const fullPath = join(dir, name)
         try {
           const stat = statSync(fullPath)

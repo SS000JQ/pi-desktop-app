@@ -26,4 +26,23 @@ describe('PiBridge artifact detection', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('detects markdown artifacts created deeper than the initial shallow scan', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pi-bridge-deep-artifacts-'))
+    try {
+      const bridge = new PiBridge() as any
+      const before = bridge.snapshotFiles(root) as Map<string, number>
+      const nested = ['a', 'b', 'c', 'd', 'e', 'f'].reduce((current, segment) => {
+        const next = join(current, segment)
+        mkdirSync(next)
+        return next
+      }, root)
+      const artifactPath = join(nested, 'deep-report.md')
+      writeFileSync(artifactPath, '# Deep Report\n', 'utf-8')
+
+      expect(bridge.detectArtifacts(root, before)).toContain(artifactPath)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

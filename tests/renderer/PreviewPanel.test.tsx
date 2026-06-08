@@ -12,6 +12,7 @@ type ViewerBehavior = {
 type PdfBehavior = {
   pageCount: number
   shouldFail?: boolean
+  renderPromises?: Promise<unknown>[]
 }
 
 type DocxBehavior = {
@@ -25,6 +26,7 @@ let pdfBehavior: PdfBehavior
 let docxBehavior: DocxBehavior
 
 const pdfGetDocumentMock = vi.fn()
+const pdfRenderMock = vi.fn()
 const docxRenderAsyncMock = vi.fn()
 const iframePostMessageMock = vi.fn()
 let iframeContentWindowMock: { postMessage: typeof iframePostMessageMock }
@@ -95,6 +97,7 @@ describe('PreviewPanel', () => {
     resizeObserverCallbacks = []
 
     pdfGetDocumentMock.mockReset()
+    pdfRenderMock.mockReset()
     pdfGetDocumentMock.mockImplementation(() => {
       if (pdfBehavior.shouldFail) {
         return {
@@ -111,7 +114,10 @@ describe('PreviewPanel', () => {
               width: 640 * scale,
               height: 480 * scale,
             }),
-            render: vi.fn(() => ({ promise: Promise.resolve() })),
+            render: vi.fn(() => {
+              pdfRenderMock()
+              return { promise: pdfBehavior.renderPromises?.shift() || Promise.resolve() }
+            }),
             cleanup: vi.fn(),
           })),
           destroy: vi.fn(),
@@ -143,6 +149,7 @@ describe('PreviewPanel', () => {
       value: vi.fn(() => ({
         setTransform: vi.fn(),
         clearRect: vi.fn(),
+        drawImage: vi.fn(),
       })),
     })
 
@@ -429,6 +436,99 @@ describe('PreviewPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('1 / 2')).toBeTruthy()
+    })
+    expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
+  })
+
+  it('ignores ResizeObserver callbacks caused only by pdf canvas height changes', async () => {
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(pdfRenderMock).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      for (let index = 0; index < 5; index += 1) {
+        for (const callback of resizeObserverCallbacks) {
+          callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+        }
+      }
+      await Promise.resolve()
+    })
+
+    expect(pdfRenderMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
+  })
+
+  it('serializes pdf redraws so ResizeObserver cannot render into an active canvas', async () => {
+    let finishFirstRender: (() => void) | null = null
+    pdfBehavior.renderPromises = [
+      new Promise((resolve) => {
+        finishFirstRender = () => resolve(undefined)
+      }),
+      Promise.resolve(),
+    ]
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(pdfRenderMock).toHaveBeenCalledTimes(1)
+    })
+
+    const stage = document.querySelector('.pv-viewer-stage') as HTMLElement
+    Object.defineProperty(stage, 'clientWidth', {
+      configurable: true,
+      value: 700,
+    })
+
+    await act(async () => {
+      for (const callback of resizeObserverCallbacks) {
+        callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+      }
+      await Promise.resolve()
+    })
+
+    expect(pdfRenderMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishFirstRender?.()
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(pdfRenderMock).toHaveBeenCalledTimes(2)
     })
     expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
   })

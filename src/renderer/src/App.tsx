@@ -1132,6 +1132,7 @@ export default function App() {
   }, [activeSessionPath, loadSessionMessages])
 
   useEffect(() => {
+    if (isStreamingRef.current) return
     setRuntimeStatus(null)
   }, [activeSessionPath, currentModel])
 
@@ -1367,9 +1368,17 @@ export default function App() {
     [workspaceFiles, activeArtifacts, recentOpenedPaths],
   )
 
+  const knownWorkspaceFiles = useMemo(
+    () => uniqueWorkspaceEntries([
+      ...workspaceFiles,
+      ...Object.values(workspaceChildrenByDir).flat(),
+    ]),
+    [workspaceChildrenByDir, workspaceFiles],
+  )
+
   const contextUploads = useMemo(
-    () => buildUploadItems(workspaceFiles, activeArtifacts, recentOpenedPaths),
-    [workspaceFiles, activeArtifacts, recentOpenedPaths],
+    () => buildUploadItems(knownWorkspaceFiles, activeArtifacts, recentOpenedPaths),
+    [knownWorkspaceFiles, activeArtifacts, recentOpenedPaths],
   )
 
   const connectorItems = useMemo<ContextResourceItem[]>(

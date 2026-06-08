@@ -69,8 +69,13 @@ interface PdfPageProxyLike {
     canvasContext: CanvasRenderingContext2D
     viewport: PdfPageViewportLike
     transform?: number[]
-  }) => { promise: Promise<unknown> }
+  }) => PdfRenderTaskLike
   cleanup?: () => void
+}
+
+interface PdfRenderTaskLike {
+  promise: Promise<unknown>
+  cancel?: () => void
 }
 
 interface PdfDocumentProxyLike {
@@ -532,7 +537,10 @@ export default function PreviewPanel({
   const pdfStageRef = useRef<HTMLDivElement | null>(null)
   const pdfDocumentRef = useRef<PdfDocumentProxyLike | null>(null)
   const pdfLoadingTaskRef = useRef<PdfLoadingTaskLike | null>(null)
+  const pdfActiveRenderTaskRef = useRef<PdfRenderTaskLike | null>(null)
+  const pdfRenderInFlightRef = useRef<Promise<unknown> | null>(null)
   const pdfRenderRequestIdRef = useRef(0)
+  const pdfLastObservedStageWidthRef = useRef<number | null>(null)
   const pdfPageMemoryRef = useRef<Record<string, number>>({})
   const [pdfCurrentPage, setPdfCurrentPage] = useState(1)
   const [pdfPageCount, setPdfPageCount] = useState(0)
@@ -726,9 +734,12 @@ export default function PreviewPanel({
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'pdf') {
       pdfRenderRequestIdRef.current += 1
+      pdfLastObservedStageWidthRef.current = null
+      pdfActiveRenderTaskRef.current?.cancel?.()
       pdfLoadingTaskRef.current?.destroy?.()
       pdfDocumentRef.current?.cleanup?.()
       pdfDocumentRef.current?.destroy?.()
+      pdfActiveRenderTaskRef.current = null
       pdfLoadingTaskRef.current = null
       pdfDocumentRef.current = null
       setPdfCurrentPage(1)
@@ -904,10 +915,22 @@ export default function PreviewPanel({
     pageNumber: number,
     requestId: number,
   ): Promise<boolean> => {
-    const canvas = pdfCanvasRef.current
+    const previousRender = pdfRenderInFlightRef.current
+    if (previousRender) {
+      try {
+        await previousRender
+      } catch {
+        // A cancelled stale render should not block the next requested page.
+      }
+    }
+    if (requestId !== pdfRenderRequestIdRef.current) {
+      return false
+    }
+
+    const visibleCanvas = pdfCanvasRef.current
     const stage = pdfStageRef.current
 
-    if (!canvas || !stage) {
+    if (!visibleCanvas || !stage) {
       throw new Error('The PDF canvas is not available.')
     }
 
@@ -922,7 +945,8 @@ export default function PreviewPanel({
     const scale = Math.max(Math.min(availableWidth / baseViewport.width, 2), 0.75)
     const viewport = page.getViewport({ scale })
     const outputScale = window.devicePixelRatio || 1
-    const context = canvas.getContext('2d')
+    const renderCanvas = document.createElement('canvas')
+    const context = renderCanvas.getContext('2d')
 
     if (!context) {
       throw new Error('The PDF canvas context is unavailable.')
@@ -933,23 +957,53 @@ export default function PreviewPanel({
       return false
     }
 
-    canvas.width = Math.floor(viewport.width * outputScale)
-    canvas.height = Math.floor(viewport.height * outputScale)
-    canvas.style.width = `${viewport.width}px`
-    canvas.style.height = `${viewport.height}px`
+    renderCanvas.width = Math.floor(viewport.width * outputScale)
+    renderCanvas.height = Math.floor(viewport.height * outputScale)
     context.setTransform(1, 0, 0, 1, 0, 0)
-    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.clearRect(0, 0, renderCanvas.width, renderCanvas.height)
 
-    await page.render({
+    const renderTask = page.render({
       canvasContext: context,
       viewport,
       transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
-    }).promise
+    })
+    pdfActiveRenderTaskRef.current = renderTask
+    const renderPromise = renderTask.promise.finally(() => {
+      if (pdfActiveRenderTaskRef.current === renderTask) {
+        pdfActiveRenderTaskRef.current = null
+      }
+      if (pdfRenderInFlightRef.current === renderPromise) {
+        pdfRenderInFlightRef.current = null
+      }
+    })
+    pdfRenderInFlightRef.current = renderPromise
+
+    try {
+      await renderPromise
+    } catch (error) {
+      if (requestId !== pdfRenderRequestIdRef.current) {
+        page.cleanup?.()
+        return false
+      }
+      throw error
+    }
 
     if (requestId !== pdfRenderRequestIdRef.current) {
       page.cleanup?.()
       return false
     }
+
+    const visibleContext = visibleCanvas.getContext('2d')
+    if (!visibleContext) {
+      throw new Error('The PDF canvas context is unavailable.')
+    }
+    visibleCanvas.width = renderCanvas.width
+    visibleCanvas.height = renderCanvas.height
+    visibleCanvas.style.width = `${viewport.width}px`
+    visibleCanvas.style.height = `${viewport.height}px`
+    visibleContext.setTransform(1, 0, 0, 1, 0, 0)
+    visibleContext.clearRect(0, 0, visibleCanvas.width, visibleCanvas.height)
+    visibleContext.drawImage(renderCanvas, 0, 0)
 
     page.cleanup?.()
     return true
@@ -977,9 +1031,11 @@ export default function PreviewPanel({
     let cancelled = false
 
     const destroyPdf = () => {
+      pdfActiveRenderTaskRef.current?.cancel?.()
       pdfLoadingTaskRef.current?.destroy?.()
       pdfDocumentRef.current?.cleanup?.()
       pdfDocumentRef.current?.destroy?.()
+      pdfActiveRenderTaskRef.current = null
       pdfLoadingTaskRef.current = null
       pdfDocumentRef.current = null
     }
@@ -1004,6 +1060,7 @@ export default function PreviewPanel({
 
         pdfDocumentRef.current = documentProxy
         setPdfPageCount(documentProxy.numPages)
+        pdfLastObservedStageWidthRef.current = pdfStageRef.current ? pdfStageRef.current.clientWidth : null
         const targetPage = Math.min(
           Math.max(pdfPageMemoryRef.current[previewFile.path] ?? 1, 1),
           documentProxy.numPages,
@@ -1032,6 +1089,7 @@ export default function PreviewPanel({
     return () => {
       cancelled = true
       pdfRenderRequestIdRef.current += 1
+      pdfActiveRenderTaskRef.current?.cancel?.()
       destroyPdf()
     }
   }, [collapsed, previewFile?.path, previewFile?.type, pdfContent, pdfRenderError])
@@ -1045,7 +1103,15 @@ export default function PreviewPanel({
 
     const observer = new ResizeObserver(() => {
       const documentProxy = pdfDocumentRef.current
-      if (!documentProxy) return
+      const stage = pdfStageRef.current
+      if (!documentProxy || !stage) return
+
+      const nextWidth = stage.clientWidth
+      const previousWidth = pdfLastObservedStageWidthRef.current
+      if (previousWidth !== null && Math.abs(nextWidth - previousWidth) < 2) {
+        return
+      }
+      pdfLastObservedStageWidthRef.current = nextWidth
 
       const requestId = pdfRenderRequestIdRef.current + 1
       pdfRenderRequestIdRef.current = requestId
