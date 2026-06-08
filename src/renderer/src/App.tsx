@@ -8,7 +8,6 @@ import StatusBar from './components/StatusBar'
 import Welcome from './screens/Welcome'
 import Settings from './screens/Settings'
 import ProviderManager from './screens/ProviderManager'
-import Skills from './screens/Skills'
 import type {
   ArtifactEntity,
   ConnectorSummaryEntry,
@@ -514,7 +513,7 @@ export default function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(280)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(260)
   const [rightPanelWidth, setRightPanelWidth] = useState(360)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -538,8 +537,8 @@ export default function App() {
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProvider, setShowProvider] = useState(false)
-  const [showSkills, setShowSkills] = useState(false)
   const [defaultSessionDirectory, setDefaultSessionDirectory] = useState('')
+  const [pinnedSessionPaths, setPinnedSessionPaths] = useState<string[]>([])
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [newSessionError, setNewSessionError] = useState<string | null>(null)
@@ -1084,10 +1083,11 @@ export default function App() {
 
   useEffect(() => {
     async function initialize() {
-      const [providersLoaded, workingDirRes, defaultSessionDirRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
+      const [providersLoaded, workingDirRes, defaultSessionDirRes, pinnedSessionPathsRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
         loadProviders(),
         window.piDesktop.config.get('workingDirectory'),
         window.piDesktop.config.get('defaultSessionDirectory'),
+        window.piDesktop.config.get('pinnedSessionPaths'),
         window.piDesktop.config.get('wizardCompleted'),
         window.piDesktop.session.getActive(),
         loadSessions(),
@@ -1103,10 +1103,15 @@ export default function App() {
         defaultSessionDirRes.success && typeof defaultSessionDirRes.data === 'string'
           ? defaultSessionDirRes.data
           : ''
+      const resolvedPinnedSessionPaths =
+        pinnedSessionPathsRes.success && Array.isArray(pinnedSessionPathsRes.data)
+          ? pinnedSessionPathsRes.data.filter((path): path is string => typeof path === 'string')
+          : []
 
       setCurrentDir(workingDirectory)
       setRuntimeWorkspaceDir('')
       setDefaultSessionDirectory(resolvedDefaultSessionDirectory)
+      setPinnedSessionPaths(resolvedPinnedSessionPaths)
       setHasProvider(hasRunnableProvider(providersLoaded))
 
       const preferredSessionKey = activeSessionRes.success && typeof activeSessionRes.data === 'string' ? activeSessionRes.data : null
@@ -1453,7 +1458,6 @@ export default function App() {
           onModelChange={(model) => { void updateSessionRuntime({ modelId: model }) }}
           thinkingLevel={thinkingLevel}
           onThinkingLevelChange={(level) => { void updateSessionRuntime({ thinkingLevel: level }) }}
-          onOpenSettings={() => setShowSettings(true)}
           tokenCount={tokenCount}
           tokenLimit={contextLimit}
         />
@@ -1469,6 +1473,11 @@ export default function App() {
           <LeftPanel
             sessions={sessions}
             activeSessionPath={activeSessionPath}
+            pinnedSessionPaths={pinnedSessionPaths}
+            onPinnedSessionPathsChange={(paths) => {
+              setPinnedSessionPaths(paths)
+              void window.piDesktop.config.set('pinnedSessionPaths', paths)
+            }}
             onSessionSelect={(path) => {
               const selected = sessions.find((session) => session.path === path)
               setActiveSessionId(selected?.id || null)
@@ -1480,8 +1489,6 @@ export default function App() {
               setNewSessionError(null)
               setShowNewSessionDialog(true)
             }}
-            onOpenModels={() => setShowProvider(true)}
-            onOpenSkills={() => setShowSkills(true)}
             onOpenSettings={() => setShowSettings(true)}
             collapsed={leftPanelCollapsed}
             onToggleCollapse={() => setLeftPanelCollapsed((state) => !state)}
@@ -1536,7 +1543,6 @@ export default function App() {
         />
       )}
       {showProvider && <ProviderManager onClose={() => { setShowProvider(false); void loadProviders() }} />}
-      {showSkills && <Skills onClose={() => setShowSkills(false)} />}
       <NewSessionDialog
         isOpen={showNewSessionDialog}
         currentDir={visibleWorkspaceDir}

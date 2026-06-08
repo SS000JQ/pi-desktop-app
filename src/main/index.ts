@@ -30,6 +30,13 @@ import { listProfiles, createProfile, deleteProfile, getActiveProfile, setActive
 import { getConfigValue, setConfigValue } from './config-store'
 import { piBridge } from './pi-bridge'
 import {
+  buildEnvironmentStatus,
+  checkGitRepository,
+  checkGitVersion,
+  sourceReleaseReady,
+} from './environment'
+import { loadPiCodingAgentModule } from './pi-sdk'
+import {
   createPiSession,
   listPiSessions,
   openPiSession,
@@ -241,6 +248,24 @@ ipcMain.handle('providers:test', async (_event, config) => {
 
 ipcMain.handle('providers:discoverModels', async (_event, config) => {
   return { success: true, data: await discoverModels(config) }
+})
+
+ipcMain.handle(IPC_CHANNELS.DESKTOP_ENVIRONMENT, async () => {
+  const workspacePath = resolveWorkingDirectory() || resolveDefaultSessionDirectory()
+  return {
+    success: true,
+    data: await buildEnvironmentStatus({
+      loadPiCore: loadPiCodingAgentModule,
+      loadProviders,
+      getConfigValue,
+      getEffectiveDefaultSessionDirectory: resolveDefaultSessionDirectory,
+      pathExists: existsSync,
+      checkGitVersion,
+      checkGitRepository,
+      releaseReady: !is.dev || sourceReleaseReady(process.cwd()),
+      workspacePath,
+    }),
+  }
 })
 
 ipcMain.handle('profiles:list', async () => {

@@ -2,13 +2,12 @@ import { extname } from 'path'
 import { readFileSync, statSync } from 'fs'
 import mammoth from 'mammoth'
 import JSZip from 'jszip'
-import * as XLSX from 'xlsx'
 import { DOMParser } from '@xmldom/xmldom'
 import type {
   FilePreviewData,
   SlidePreviewSummary,
-  WorkbookPreviewSummary,
 } from '../shared/preview-types'
+import { buildWorkbookSummary, parseXlsxPreview } from '../shared/xlsx-preview'
 
 const TEXT_PREVIEW_LIMIT_BYTES = 3 * 1024 * 1024
 const IMAGE_PREVIEW_LIMIT_BYTES = 25 * 1024 * 1024
@@ -119,38 +118,12 @@ async function readDocxPreview(filePath: string): Promise<FilePreviewData> {
   }
 }
 
-function buildWorkbookSummary(workbook: XLSX.WorkBook): WorkbookPreviewSummary {
-  const sheetNames = workbook.SheetNames.slice(0, 6)
-  const sheets = sheetNames.slice(0, 3).map((name) => {
-    const sheet = workbook.Sheets[name]
-    const rows = ((XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      blankrows: false,
-      raw: false,
-    }) as unknown[]) || [])
-      .slice(0, 8)
-      .map((row) =>
-        Array.isArray(row)
-          ? row.slice(0, 6).map((cell) => (cell == null ? '' : String(cell)))
-          : [],
-      )
-      .filter((row) => row.some((cell) => cell.trim().length > 0))
-
-    return { name, rows }
-  })
-
-  return {
-    sheetNames,
-    sheets,
-  }
-}
-
-function readXlsxPreview(filePath: string, ext: string): FilePreviewData {
+async function readXlsxPreview(filePath: string, ext: string): Promise<FilePreviewData> {
   const rawContent = readBinaryContent(filePath, ext, RICH_PREVIEW_LIMIT_BYTES)
   if (!(rawContent instanceof Uint8Array)) return rawContent
 
   try {
-    const workbook = XLSX.read(Buffer.from(rawContent), { type: 'buffer', cellDates: true })
+    const workbook = await parseXlsxPreview(rawContent)
     return {
       type: 'xlsx',
       content: rawContent,

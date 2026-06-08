@@ -1414,7 +1414,7 @@ Key tasks:
 Key tasks:
 1. pptxviewjs integration (PPT slide viewer)
 2. mammoth.js integration (DOCX → HTML)
-3. SheetJS integration (XLSX → table)
+3. Lightweight OOXML spreadsheet parser integration (XLSX → table)
 4. highlight.js integration (code syntax highlighting)
 5. Project Files tree browser modal
 6. External editor detection (file-bridge.ts)

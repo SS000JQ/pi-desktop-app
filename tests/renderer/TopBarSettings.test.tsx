@@ -5,7 +5,7 @@ import NewSessionDialog from '../../src/renderer/src/components/NewSessionDialog
 import Settings from '../../src/renderer/src/screens/Settings'
 
 describe('TopBar settings simplification', () => {
-  it('keeps Settings and removes placeholder Search and Profile buttons', () => {
+  it('removes right-side placeholder and settings buttons', () => {
     render(
       <TopBar
         currentDir="D:/PI/app"
@@ -13,11 +13,10 @@ describe('TopBar settings simplification', () => {
         currentModelLabel="DeepSeek"
         thinkingLevel="off"
         tokenCount={10}
-        onOpenSettings={() => {}}
       />,
     )
 
-    expect(screen.getByTitle('Settings')).toBeTruthy()
+    expect(screen.queryByTitle('Settings')).toBeNull()
     expect(screen.queryByTitle('Search')).toBeNull()
     expect(screen.queryByTitle('Profile')).toBeNull()
   })
@@ -53,6 +52,28 @@ describe('Settings', () => {
       files: {
         pickDirectory: pickDirectoryMock,
       },
+      desktop: {
+        getEnvironmentStatus: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            overallStatus: 'warning',
+            generatedAt: new Date().toISOString(),
+            items: [
+              { id: 'pi-core', label: 'Pi Core', status: 'ok', summary: 'Pi Core is ready.' },
+              {
+                id: 'git',
+                label: 'Git',
+                status: 'missing',
+                summary: 'Git is optional.',
+                detail: 'https://git-scm.com/download/win',
+                actionLabel: 'Copy install command',
+                actionKind: 'copy_command',
+                actionValue: 'winget install --id Git.Git -e --source winget',
+              },
+            ],
+          },
+        }),
+      },
     } as never
   })
 
@@ -61,6 +82,11 @@ describe('Settings', () => {
 
     expect(await screen.findByLabelText('Default file address')).toBeTruthy()
     expect(screen.getByText('Theme')).toBeTruthy()
+    expect(await screen.findByText('Environment')).toBeTruthy()
+    expect(screen.getByText('Pi Core')).toBeTruthy()
+    expect(screen.getByText('Git')).toBeTruthy()
+    expect(screen.getByText('Re-check')).toBeTruthy()
+    expect(screen.getByText('Open Git')).toBeTruthy()
     expect(screen.queryByText('Restore')).toBeNull()
     expect(screen.queryByText('Font Size')).toBeNull()
     expect(screen.queryByText('Create Backup')).toBeNull()

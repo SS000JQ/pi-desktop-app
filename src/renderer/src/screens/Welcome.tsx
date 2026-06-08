@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { ProviderCatalogEntry, ProviderModel } from '../types/chat'
+import EnvironmentStatusList from '../components/EnvironmentStatusList'
+import type { EnvironmentCheckResult, ProviderCatalogEntry, ProviderModel } from '../types/chat'
 
 interface WelcomeProps {
   onComplete: () => void
@@ -10,7 +11,8 @@ const STEPS = [
   { title: 'Provider', description: 'Choose an AI provider to get started.' },
   { title: 'API Key', description: 'Enter your API key for the selected provider.' },
   { title: 'Model', description: 'Select your default model.' },
-  { title: 'Directory', description: 'Choose a default working directory.' },
+  { title: 'Directory', description: 'Choose a default file address.' },
+  { title: 'Environment', description: 'Check Pi Desktop readiness.' },
   { title: 'Ready', description: 'You are all set.' },
 ]
 
@@ -22,6 +24,8 @@ export default function Welcome({ onComplete }: WelcomeProps) {
   const [models, setModels] = useState<ProviderModel[]>([])
   const [selectedModelId, setSelectedModelId] = useState('')
   const [workDir, setWorkDir] = useState('')
+  const [environmentStatus, setEnvironmentStatus] = useState<EnvironmentCheckResult | null>(null)
+  const [environmentLoading, setEnvironmentLoading] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState('')
 
@@ -35,6 +39,24 @@ export default function Welcome({ onComplete }: WelcomeProps) {
 
     void loadCatalog()
   }, [])
+
+  useEffect(() => {
+    if (step === 5) {
+      void loadEnvironmentStatus()
+    }
+  }, [step])
+
+  async function loadEnvironmentStatus(): Promise<void> {
+    setEnvironmentLoading(true)
+    try {
+      const response = await window.piDesktop.desktop.getEnvironmentStatus()
+      if (response.success && response.data) {
+        setEnvironmentStatus(response.data)
+      }
+    } finally {
+      setEnvironmentLoading(false)
+    }
+  }
 
   async function handleTest(): Promise<void> {
     if (!selectedProvider || (selectedProvider.authType === 'apiKey' && !apiKey)) return
@@ -93,11 +115,18 @@ export default function Welcome({ onComplete }: WelcomeProps) {
       )
     }
 
-    if (workDir) {
-      await window.piDesktop.config.set('workingDirectory', workDir)
+    if (workDir.trim()) {
+      await window.piDesktop.config.set('defaultSessionDirectory', workDir.trim())
     }
     await window.piDesktop.config.set('wizardCompleted', 'true')
     onComplete()
+  }
+
+  async function browseWorkDir(): Promise<void> {
+    const response = await window.piDesktop.files.pickDirectory(workDir || undefined)
+    if (response.success && typeof response.data === 'string' && response.data) {
+      setWorkDir(response.data)
+    }
   }
 
   return (
@@ -205,13 +234,39 @@ export default function Welcome({ onComplete }: WelcomeProps) {
 
           {step === 4 && (
             <div>
-              <h2 className="wiz-h2">Working Directory</h2>
-              <p className="wiz-p" style={{ marginBottom: '10px' }}>Default folder for your projects (optional)</p>
-              <input value={workDir} onChange={(event) => setWorkDir(event.target.value)} className="fi" placeholder="D:/PI/app" />
+              <h2 className="wiz-h2">Default File Address</h2>
+              <p className="wiz-p" style={{ marginBottom: '10px' }}>
+                Used by new sessions when you choose the Pi Desktop default folder.
+              </p>
+              <div className="flex" style={{ gap: 8 }}>
+                <input
+                  value={workDir}
+                  onChange={(event) => setWorkDir(event.target.value)}
+                  className="fi"
+                  style={{ flex: 1 }}
+                  placeholder="C:/Users/you/Pi-Desktop-Session"
+                />
+                <button type="button" className="bs" onClick={browseWorkDir}>Browse</button>
+              </div>
             </div>
           )}
 
           {step === 5 && (
+            <div>
+              <h2 className="wiz-h2">Environment Check</h2>
+              <p className="wiz-p" style={{ marginBottom: '10px' }}>
+                Git is optional. Pi Core and AI Provider are required for chat.
+              </p>
+              <EnvironmentStatusList
+                result={environmentStatus}
+                loading={environmentLoading}
+                compact
+                onRefresh={loadEnvironmentStatus}
+              />
+            </div>
+          )}
+
+          {step === 6 && (
             <div className="wiz-center">
               <div className="wiz-icon">OK</div>
               <h1 className="wiz-h1">You are all set</h1>
@@ -244,7 +299,8 @@ export default function Welcome({ onComplete }: WelcomeProps) {
             {step === 2 && <button onClick={() => setStep(3)} className="bp">Continue</button>}
             {step === 3 && <button onClick={() => setStep(4)} className="bp">Continue</button>}
             {step === 4 && <button onClick={() => setStep(5)} className="bp">Continue</button>}
-            {step === 5 && <button onClick={handleFinish} className="bp">Start Using Pi Desktop</button>}
+            {step === 5 && <button onClick={() => setStep(6)} className="bp">Continue</button>}
+            {step === 6 && <button onClick={handleFinish} className="bp">Start Using Pi Desktop</button>}
           </div>
         </div>
       </div>

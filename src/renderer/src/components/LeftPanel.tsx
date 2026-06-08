@@ -4,10 +4,10 @@ import type { Session } from '../types/chat'
 interface LeftPanelProps {
   sessions: Session[]
   activeSessionPath: string | null
+  pinnedSessionPaths?: string[]
+  onPinnedSessionPathsChange?: (paths: string[]) => void
   onSessionSelect: (path: string) => void
   onSessionCreate: () => void
-  onOpenModels: () => void
-  onOpenSkills: () => void
   onOpenSettings?: () => void
   collapsed: boolean
   onToggleCollapse: () => void
@@ -32,26 +32,35 @@ function getDirectoryLabel(cwd: string): string {
   return parts[parts.length - 1] || cwd
 }
 
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, '/').toLowerCase()
+}
+
 export default function LeftPanel({
   sessions,
   activeSessionPath,
+  pinnedSessionPaths = [],
+  onPinnedSessionPathsChange,
   onSessionSelect,
   onSessionCreate,
-  onOpenModels,
-  onOpenSkills,
   onOpenSettings,
   collapsed,
   onToggleCollapse,
   panelWidth,
   onResize,
 }: LeftPanelProps) {
-  const [viewMode, setViewMode] = useState<'recent' | 'directory'>('recent')
+  const [collapsedDirectories, setCollapsedDirectories] = useState<Record<string, boolean>>({})
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    session: Session
+  } | null>(null)
   const isDraggingLeft = useRef(false)
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!isDraggingLeft.current) return
-      const newWidth = Math.min(Math.max(event.clientX, 220), 420)
+      const newWidth = Math.min(Math.max(event.clientX, 220), 360)
       onResize(newWidth)
     }
 
@@ -67,6 +76,22 @@ export default function LeftPanel({
     }
   }, [onResize])
 
+  useEffect(() => {
+    if (!contextMenu) return
+
+    const closeMenu = () => setContextMenu(null)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu()
+    }
+
+    window.addEventListener('click', closeMenu)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('click', closeMenu)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenu])
+
   const recentSessions = useMemo(
     () =>
       [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).map((session) => ({
@@ -77,14 +102,71 @@ export default function LeftPanel({
     [sessions],
   )
 
+  const pinnedPathSet = useMemo(
+    () => new Set(pinnedSessionPaths.map((path) => normalizePath(path))),
+    [pinnedSessionPaths],
+  )
+
+  const pinnedSessions = useMemo(
+    () => recentSessions.filter((session) => pinnedPathSet.has(normalizePath(session.path))),
+    [pinnedPathSet, recentSessions],
+  )
+
   const groupedSessions = useMemo(() => {
-    return recentSessions.reduce<Record<string, Session[]>>((groups, session) => {
+    return recentSessions.filter((session) => !pinnedPathSet.has(normalizePath(session.path))).reduce<Record<string, Session[]>>((groups, session) => {
       const key = session.cwd || 'Unknown Directory'
       groups[key] = groups[key] || []
       groups[key].push(session)
       return groups
     }, {})
-  }, [recentSessions])
+  }, [pinnedPathSet, recentSessions])
+
+  const sortedGroups = useMemo(
+    () =>
+      Object.entries(groupedSessions)
+        .map(([cwd, grouped]) => ({
+          cwd,
+          label: getDirectoryLabel(cwd),
+          sessions: grouped,
+          updatedAt: Math.max(...grouped.map((session) => session.updatedAt)),
+        }))
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [groupedSessions],
+  )
+
+  const togglePin = (session: Session) => {
+    const normalizedSessionPath = normalizePath(session.path)
+    const isPinned = pinnedPathSet.has(normalizedSessionPath)
+    const nextPaths = isPinned
+      ? pinnedSessionPaths.filter((path) => normalizePath(path) !== normalizedSessionPath)
+      : [session.path, ...pinnedSessionPaths]
+    onPinnedSessionPathsChange?.(nextPaths)
+    setContextMenu(null)
+  }
+
+  const renderSession = (session: Session, options: { pinned?: boolean } = {}) => {
+    const isActive = session.path === activeSessionPath
+    const isPinned = pinnedPathSet.has(normalizePath(session.path))
+
+    return (
+      <button
+        key={session.path || session.id}
+        onClick={() => onSessionSelect(session.path)}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          setContextMenu({ x: event.clientX, y: event.clientY, session })
+        }}
+        className={`l-session-row ${isActive ? 'active' : ''}`}
+        title={`${session.title}\n${session.cwd}\n${session.messageCount || 0} messages`}
+        aria-label={session.title}
+      >
+        <span className={`l-session-dot ${isActive ? 'active' : session.status && session.status !== 'idle' ? session.status : ''}`} />
+        <span className="l-session-row-title">{session.title || '(no messages)'}</span>
+        {options.pinned || isPinned ? <span className="l-pin-mark" aria-label="Pinned">Pin</span> : null}
+        <span className="l-session-row-time">{session.lastActiveLabel || formatRelativeTime(session.updatedAt)}</span>
+      </button>
+    )
+  }
 
   if (collapsed) {
     return (
@@ -119,26 +201,6 @@ export default function LeftPanel({
         <button className="bp l-primary-btn" onClick={onSessionCreate} aria-label="New Chat">
           New Chat
         </button>
-        <div className="l-view-switch" role="tablist" aria-label="Session views">
-          <button
-            className={viewMode === 'recent' ? 'active' : ''}
-            onClick={() => setViewMode('recent')}
-            aria-label="Recent"
-          >
-            Recent
-          </button>
-          <button
-            className={viewMode === 'directory' ? 'active' : ''}
-            onClick={() => setViewMode('directory')}
-            aria-label="Directories"
-          >
-            Directories
-          </button>
-        </div>
-      </div>
-
-      <div className="l-hdr">
-        <span className="l-hdr-label">Pi Sessions</span>
         <button onClick={onToggleCollapse} className="l-new" aria-label="Collapse sidebar">
           {'<'}
         </button>
@@ -152,70 +214,57 @@ export default function LeftPanel({
               Start a new chat to create one in your chosen workspace.
             </div>
           </div>
-        ) : viewMode === 'recent' ? (
-          recentSessions.map((session) => (
-            <button
-              key={session.path || session.id}
-              onClick={() => onSessionSelect(session.path)}
-              className={`l-session-card ${session.path === activeSessionPath ? 'active' : ''}`}
-              title={`${session.title}\n${session.cwd}`}
-            >
-              <div className="l-session-title-row">
-                <span className="l-session-title">{session.title}</span>
-                {session.status && session.status !== 'idle' && (
-                  <span className={`l-session-status ${session.status}`} aria-hidden="true" />
-                )}
-              </div>
-              <div className="l-session-meta">{session.cwdLabel}</div>
-              <div className="l-session-submeta">
-                <span title={session.lastActiveLabel}>{session.lastActiveLabel}</span>
-                <span>{session.messageCount || 0} msgs</span>
-              </div>
-            </button>
-          ))
         ) : (
-          Object.entries(groupedSessions).map(([cwd, grouped]) => (
-            <div key={cwd} className="l-directory-group">
-              <div className="l-directory-label">{cwd}</div>
-              {grouped.map((session) => (
-                <button
-                  key={session.path || session.id}
-                  onClick={() => onSessionSelect(session.path)}
-                  className={`l-session-card ${session.path === activeSessionPath ? 'active' : ''}`}
-                >
-                  <div className="l-session-title-row">
-                    <span className="l-session-title">{session.title}</span>
-                    {session.status && session.status !== 'idle' && (
-                      <span className={`l-session-status ${session.status}`} aria-hidden="true" />
-                    )}
-                  </div>
-                  <div className="l-session-submeta">
-                    <span title={session.lastActiveLabel || formatRelativeTime(session.updatedAt)}>
-                      {session.lastActiveLabel || formatRelativeTime(session.updatedAt)}
-                    </span>
-                    <span>{session.messageCount || 0} msgs</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ))
+          <>
+            {pinnedSessions.length > 0 && (
+              <div className="l-pinned-group" aria-label="Pinned sessions">
+                <div className="l-group-label">Pinned</div>
+                {pinnedSessions.map((session) => renderSession(session, { pinned: true }))}
+              </div>
+            )}
+
+            {sortedGroups.map((group) => {
+              const isCollapsed = Boolean(collapsedDirectories[group.cwd])
+              return (
+                <div key={group.cwd} className="l-directory-group">
+                  <button
+                    type="button"
+                    className="l-directory-label"
+                    aria-label={group.cwd}
+                    onClick={() => setCollapsedDirectories((previous) => ({ ...previous, [group.cwd]: !previous[group.cwd] }))}
+                  >
+                    <span className="l-dir-caret">{isCollapsed ? '>' : 'v'}</span>
+                    <span className="l-dir-icon" aria-hidden="true">[]</span>
+                    <span className="l-dir-name">{group.label}</span>
+                  </button>
+                  {!isCollapsed && group.sessions.map((session) => renderSession(session))}
+                </div>
+              )
+            })}
+          </>
         )}
       </div>
 
       <div className="l-capability">
-        <div className="l-section-label">Capabilities</div>
-        <button className="l-item" onClick={onOpenModels} aria-label="Models">
-          Models
-        </button>
-        <button className="l-item" onClick={onOpenSkills} aria-label="Skills">
-          Skills
-        </button>
         {onOpenSettings && (
-          <button className="l-item" onClick={onOpenSettings} aria-label="Settings">
+          <button className="l-footer-item" onClick={onOpenSettings} aria-label="Settings">
             Settings
           </button>
         )}
       </div>
+
+      {contextMenu && (
+        <div
+          className="l-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" role="menuitem" onClick={() => togglePin(contextMenu.session)}>
+            {pinnedPathSet.has(normalizePath(contextMenu.session.path)) ? 'Unpin' : 'Pin'}
+          </button>
+        </div>
+      )}
 
       <div
         className="resize-h"

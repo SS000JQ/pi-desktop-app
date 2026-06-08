@@ -250,6 +250,26 @@ export interface ProviderConnectionResult {
   detectedModels?: ProviderModel[]
 }
 
+export type EnvironmentStatus = 'ok' | 'warning' | 'missing' | 'error'
+export type EnvironmentActionKind = 'open_url' | 'copy_command' | 'open_settings' | 'choose_directory' | 'none'
+
+export interface EnvironmentCheckItem {
+  id: 'pi-core' | 'ai-provider' | 'default-workspace' | 'git' | 'git-repository' | 'release-readiness'
+  label: string
+  status: EnvironmentStatus
+  summary: string
+  detail?: string
+  actionLabel?: string
+  actionKind?: EnvironmentActionKind
+  actionValue?: string
+}
+
+export interface EnvironmentCheckResult {
+  overallStatus: EnvironmentStatus
+  generatedAt: string
+  items: EnvironmentCheckItem[]
+}
+
 export interface ModelOption {
   id: string
   name: string

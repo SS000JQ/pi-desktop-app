@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow" cx="42%" cy="28%" r="76%">
+      <stop offset="0%" stop-color="#26495E"/>
+      <stop offset="48%" stop-color="#152A32"/>
+      <stop offset="100%" stop-color="#0A1116"/>
+    </radialGradient>
+    <linearGradient id="piStroke" x1="260" y1="226" x2="736" y2="768" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFF3D6"/>
+      <stop offset="46%" stop-color="#D9FFF6"/>
+      <stop offset="100%" stop-color="#69D6FF"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="26" stdDeviation="28" flood-color="#000000" flood-opacity="0.48"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#72E9FF" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect x="56" y="56" width="912" height="912" rx="216" fill="url(#glow)"/>
+  <path d="M178 248C282 116 492 122 574 212C636 280 596 353 504 335C412 317 432 218 537 212C694 203 844 318 842 461C841 548 785 608 704 595" fill="none" stroke="#75E6FF" stroke-width="28" stroke-linecap="round" opacity="0.28"/>
+  <path d="M244 740C326 872 546 878 648 774C718 702 694 614 598 631C494 650 520 762 632 750C742 738 813 662 822 572" fill="none" stroke="#FFE0A3" stroke-width="24" stroke-linecap="round" opacity="0.26"/>
+  <g fill="none" stroke="url(#piStroke)" stroke-linecap="round" stroke-linejoin="round" filter="url(#softShadow)">
+    <path d="M302 318C426 282 602 282 732 318" stroke-width="96"/>
+    <path d="M407 328C384 442 366 560 346 710" stroke-width="96"/>
+    <path d="M620 322C650 438 647 566 598 726" stroke-width="96"/>
+  </g>
+  <path d="M316 302C446 266 604 268 746 302" fill="none" stroke="#FFF8E7" stroke-width="22" stroke-linecap="round" opacity="0.76"/>
+  <circle cx="736" cy="292" r="20" fill="#FFF0C7" opacity="0.88"/>
+</svg>

@@ -48,6 +48,26 @@ interface ProviderUpsertInput {
   isDefault: boolean
 }
 
+type EnvironmentStatus = 'ok' | 'warning' | 'missing' | 'error'
+type EnvironmentActionKind = 'open_url' | 'copy_command' | 'open_settings' | 'choose_directory' | 'none'
+
+interface EnvironmentCheckItem {
+  id: 'pi-core' | 'ai-provider' | 'default-workspace' | 'git' | 'git-repository' | 'release-readiness'
+  label: string
+  status: EnvironmentStatus
+  summary: string
+  detail?: string
+  actionLabel?: string
+  actionKind?: EnvironmentActionKind
+  actionValue?: string
+}
+
+interface EnvironmentCheckResult {
+  overallStatus: EnvironmentStatus
+  generatedAt: string
+  items: EnvironmentCheckItem[]
+}
+
 type ArtifactStatus = 'draft' | 'ready' | 'failed' | 'refreshing'
 type ArtifactType = 'report' | 'summary' | 'table' | 'slides' | 'tracker' | 'brief' | 'file'
 type ArtifactSourceKind = 'local_file' | 'pi_generated' | 'manual'
@@ -191,6 +211,7 @@ interface PiDesktopApi {
         status: 'active' | 'inactive'
       }>
     }>>
+    getEnvironmentStatus: () => Promise<IpcResponse<EnvironmentCheckResult>>
   }
   onAgentEvent: (callback: (event: AgentEvent) => void) => () => void
   profiles: {

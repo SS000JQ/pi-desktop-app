@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import * as XLSX from 'xlsx'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createXlsxFixture } from '../utils/xlsx-fixture'
 
 type ViewerBehavior = {
   slideCount: number
@@ -559,13 +559,10 @@ describe('PreviewPanel', () => {
   })
 
   it('renders docx and xlsx viewer branches', async () => {
-    const workbook = XLSX.utils.book_new()
-    const worksheet = XLSX.utils.aoa_to_sheet([
+    const workbookBytes = Array.from(await createXlsxFixture([
       ['Task', 'Owner'],
       ['Draft', 'Pi'],
-    ])
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1')
-    const workbookBytes = Array.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+    ]))
 
     const { rerender } = render(
       <PreviewPanel

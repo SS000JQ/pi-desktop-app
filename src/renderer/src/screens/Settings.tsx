@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import EnvironmentStatusList from '../components/EnvironmentStatusList'
+import type { EnvironmentCheckResult } from '../types/chat'
 
 interface SettingsProps {
   onClose: () => void
@@ -9,6 +11,8 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange }: S
   const [defaultDir, setDefaultDir] = useState('')
   const [theme, setTheme] = useState('dark')
   const [saveMessage, setSaveMessage] = useState('')
+  const [environmentStatus, setEnvironmentStatus] = useState<EnvironmentCheckResult | null>(null)
+  const [environmentLoading, setEnvironmentLoading] = useState(false)
 
   useEffect(() => {
     window.piDesktop.config.get('defaultSessionDirectory').then((response) => {
@@ -21,7 +25,20 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange }: S
         setTheme(response.data)
       }
     })
+    void loadEnvironmentStatus()
   }, [])
+
+  async function loadEnvironmentStatus() {
+    setEnvironmentLoading(true)
+    try {
+      const response = await window.piDesktop.desktop.getEnvironmentStatus()
+      if (response.success && response.data) {
+        setEnvironmentStatus(response.data)
+      }
+    } finally {
+      setEnvironmentLoading(false)
+    }
+  }
 
   async function saveDefaultDir() {
     const trimmed = defaultDir.trim()
@@ -93,6 +110,13 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange }: S
               <span className="toggle-knob" />
             </button>
           </div>
+
+          <EnvironmentStatusList
+            result={environmentStatus}
+            loading={environmentLoading}
+            compact
+            onRefresh={loadEnvironmentStatus}
+          />
         </div>
       </div>
     </div>

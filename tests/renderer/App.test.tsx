@@ -1059,15 +1059,17 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Real Pi Session')).toBeTruthy()
-    const leftPanel = screen.getByText('Pi Sessions').closest('.left')
+    const leftPanel = screen.getByRole('button', { name: 'New Chat' }).closest('.left')
     expect(leftPanel).toBeTruthy()
     const panel = within(leftPanel as HTMLElement)
 
     expect(panel.getByRole('button', { name: 'New Chat' })).toBeTruthy()
-    expect(panel.getByRole('button', { name: 'Recent' })).toBeTruthy()
-    expect(panel.getByRole('button', { name: 'Directories' })).toBeTruthy()
-    expect(panel.getByRole('button', { name: 'Models' })).toBeTruthy()
-    expect(panel.getByRole('button', { name: 'Skills' })).toBeTruthy()
+    expect(panel.queryByRole('tablist', { name: 'Session views' })).toBeNull()
+    expect(panel.queryByText('Pi Sessions')).toBeNull()
+    expect(panel.getByRole('button', { name: 'D:/PI/app' })).toBeTruthy()
+    expect(panel.getByRole('button', { name: 'Settings' })).toBeTruthy()
+    expect(panel.queryByRole('button', { name: 'Models' })).toBeNull()
+    expect(panel.queryByRole('button', { name: 'Skills' })).toBeNull()
     expect(panel.queryByText('Files')).toBeNull()
     expect(panel.queryByText('Tools')).toBeNull()
     expect(panel.queryByText('Memory')).toBeNull()
@@ -2613,8 +2615,8 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Real Pi Session')).toBeTruthy()
-    fireEvent.click(screen.getAllByText('D:/PI/app')[0])
-    fireEvent.click(await screen.findByRole('button', { name: 'D:/PI/other' }))
+    fireEvent.click(screen.getByTitle('D:/PI/app'))
+    fireEvent.click(await screen.findByText('D:/PI/other'))
 
     await waitFor(() => {
       expect(configSetMock).toHaveBeenCalledWith('workingDirectory', 'D:/PI/other')
@@ -2673,8 +2675,8 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Real Pi Session')).toBeTruthy()
-    fireEvent.click(screen.getAllByText('D:/PI/app')[0])
-    fireEvent.click(await screen.findByRole('button', { name: 'D:/PI/other' }))
+    fireEvent.click(screen.getByTitle('D:/PI/app'))
+    fireEvent.click(await screen.findByText('D:/PI/other'))
 
     await waitFor(() => {
       expect(window.piDesktop.session.switch).toHaveBeenCalledWith(

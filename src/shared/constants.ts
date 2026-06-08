@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   ARTIFACTS_REFRESH: 'artifacts:refresh',
   ARTIFACTS_PIN: 'artifacts:pin',
   ARTIFACTS_PRIMARY: 'artifacts:primary',
+  DESKTOP_ENVIRONMENT: 'desktop:getEnvironmentStatus',
 } as const
 
 export const APP_NAME = 'Pi Desktop'

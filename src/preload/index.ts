@@ -36,6 +36,7 @@ const api: PiDesktopApi = {
   },
   desktop: {
     getStateSummary: () => ipcRenderer.invoke('desktop:getStateSummary'),
+    getEnvironmentStatus: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_ENVIRONMENT),
   },
   profiles: {
     list: () => ipcRenderer.invoke('profiles:list'),

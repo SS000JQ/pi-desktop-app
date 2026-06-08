@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import JSZip from 'jszip'
-import * as XLSX from 'xlsx'
 import { afterEach, describe, expect, it } from 'vitest'
 import { readPreviewFile } from '../../src/main/file-preview'
+import { createXlsxFixture } from '../utils/xlsx-fixture'
 
 async function createPptxFile(filePath: string): Promise<void> {
   const zip = new JSZip()
@@ -172,14 +172,11 @@ describe('readPreviewFile', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'pi-preview-'))
     tempDirs.push(tempDir)
     const filePath = join(tempDir, 'tracker.xlsx')
-    const workbook = XLSX.utils.book_new()
-    const worksheet = XLSX.utils.aoa_to_sheet([
+    const workbookBytes = await createXlsxFixture([
       ['Task', 'Owner'],
       ['Draft', 'Pi'],
     ])
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1')
-    writeFileSync(filePath, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+    writeFileSync(filePath, workbookBytes)
 
     const preview = await readPreviewFile(filePath)
 

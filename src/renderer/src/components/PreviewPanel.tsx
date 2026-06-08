@@ -9,7 +9,7 @@ import {
 import hljs from 'highlight.js'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import * as XLSX from 'xlsx'
+import { parseXlsxPreview, type XlsxPreviewWorkbook, type XlsxPreviewSheet } from '../../../shared/xlsx-preview'
 import type {
   BinaryPreviewContent,
   FilePreviewData,
@@ -226,64 +226,47 @@ function toArrayBuffer(content: BinaryPreviewContent): ArrayBuffer {
   return copy
 }
 
-function buildSpreadsheetSheetView(sheetName: string, sheet: XLSX.WorkSheet): SpreadsheetSheetView {
-  const reference = sheet['!ref']
-
-  if (!reference) {
-    return { name: sheetName, rows: [] }
-  }
-
-  const range = XLSX.utils.decode_range(reference)
+function buildSpreadsheetSheetView(sheet: XlsxPreviewSheet): SpreadsheetSheetView {
   const mergeOrigins = new Map<string, { colSpan: number; rowSpan: number }>()
   const coveredCells = new Set<string>()
-  const columnWidths = sheet['!cols'] || []
 
-  for (const merge of sheet['!merges'] || []) {
-    mergeOrigins.set(`${merge.s.r}:${merge.s.c}`, {
-      colSpan: merge.e.c - merge.s.c + 1,
-      rowSpan: merge.e.r - merge.s.r + 1,
+  for (const merge of sheet.merges) {
+    mergeOrigins.set(`${merge.startRow}:${merge.startColumn}`, {
+      colSpan: merge.endColumn - merge.startColumn + 1,
+      rowSpan: merge.endRow - merge.startRow + 1,
     })
 
-    for (let rowIndex = merge.s.r; rowIndex <= merge.e.r; rowIndex += 1) {
-      for (let columnIndex = merge.s.c; columnIndex <= merge.e.c; columnIndex += 1) {
-        if (rowIndex === merge.s.r && columnIndex === merge.s.c) continue
+    for (let rowIndex = merge.startRow; rowIndex <= merge.endRow; rowIndex += 1) {
+      for (let columnIndex = merge.startColumn; columnIndex <= merge.endColumn; columnIndex += 1) {
+        if (rowIndex === merge.startRow && columnIndex === merge.startColumn) continue
         coveredCells.add(`${rowIndex}:${columnIndex}`)
       }
     }
   }
 
-  const rows: SpreadsheetCellView[][] = []
+  return {
+    name: sheet.name,
+    rows: sheet.rows.map((values, rowIndex) => {
+      const row: SpreadsheetCellView[] = []
 
-  for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
-    const row: SpreadsheetCellView[] = []
-
-    for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+      for (let columnIndex = 0; columnIndex < values.length; columnIndex += 1) {
       const cellKey = `${rowIndex}:${columnIndex}`
       if (coveredCells.has(cellKey)) continue
 
-      const cellRef = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })
-      const cell = sheet[cellRef]
       const merge = mergeOrigins.get(cellKey)
-      const column = columnWidths[columnIndex] as
-        | { wpx?: number; wch?: number; width?: number }
-        | undefined
 
       row.push({
-        key: `${sheetName}-${cellKey}`,
-        value: cell ? XLSX.utils.format_cell(cell) : '',
+        key: `${sheet.name}-${cellKey}`,
+        value: values[columnIndex] || '',
         colSpan: merge?.colSpan,
         rowSpan: merge?.rowSpan,
-        width: column?.wpx ?? (column?.wch ? Math.round(column.wch * 9 + 16) : undefined),
-        isHeader: rowIndex === range.s.r,
+        width: sheet.columnWidths[columnIndex],
+        isHeader: rowIndex === 0,
       })
-    }
+      }
 
-    rows.push(row)
-  }
-
-  return {
-    name: sheetName,
-    rows,
+      return row
+    }),
   }
 }
 
@@ -553,11 +536,13 @@ export default function PreviewPanel({
   const [docxRenderError, setDocxRenderError] = useState<string | null>(null)
 
   const spreadsheetSheetMemoryRef = useRef<Record<string, string>>({})
+  const [spreadsheetWorkbook, setSpreadsheetWorkbook] = useState<XlsxPreviewWorkbook | null>(null)
   const [spreadsheetActiveSheet, setSpreadsheetActiveSheet] = useState('')
   const [spreadsheetRenderError, setSpreadsheetRenderError] = useState<string | null>(null)
   const pdfContent = previewFile?.type === 'pdf' ? previewFile.content : null
   const pptxContent = previewFile?.type === 'pptx' ? previewFile.content : null
   const docxContent = previewFile?.type === 'docx' ? previewFile.content : null
+  const spreadsheetContent = previewFile?.type === 'xlsx' ? previewFile.content : null
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -769,52 +754,45 @@ export default function PreviewPanel({
     setDocxRenderError(null)
   }, [previewFile?.path, previewFile?.type])
 
-  const spreadsheetWorkbook = useMemo(() => {
-    if (!previewFile || previewFile.type !== 'xlsx') return null
-
-    try {
-      const workbook = XLSX.read(toUint8Array(previewFile.content), {
-        type: 'array',
-        cellDates: true,
-        cellNF: true,
-        cellText: true,
-      })
-
-      return {
-        workbook,
-        error: null,
-      }
-    } catch (error) {
-      return {
-        workbook: null,
-        error: getRenderErrorMessage(error, 'This workbook could not be parsed for preview.'),
-      }
-    }
-  }, [previewFile])
-
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'xlsx') {
+      setSpreadsheetWorkbook(null)
       setSpreadsheetActiveSheet('')
       setSpreadsheetRenderError(null)
       return
     }
+    const content = spreadsheetContent
+    if (!content) return
 
-    if (!spreadsheetWorkbook?.workbook) {
-      setSpreadsheetActiveSheet('')
-      setSpreadsheetRenderError(spreadsheetWorkbook?.error || null)
-      return
-    }
-
-    const savedSheet = spreadsheetSheetMemoryRef.current[previewFile.path]
-    const firstSheet = spreadsheetWorkbook.workbook.SheetNames[0] || ''
-    const nextSheet =
-      savedSheet && spreadsheetWorkbook.workbook.SheetNames.includes(savedSheet)
-        ? savedSheet
-        : firstSheet
-
-    setSpreadsheetActiveSheet(nextSheet)
+    let cancelled = false
+    setSpreadsheetWorkbook(null)
+    setSpreadsheetActiveSheet('')
     setSpreadsheetRenderError(null)
-  }, [previewFile?.path, previewFile?.type, spreadsheetWorkbook])
+
+    parseXlsxPreview(toUint8Array(content))
+      .then((workbook) => {
+        if (cancelled) return
+
+        const savedSheet = spreadsheetSheetMemoryRef.current[previewFile.path]
+        const firstSheet = workbook.sheetNames[0] || ''
+        const nextSheet = savedSheet && workbook.sheetNames.includes(savedSheet) ? savedSheet : firstSheet
+
+        setSpreadsheetWorkbook(workbook)
+        setSpreadsheetActiveSheet(nextSheet)
+        setSpreadsheetRenderError(null)
+      })
+      .catch((error) => {
+        if (cancelled) return
+
+        setSpreadsheetWorkbook(null)
+        setSpreadsheetActiveSheet('')
+        setSpreadsheetRenderError(getRenderErrorMessage(error, 'This workbook could not be parsed for preview.'))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewFile?.path, previewFile?.type, spreadsheetContent])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'xlsx' || !spreadsheetActiveSheet) return
@@ -835,14 +813,14 @@ export default function PreviewPanel({
   }, [previewFile])
 
   const spreadsheetSheetView = useMemo(() => {
-    if (!previewFile || previewFile.type !== 'xlsx' || !spreadsheetWorkbook?.workbook || !spreadsheetActiveSheet) {
+    if (!previewFile || previewFile.type !== 'xlsx' || !spreadsheetWorkbook || !spreadsheetActiveSheet) {
       return null
     }
 
-    const sheet = spreadsheetWorkbook.workbook.Sheets[spreadsheetActiveSheet]
+    const sheet = spreadsheetWorkbook.sheets.find((item) => item.name === spreadsheetActiveSheet)
     if (!sheet) return null
 
-    return buildSpreadsheetSheetView(spreadsheetActiveSheet, sheet)
+    return buildSpreadsheetSheetView(sheet)
   }, [previewFile, spreadsheetWorkbook, spreadsheetActiveSheet])
 
   const postPptxViewerMessage = (message: Record<string, unknown>) => {
@@ -1558,14 +1536,14 @@ export default function PreviewPanel({
   const renderSpreadsheetPreview = () => {
     if (!previewFile || previewFile.type !== 'xlsx') return null
 
-    if (spreadsheetRenderError || !spreadsheetWorkbook?.workbook || !spreadsheetSheetView) {
+    if (spreadsheetRenderError || !spreadsheetWorkbook || !spreadsheetSheetView) {
       return renderSpreadsheetFallback(spreadsheetRenderError)
     }
 
     return (
       <div className="pv-viewer-shell">
         <div className="pv-sheet-tabs">
-          {spreadsheetWorkbook.workbook.SheetNames.map((sheetName) => (
+          {spreadsheetWorkbook.sheetNames.map((sheetName) => (
             <button
               key={sheetName}
               type="button"

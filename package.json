@@ -2,10 +2,13 @@
   "name": "pi-desktop",
   "version": "0.1.0",
   "description": "Desktop GUI for Pi Agent Toolkit",
+  "author": "Pi Desktop contributors",
+  "license": "MIT",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "dist:win": "npm run build && electron-builder --win nsis portable",
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
@@ -13,12 +16,35 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "build": {
+    "appId": "com.pidesktop.app",
+    "productName": "Pi Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "icon": "resources/icon.png",
+    "files": [
+      "out/**/*",
+      "resources/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.78.0",
     "@earendil-works/pi-ai": "^0.78.0",
     "@earendil-works/pi-coding-agent": "^0.78.0",
     "@xmldom/xmldom": "^0.9.10",
-    "better-sqlite3": "^11.7.0",
     "chart.js": "^4.5.1",
     "docx-preview": "^0.3.7",
     "highlight.js": "^11.11.1",
@@ -32,15 +58,12 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "sql.js": "1.11",
-    "uuid": "^11.0.0",
-    "xlsx": "^0.18.5"
+    "uuid": "^11.0.0"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@electron/rebuild": "^4.0.4",
     "@testing-library/react": "^16.0.0",
-    "@types/better-sqlite3": "^7.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/uuid": "^10.0.0",

@@ -104,7 +104,7 @@ Pi Desktop consumes only the **public API surface** of these packages — primar
 |---------|---------|---------|
 | `pptxviewjs` | Parse PPTX → render slides as Canvas (in-app slide viewer) | MIT |
 | `mammoth` | Parse DOCX → HTML (in-app rendered document) | MIT |
-| `xlsx` (SheetJS) | Parse XLSX → HTML table (in-app spreadsheet preview) | Apache 2.0 |
+| `jszip` + lightweight OOXML parser | Parse XLSX → HTML table (in-app spreadsheet preview) | MIT |
 | `highlight.js` | Code syntax highlighting (chat + preview) | MIT |
 
 ## UI Layout
@@ -200,7 +200,7 @@ A content-adaptive preview panel with multi-file tab support:
 | Code (.ts/.py/.js/.json etc.) | Syntax-highlighted read-only view (highlight.js or shiki) | `code -r <path>` — open in VS Code |
 | PPTX | **In-app slide viewer** — page through slides via `pptxviewjs` (Canvas rendering). Left sidebar shows slide thumbnails for navigation. | `shell.openPath()` → WPS / Office |
 | DOCX | **In-app rendered HTML** — full document text via `mammoth.js` (headings, lists, tables, images rendered). | `shell.openPath()` → WPS / Office |
-| XLSX | **In-app table preview** — first N rows rendered as HTML table via `SheetJS`. | `shell.openPath()` → WPS / Office |
+| XLSX | **In-app table preview** — first N rows rendered as HTML table via the lightweight OOXML parser. | `shell.openPath()` → WPS / Office |
 | Image | Scaled image preview | System image viewer |
 | HTML | Embedded WebView render | Default browser |
 | Plain text | Monospace view | System default editor |
@@ -815,6 +815,6 @@ pi-desktop/
 | **Modes** | Single mode (no Chat/Code/Agent tabs) | Pi's agent loop handles all these naturally — artificial separation adds UX complexity without benefit |
 | **Integration** | npm dependency (not fork, not subprocess) | Lowest coupling, clean upgrade path, Pi evolves independently |
 | **Sessions** | JSONL per-file + SQLite index | Compatible with Pi's existing session format, FTS5 for fast search |
-| **Preview** | Content-type-adaptive panel + multi-file tabs + in-app Office preview | Uses pptxviewjs/mammoth/SheetJS for in-app rendering (not file-info cards). "Open in Editor" still available as primary action. Multi-file tabs enable switching between artifacts generated in the same conversation. |
+| **Preview** | Content-type-adaptive panel + multi-file tabs + in-app Office preview | Uses pptxviewjs/mammoth and a lightweight OOXML spreadsheet parser for in-app rendering (not file-info cards). "Open in Editor" still available as primary action. Multi-file tabs enable switching between artifacts generated in the same conversation. |
 | **Theme** | Dark-first with light option | Matches Claude Desktop and Pi TUI aesthetics; dark is default for developer/office tools |
 | **Model picker** | Top bar dropdown | Most-frequent action (switching models) kept accessible, not buried in Settings |
