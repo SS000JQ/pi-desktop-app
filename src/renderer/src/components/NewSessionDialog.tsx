@@ -4,6 +4,7 @@ interface NewSessionDialogProps {
   isOpen: boolean
   currentDir?: string
   directoryOptions: string[]
+  defaultSessionDirectory?: string
   isCreating?: boolean
   error?: string | null
   onClose: () => void
@@ -15,6 +16,7 @@ export default function NewSessionDialog({
   isOpen,
   currentDir,
   directoryOptions,
+  defaultSessionDirectory,
   isCreating = false,
   error = null,
   onClose,
@@ -155,7 +157,9 @@ export default function NewSessionDialog({
             />
             <div>
               <div className="cit">Use Pi Desktop default folder</div>
-              <div className="cim">Creates the session inside <code>Pi-Desktop-Session</code>.</div>
+              <div className="cim">
+                Creates the session inside <code>{defaultSessionDirectory || 'Pi-Desktop-Session'}</code>.
+              </div>
             </div>
           </label>
 

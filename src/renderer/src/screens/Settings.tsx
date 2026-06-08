@@ -1,21 +1,43 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 interface SettingsProps {
   onClose: () => void
+  onDefaultSessionDirectoryChange?: (path: string) => void
 }
 
-export default function Settings({ onClose }: SettingsProps) {
-  const [tab, setTab] = useState<'general' | 'appearance' | 'shortcuts' | 'about'>('general')
-  const [workDir, setWorkDir] = useState('')
+export default function Settings({ onClose, onDefaultSessionDirectoryChange }: SettingsProps) {
+  const [defaultDir, setDefaultDir] = useState('')
   const [theme, setTheme] = useState('dark')
+  const [saveMessage, setSaveMessage] = useState('')
 
   useEffect(() => {
-    window.piDesktop.config.get('workingDirectory').then(r => { if (r.success && r.data) setWorkDir(r.data as string) })
-    window.piDesktop.config.get('theme').then(r => { if (r.success && r.data) setTheme(r.data as string) })
+    window.piDesktop.config.get('defaultSessionDirectory').then((response) => {
+      if (response.success && typeof response.data === 'string') {
+        setDefaultDir(response.data)
+      }
+    })
+    window.piDesktop.config.get('theme').then((response) => {
+      if (response.success && typeof response.data === 'string') {
+        setTheme(response.data)
+      }
+    })
   }, [])
 
-  async function saveWorkDir() {
-    await window.piDesktop.config.set('workingDirectory', workDir)
+  async function saveDefaultDir() {
+    const trimmed = defaultDir.trim()
+    await window.piDesktop.config.set('defaultSessionDirectory', trimmed || null)
+    const resolved = await window.piDesktop.config.get('defaultSessionDirectory')
+    const nextValue = resolved.success && typeof resolved.data === 'string' ? resolved.data : trimmed
+    setDefaultDir(nextValue)
+    onDefaultSessionDirectoryChange?.(nextValue)
+    setSaveMessage('Default file address saved.')
+  }
+
+  async function browseDefaultDir() {
+    const response = await window.piDesktop.files.pickDirectory(defaultDir || undefined)
+    if (!response.success || typeof response.data !== 'string' || !response.data) return
+    setDefaultDir(response.data)
+    setSaveMessage('')
   }
 
   async function toggleTheme() {
@@ -24,109 +46,52 @@ export default function Settings({ onClose }: SettingsProps) {
     await window.piDesktop.config.set('theme', next)
   }
 
-  const tabs = [
-    { key: 'general', label: 'General' },
-    { key: 'appearance', label: 'Appearance' },
-    { key: 'shortcuts', label: 'Shortcuts' },
-    { key: 'about', label: 'About' },
-  ] as const
-
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" style={{ width: '500px', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ width: '520px', maxHeight: '80vh' }} onClick={(event) => event.stopPropagation()}>
         <div className="modal-hdr">
           <h2 className="modal-title">Settings</h2>
-          <button onClick={onClose} className="modal-x">✕</button>
+          <button onClick={onClose} className="modal-x">Close</button>
         </div>
 
-        <div className="flex" style={{ flex: 1, minHeight: 0 }}>
-          <div className="tab-side">
-            {tabs.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)} className={`tab-btn ${tab === t.key ? 'active' : ''}`}>{t.label}</button>
-            ))}
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div>
+            <label className="fl">Default file address</label>
+            <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 8 }}>
+              Used by New Chat when you choose "Use Pi Desktop default folder".
+            </div>
+            <div className="flex" style={{ gap: 8 }}>
+              <input
+                aria-label="Default file address"
+                value={defaultDir}
+                onChange={(event) => {
+                  setDefaultDir(event.target.value)
+                  setSaveMessage('')
+                }}
+                className="fi"
+                style={{ flex: 1 }}
+                placeholder="C:/Users/you/Pi-Desktop-Session"
+              />
+              <button onClick={browseDefaultDir} className="bs" type="button">Browse</button>
+              <button onClick={saveDefaultDir} className="bp" type="button">Save</button>
+            </div>
+            {saveMessage && (
+              <div style={{ fontSize: 11, color: 'rgba(120, 220, 160, 0.82)', marginTop: 8 }}>
+                {saveMessage}
+              </div>
+            )}
           </div>
 
-          <div className="modal-body" style={{ flex: 1 }}>
-            <div className="s-title">{tab}</div>
-
-            {tab === 'general' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label className="fl">Working Directory</label>
-                  <div className="flex" style={{ gap: '6px' }}>
-                    <input value={workDir} onChange={e => setWorkDir(e.target.value)} className="fi" style={{ flex: 1 }} />
-                    <button onClick={saveWorkDir} className="bp">Save</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="fl">Providers</label>
-                  <p style={{ fontSize: '10px', color: 'var(--text2)' }}>Manage your AI providers from the Provider Manager (⌘P)</p>
-                </div>
-                <div style={{ marginTop: 16 }}>
-                  <h3 style={{ fontSize: 11, color: 'rgba(255,255,255,0.08)', marginBottom: 6 }}>BACKUP</h3>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={async () => {
-                      const res = await window.piDesktop.config.set('backup', Date.now().toString())
-                      if (res.success) alert('Backup created')
-                    }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 2, fontFamily: 'inherit', fontSize: 11, color: 'rgba(255,255,255,0.25)', cursor: 'pointer' }}>
-                      Create Backup
-                    </button>
-                    <button style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 2, fontFamily: 'inherit', fontSize: 11, color: 'rgba(255,255,255,0.25)', cursor: 'pointer' }}>
-                      Restore
-                    </button>
-                  </div>
-                </div>
+          <div className="flex justify-between items-center">
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>Theme</div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>
+                Toggle between dark and light mode.
               </div>
-            )}
-
-            {tab === 'appearance' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div className="flex justify-between items-center">
-                  <span style={{ fontSize: '11px' }}>Dark Mode</span>
-                  <button onClick={toggleTheme} className={`toggle ${theme === 'dark' ? 'on' : ''}`}>
-                    <span className="toggle-knob" />
-                  </button>
-                </div>
-                <div>
-                  <label className="fl">Font Size</label>
-                  <select className="fsel">
-                    <option>12px</option>
-                    <option selected>13px</option>
-                    <option>14px</option>
-                    <option>15px</option>
-                    <option>16px</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {tab === 'shortcuts' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {[
-                  ['⌘⏎ / Ctrl+⏎', 'Send message'],
-                  ['⌘K / Ctrl+K', 'Clear chat'],
-                  ['⌘N / Ctrl+N', 'New session'],
-                  ['⌘⇧F / Ctrl+Shift+F', 'Search sessions'],
-                  ['⌘/ / Ctrl+/', 'Show shortcuts'],
-                  ['⌘P / Ctrl+P', 'Open Provider Manager'],
-                  ['Esc', 'Close modal'],
-                ].map(([key, desc]) => (
-                  <div key={key} className="flex justify-between items-center" style={{ padding: '2px 0' }}>
-                    <span className="sc-key">{key}</span>
-                    <span className="sc-desc">{desc}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {tab === 'about' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '11px' }}>
-                <div><span style={{ color: 'var(--text2)' }}>Pi Desktop</span></div>
-                <div><span style={{ color: 'var(--text2)' }}>Version:</span> 0.1.0</div>
-                <div><span style={{ color: 'var(--text2)' }}>Electron:</span> 39</div>
-                <div><span style={{ color: 'var(--text2)' }}>React:</span> 19</div>
-              </div>
-            )}
+            </div>
+            <button onClick={toggleTheme} className={`toggle ${theme === 'dark' ? 'on' : ''}`} type="button" aria-label="Toggle dark mode">
+              <span className="toggle-knob" />
+            </button>
           </div>
         </div>
       </div>

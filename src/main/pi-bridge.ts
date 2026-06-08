@@ -219,7 +219,9 @@ export class PiBridge {
 
   private getWorkingDirectory(): string {
     const configured = getConfigValue('workingDirectory')
+    const defaultSessionDirectory = getConfigValue('defaultSessionDirectory')
     return resolveOptionalExistingDirectory(typeof configured === 'string' ? configured : null)
+      || (typeof defaultSessionDirectory === 'string' && defaultSessionDirectory.trim())
       || join(homedir(), 'Pi-Desktop-Session')
   }
 

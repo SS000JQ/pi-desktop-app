@@ -201,8 +201,14 @@ function resolveWorkingDirectory(): string | null {
   return resolveOptionalExistingDirectory(typeof configured === 'string' ? configured : null)
 }
 
-function resolveDefaultSessionDirectory(): string {
+function getBuiltinDefaultSessionDirectory(): string {
   return join(homedir(), 'Pi-Desktop-Session')
+}
+
+function resolveDefaultSessionDirectory(): string {
+  const configured = getConfigValue('defaultSessionDirectory')
+  const configuredPath = typeof configured === 'string' ? configured.trim() : ''
+  return configuredPath || getBuiltinDefaultSessionDirectory()
 }
 
 function resolveRuntimeWorkingDirectory(path?: string): string {
@@ -601,6 +607,9 @@ ipcMain.handle(IPC_CHANNELS.CHAT_ABORT, async (_event, sessionPath?: string) => 
 })
 
 ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async (_event, key: string) => {
+  if (key === 'defaultSessionDirectory') {
+    return { success: true, data: resolveDefaultSessionDirectory() }
+  }
   if (key === 'workingDirectory') {
     const value = getConfigValue(key)
     const resolved = resolveOptionalExistingDirectory(typeof value === 'string' ? value : null)

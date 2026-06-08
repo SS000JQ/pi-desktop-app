@@ -13,7 +13,6 @@ interface TopBarProps {
   onThinkingLevelChange?: (thinkingLevel: string) => void
   onBrowseDirectory?: () => void
   onOpenSettings?: () => void
-  onOpenProfile?: () => void
   tokenCount?: number
   tokenLimit?: number | null
 }
@@ -32,7 +31,6 @@ export default function TopBar({
   onThinkingLevelChange,
   onBrowseDirectory,
   onOpenSettings,
-  onOpenProfile,
   tokenCount = 0,
   tokenLimit = null,
 }: TopBarProps) {
@@ -148,9 +146,7 @@ export default function TopBar({
             <><span>History tokens:</span> {tokenCount.toLocaleString()}</>
           )}
         </div>
-        <button className="ibtn" title="Search">S</button>
-        <button className="ibtn" onClick={onOpenProfile} title="Profile">P</button>
-        <button className="ibtn ibtn-wide" onClick={onOpenSettings} title="Settings">Set</button>
+        <button className="ibtn ibtn-wide" onClick={onOpenSettings} title="Settings">Settings</button>
       </div>
     </div>
   )

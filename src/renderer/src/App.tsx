@@ -7,9 +7,7 @@ import NewSessionDialog from './components/NewSessionDialog'
 import StatusBar from './components/StatusBar'
 import Welcome from './screens/Welcome'
 import Settings from './screens/Settings'
-import Profile from './screens/Profile'
 import ProviderManager from './screens/ProviderManager'
-import Shortcuts from './screens/Shortcuts'
 import Skills from './screens/Skills'
 import type {
   ArtifactEntity,
@@ -539,10 +537,9 @@ export default function App() {
 
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
   const [showProvider, setShowProvider] = useState(false)
-  const [showShortcuts, setShowShortcuts] = useState(false)
   const [showSkills, setShowSkills] = useState(false)
+  const [defaultSessionDirectory, setDefaultSessionDirectory] = useState('')
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [newSessionError, setNewSessionError] = useState<string | null>(null)
@@ -1087,9 +1084,10 @@ export default function App() {
 
   useEffect(() => {
     async function initialize() {
-      const [providersLoaded, workingDirRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
+      const [providersLoaded, workingDirRes, defaultSessionDirRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
         loadProviders(),
         window.piDesktop.config.get('workingDirectory'),
+        window.piDesktop.config.get('defaultSessionDirectory'),
         window.piDesktop.config.get('wizardCompleted'),
         window.piDesktop.session.getActive(),
         loadSessions(),
@@ -1101,9 +1099,14 @@ export default function App() {
           ? workingDirRes.data
           : ''
       const wizardCompleted = wizardRes.success ? wizardRes.data === 'true' || wizardRes.data === true : false
+      const resolvedDefaultSessionDirectory =
+        defaultSessionDirRes.success && typeof defaultSessionDirRes.data === 'string'
+          ? defaultSessionDirRes.data
+          : ''
 
       setCurrentDir(workingDirectory)
       setRuntimeWorkspaceDir('')
+      setDefaultSessionDirectory(resolvedDefaultSessionDirectory)
       setHasProvider(hasRunnableProvider(providersLoaded))
 
       const preferredSessionKey = activeSessionRes.success && typeof activeSessionRes.data === 'string' ? activeSessionRes.data : null
@@ -1311,10 +1314,6 @@ export default function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey
-      if (meta && event.key === '/') {
-        event.preventDefault()
-        setShowShortcuts((state) => !state)
-      }
       if (meta && event.key === 'p') {
         event.preventDefault()
         setShowProvider((state) => !state)
@@ -1455,7 +1454,6 @@ export default function App() {
           thinkingLevel={thinkingLevel}
           onThinkingLevelChange={(level) => { void updateSessionRuntime({ thinkingLevel: level }) }}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenProfile={() => setShowProfile(true)}
           tokenCount={tokenCount}
           tokenLimit={contextLimit}
         />
@@ -1531,15 +1529,19 @@ export default function App() {
         <StatusBar currentModel={currentModelLabel || currentModel} activeSessionCount={sessions.length} currentDir={visibleWorkspaceDir} />
       </div>
 
-      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
-      {showProfile && <Profile onClose={() => setShowProfile(false)} />}
+      {showSettings && (
+        <Settings
+          onClose={() => setShowSettings(false)}
+          onDefaultSessionDirectoryChange={setDefaultSessionDirectory}
+        />
+      )}
       {showProvider && <ProviderManager onClose={() => { setShowProvider(false); void loadProviders() }} />}
-      {showShortcuts && <Shortcuts onClose={() => setShowShortcuts(false)} />}
       {showSkills && <Skills onClose={() => setShowSkills(false)} />}
       <NewSessionDialog
         isOpen={showNewSessionDialog}
         currentDir={visibleWorkspaceDir}
         directoryOptions={directoryOptions}
+        defaultSessionDirectory={defaultSessionDirectory}
         isCreating={isCreatingSession}
         error={newSessionError}
         onClose={() => {
