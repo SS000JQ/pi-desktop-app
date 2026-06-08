@@ -491,28 +491,39 @@ ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, payload?: { cwd?: string }) => {
-  const targetDir = payload?.cwd?.trim() || resolveDefaultSessionDirectory()
-  mkdirSync(targetDir, { recursive: true })
-  const session = await createPiSession(targetDir)
-  saveActiveSessionId(session.sessionId)
+  try {
+    const targetDir = payload?.cwd?.trim() || resolveDefaultSessionDirectory()
+    if (!targetDir) {
+      return { success: false, error: 'Session directory is required.' }
+    }
 
-  return {
-    success: true,
-    data: {
-      id: session.sessionId,
-      path: session.sessionPath,
-      sessionId: session.sessionId,
-      sessionPath: session.sessionPath,
-      cwd: session.cwd,
-      title: session.title,
-      messages: session.messages,
-      model: session.model,
-      thinkingLevel: session.thinkingLevel,
-      tokenCount: session.tokenCount,
-      source: 'pi',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
+    mkdirSync(targetDir, { recursive: true })
+    const session = await createPiSession(targetDir)
+    saveActiveSessionId(session.sessionId)
+
+    return {
+      success: true,
+      data: {
+        id: session.sessionId,
+        path: session.sessionPath,
+        sessionId: session.sessionId,
+        sessionPath: session.sessionPath,
+        cwd: session.cwd,
+        title: session.title,
+        messages: session.messages,
+        model: session.model,
+        thinkingLevel: session.thinkingLevel,
+        tokenCount: session.tokenCount,
+        source: 'pi',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create a new session.',
+    }
   }
 })
 
@@ -645,8 +656,12 @@ ipcMain.handle('files:save', async (_event, filePath: string, content: string) =
 })
 
 ipcMain.handle('files:open', async (_event, filePath: string) => {
-  await openInExternalEditor(filePath)
-  return { success: true }
+  try {
+    await openInExternalEditor(filePath)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
 })
 
 ipcMain.handle('files:pickDirectory', async (_event, startPath?: string) => {

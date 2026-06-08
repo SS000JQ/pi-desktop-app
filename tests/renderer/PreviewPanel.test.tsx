@@ -27,6 +27,7 @@ let docxBehavior: DocxBehavior
 const pdfGetDocumentMock = vi.fn()
 const docxRenderAsyncMock = vi.fn()
 const iframePostMessageMock = vi.fn()
+let iframeContentWindowMock: { postMessage: typeof iframePostMessageMock }
 
 class MockPPTXViewer {
   currentSlideIndex = 0
@@ -127,11 +128,12 @@ describe('PreviewPanel', () => {
     })
 
     iframePostMessageMock.mockReset()
+    iframeContentWindowMock = {
+      postMessage: iframePostMessageMock,
+    }
     Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
       configurable: true,
-      get: () => ({
-        postMessage: iframePostMessageMock,
-      }),
+      get: () => iframeContentWindowMock,
     })
 
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -147,6 +149,7 @@ describe('PreviewPanel', () => {
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
+          source: iframeContentWindowMock as Window,
           data: {
             source: 'pi-pptx-preview',
             ...data,
@@ -390,6 +393,54 @@ describe('PreviewPanel', () => {
       expect(screen.getByText('Sheet1')).toBeTruthy()
       expect(screen.getByText('Task')).toBeTruthy()
       expect(screen.getByText('Draft')).toBeTruthy()
+    })
+  })
+
+  it('rerenders docx when the same path receives new content', async () => {
+    const { rerender } = render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/brief.docx',
+          name: 'brief.docx',
+          ext: '.docx',
+          type: 'docx',
+          content: [1, 2, 3],
+          fallbackHtml: '<h1>Fallback Docx</h1>',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(docxRenderAsyncMock).toHaveBeenCalledTimes(1)
+    })
+
+    rerender(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/brief.docx',
+          name: 'brief.docx',
+          ext: '.docx',
+          type: 'docx',
+          content: [1, 2, 3, 4],
+          fallbackHtml: '<h1>Fallback Docx</h1>',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(docxRenderAsyncMock).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -744,9 +795,79 @@ describe('PreviewPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Document rendering failed. Showing HTML fallback instead.')).toBeTruthy()
-      expect(screen.getByText('Fallback Docx')).toBeTruthy()
-      expect(screen.getByText('Fallback copy')).toBeTruthy()
+      const fallbackFrame = screen.getByTitle('brief.docx fallback') as HTMLIFrameElement
+      expect(fallbackFrame).toBeTruthy()
+      expect(fallbackFrame.getAttribute('sandbox')).toBe('allow-same-origin')
+      expect(fallbackFrame.getAttribute('srcdoc')).toContain('Fallback Docx')
+      expect(fallbackFrame.getAttribute('srcdoc')).toContain('Fallback copy')
     })
+  })
+
+  it('keeps the pptx viewer open when a navigated slide reports a local render failure', async () => {
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/slides.pptx',
+          name: 'slides.pptx',
+          ext: '.pptx',
+          type: 'pptx',
+          content: [1, 2, 3, 4],
+          summary: [
+            { index: 1, title: 'Intro', summary: 'Overview of the plan' },
+            { index: 2, title: 'Next Step', summary: 'Implementation milestones' },
+          ],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    emitPptxViewerEvent({ type: 'ready' })
+    await waitFor(() => {
+      expect(iframePostMessageMock).toHaveBeenCalledTimes(1)
+    })
+
+    const loadMessage = iframePostMessageMock.mock.calls[0]?.[0] as
+      | { fileKey?: string; requestId?: number }
+      | undefined
+    emitPptxViewerEvent({
+      type: 'loaded',
+      fileKey: loadMessage?.fileKey,
+      requestId: loadMessage?.requestId,
+      slideCount: 2,
+      currentSlide: 0,
+      scrollTop: 0,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('1 / 2')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next slide' }))
+    const navigateMessage = iframePostMessageMock.mock.calls[1]?.[0] as
+      | { fileKey?: string; requestId?: number }
+      | undefined
+
+    emitPptxViewerEvent({
+      type: 'slideError',
+      fileKey: navigateMessage?.fileKey,
+      requestId: navigateMessage?.requestId,
+      slideCount: 2,
+      currentSlide: 1,
+      scrollTop: 720,
+      message: 'Slide 2 could not be rendered.',
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTitle('slides.pptx viewer')).toBeTruthy()
+      expect(screen.getByText('2 / 2')).toBeTruthy()
+    })
+
+    expect(screen.queryByText('Slide rendering failed. Showing extracted text instead.')).toBeNull()
   })
 
   it('destroys the pptx viewer when switching away from the file', async () => {

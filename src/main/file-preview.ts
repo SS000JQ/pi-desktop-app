@@ -1,5 +1,5 @@
 import { extname } from 'path'
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 import mammoth from 'mammoth'
 import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
@@ -9,6 +9,10 @@ import type {
   SlidePreviewSummary,
   WorkbookPreviewSummary,
 } from '../shared/preview-types'
+
+const TEXT_PREVIEW_LIMIT_BYTES = 3 * 1024 * 1024
+const IMAGE_PREVIEW_LIMIT_BYTES = 25 * 1024 * 1024
+const RICH_PREVIEW_LIMIT_BYTES = 50 * 1024 * 1024
 
 const textExtensions = new Set([
   '.bat',
@@ -55,26 +59,62 @@ const imageExtensions = new Set([
   '.webp',
 ])
 
+function buildTooLargePreview(ext: string, size: number, limit: number): FilePreviewData {
+  return {
+    type: 'binary',
+    ext,
+    size,
+    limit,
+    reason: `This file is too large for in-app preview (${formatBytes(size)}). Use Open to view it externally.`,
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+}
+
+function getFileSize(filePath: string): number {
+  return statSync(filePath).size
+}
+
+function readBinaryContent(filePath: string, ext: string, limitBytes: number): Uint8Array | FilePreviewData {
+  const size = getFileSize(filePath)
+  if (size > limitBytes) return buildTooLargePreview(ext, size, limitBytes)
+  return new Uint8Array(readFileSync(filePath))
+}
+
+function readTextContent(filePath: string, ext: string, limitBytes: number): string | FilePreviewData {
+  const size = getFileSize(filePath)
+  if (size > limitBytes) return buildTooLargePreview(ext, size, limitBytes)
+  return readFileSync(filePath, 'utf-8')
+}
+
 function readImagePreview(filePath: string, ext: string): FilePreviewData {
-  const base64 = readFileSync(filePath).toString('base64')
+  const rawContent = readBinaryContent(filePath, ext, IMAGE_PREVIEW_LIMIT_BYTES)
+  if (!(rawContent instanceof Uint8Array)) return rawContent
+
+  const base64 = Buffer.from(rawContent).toString('base64')
   const mime = ext === '.svg' ? 'image/svg+xml' : `image/${ext.slice(1)}`
   return { type: 'image', content: `data:${mime};base64,${base64}` }
 }
 
 async function readDocxPreview(filePath: string): Promise<FilePreviewData> {
-  const rawContent = readFileSync(filePath)
+  const rawContent = readBinaryContent(filePath, '.docx', RICH_PREVIEW_LIMIT_BYTES)
+  if (!(rawContent instanceof Uint8Array)) return rawContent
 
   try {
-    const result = await mammoth.convertToHtml({ buffer: rawContent })
+    const result = await mammoth.convertToHtml({ buffer: Buffer.from(rawContent) })
     return {
       type: 'docx',
-      content: Array.from(rawContent),
+      content: rawContent,
       fallbackHtml: result.value || '<p>No preview content found in this document.</p>',
     }
   } catch {
     return {
       type: 'docx',
-      content: Array.from(rawContent),
+      content: rawContent,
     }
   }
 }
@@ -105,28 +145,32 @@ function buildWorkbookSummary(workbook: XLSX.WorkBook): WorkbookPreviewSummary {
   }
 }
 
-function readXlsxPreview(filePath: string): FilePreviewData {
-  const rawContent = readFileSync(filePath)
+function readXlsxPreview(filePath: string, ext: string): FilePreviewData {
+  const rawContent = readBinaryContent(filePath, ext, RICH_PREVIEW_LIMIT_BYTES)
+  if (!(rawContent instanceof Uint8Array)) return rawContent
 
   try {
-    const workbook = XLSX.read(rawContent, { type: 'buffer', cellDates: true })
+    const workbook = XLSX.read(Buffer.from(rawContent), { type: 'buffer', cellDates: true })
     return {
       type: 'xlsx',
-      content: Array.from(rawContent),
+      content: rawContent,
       summary: buildWorkbookSummary(workbook),
     }
   } catch {
     return {
       type: 'xlsx',
-      content: Array.from(rawContent),
+      content: rawContent,
     }
   }
 }
 
 function readPdfPreview(filePath: string): FilePreviewData {
+  const rawContent = readBinaryContent(filePath, '.pdf', RICH_PREVIEW_LIMIT_BYTES)
+  if (!(rawContent instanceof Uint8Array)) return rawContent
+
   return {
     type: 'pdf',
-    content: Array.from(readFileSync(filePath)),
+    content: rawContent,
   }
 }
 
@@ -144,8 +188,8 @@ function extractPptxText(xml: string): string[] {
 }
 
 async function readPptxPreview(filePath: string): Promise<FilePreviewData> {
-  const rawContent = readFileSync(filePath)
-  const content = Array.from(rawContent)
+  const rawContent = readBinaryContent(filePath, '.pptx', RICH_PREVIEW_LIMIT_BYTES)
+  if (!(rawContent instanceof Uint8Array)) return rawContent
 
   try {
     const zip = await JSZip.loadAsync(rawContent)
@@ -173,22 +217,32 @@ async function readPptxPreview(filePath: string): Promise<FilePreviewData> {
 
     return {
       type: 'pptx',
-      content,
+      content: rawContent,
       summary,
     }
   } catch {
     return {
       type: 'pptx',
-      content,
+      content: rawContent,
     }
   }
 }
 
 export async function readPreviewFile(filePath: string): Promise<FilePreviewData> {
+  const fileStat = statSync(filePath)
+  if (!fileStat.isFile()) {
+    return {
+      type: 'binary',
+      reason: 'Only files can be previewed in the right panel.',
+    }
+  }
+
   const ext = extname(filePath).toLowerCase()
 
   if (textExtensions.has(ext)) {
-    return { type: 'text', content: readFileSync(filePath, 'utf-8') }
+    const content = readTextContent(filePath, ext, TEXT_PREVIEW_LIMIT_BYTES)
+    if (typeof content !== 'string') return content
+    return { type: 'text', content }
   }
 
   if (imageExtensions.has(ext)) {
@@ -212,7 +266,7 @@ export async function readPreviewFile(filePath: string): Promise<FilePreviewData
   }
 
   if (ext === '.xlsx' || ext === '.csv') {
-    return readXlsxPreview(filePath)
+    return readXlsxPreview(filePath, ext)
   }
 
   if (ext === '.pptx') {

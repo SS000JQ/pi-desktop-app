@@ -384,11 +384,14 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showSkills, setShowSkills] = useState(false)
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
+  const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [newSessionError, setNewSessionError] = useState<string | null>(null)
   const [hasProvider, setHasProvider] = useState(false)
   const currentDirRef = useRef(currentDir)
   const activeSessionPathRef = useRef<string | null>(activeSessionPath)
   const workspaceRequestRef = useRef(0)
   const sessionRequestRef = useRef(0)
+  const previewRequestRef = useRef(0)
   const skipNextSessionReloadRef = useRef<string | null>(null)
 
   const hasRunnableProvider = useCallback((providerList: ProviderSummary[]) => {
@@ -527,9 +530,12 @@ export default function App() {
   }, [activeSessionId, artifactsBySession])
 
   const handleOpenPreviewFile = useCallback(async (path: string) => {
+    const requestId = previewRequestRef.current + 1
+    previewRequestRef.current = requestId
     const response = await window.piDesktop.files.read(path)
     const ext = path.includes('.') ? `.${path.split('.').pop()?.toLowerCase() || ''}` : ''
     const name = path.split(/[/\\]/).pop() || path
+    if (requestId !== previewRequestRef.current) return
 
     if (!response.success || !response.data) {
       setPreviewFile({
@@ -961,76 +967,90 @@ export default function App() {
 
   const handleCreateSession = useCallback(
     async (cwd?: string) => {
-      const response = await window.piDesktop.session.create(cwd ? { cwd } : undefined)
-      if (!response.success || !response.data) return
+      setIsCreatingSession(true)
+      setNewSessionError(null)
 
-      const created = response.data as {
-        id: string
-        path: string
-        sessionId?: string
-        sessionPath?: string
-        cwd: string
-        title: string
-        messages?: unknown[]
-        model?: string | null
-        thinkingLevel?: string
-        tokenCount?: number
-        source: 'pi'
-        createdAt: string
-        updatedAt: string
-      }
-
-      setWorkspaceChildrenByDir({})
-      setMessages([])
-      setPreviewFile(null)
-      setActiveArtifactId(null)
-      setShowNewSessionDialog(false)
-      await window.piDesktop.config.set('workingDirectory', created.cwd)
-
-      if (created.sessionId && created.sessionPath && Array.isArray(created.messages)) {
-        skipNextSessionReloadRef.current = created.sessionPath
-        syncSessionDetail({
-          sessionId: created.sessionId,
-          sessionPath: created.sessionPath,
-          cwd: created.cwd,
-          title: created.title,
-          messages: created.messages,
-          model: created.model || null,
-          thinkingLevel: created.thinkingLevel || 'medium',
-          tokenCount: created.tokenCount || 0,
-        })
-        await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.sessionId)])
-      } else {
-        const detailResponse = await window.piDesktop.session.switch(created.path)
-        if (detailResponse.success && detailResponse.data) {
-          const detail = detailResponse.data as {
-            sessionId: string
-            sessionPath: string
-            cwd: string
-            title: string
-            messages: unknown[]
-            model: string | null
-            thinkingLevel: string
-            tokenCount: number
-          }
-          skipNextSessionReloadRef.current = detail.sessionPath
-          syncSessionDetail(detail)
-          await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
-        } else {
-          setActiveSessionId(created.id)
-          setActiveSessionPath(created.path)
-          setCurrentDir(created.cwd)
-          await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.id)])
+      try {
+        const response = await window.piDesktop.session.create(cwd ? { cwd } : undefined)
+        if (!response.success || !response.data) {
+          setNewSessionError(response.error || 'Failed to create a new session.')
+          return
         }
-      }
 
-      await loadSessions()
+        const created = response.data as {
+          id: string
+          path: string
+          sessionId?: string
+          sessionPath?: string
+          cwd: string
+          title: string
+          messages?: unknown[]
+          model?: string | null
+          thinkingLevel?: string
+          tokenCount?: number
+          source: 'pi'
+          createdAt: string
+          updatedAt: string
+        }
+
+        setWorkspaceChildrenByDir({})
+        setMessages([])
+        setPreviewFile(null)
+        setActiveArtifactId(null)
+        setShowNewSessionDialog(false)
+        setNewSessionError(null)
+        await window.piDesktop.config.set('workingDirectory', created.cwd)
+
+        if (created.sessionId && created.sessionPath && Array.isArray(created.messages)) {
+          skipNextSessionReloadRef.current = created.sessionPath
+          syncSessionDetail({
+            sessionId: created.sessionId,
+            sessionPath: created.sessionPath,
+            cwd: created.cwd,
+            title: created.title,
+            messages: created.messages,
+            model: created.model || null,
+            thinkingLevel: created.thinkingLevel || 'medium',
+            tokenCount: created.tokenCount || 0,
+          })
+          await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.sessionId)])
+        } else {
+          const detailResponse = await window.piDesktop.session.switch(created.path)
+          if (detailResponse.success && detailResponse.data) {
+            const detail = detailResponse.data as {
+              sessionId: string
+              sessionPath: string
+              cwd: string
+              title: string
+              messages: unknown[]
+              model: string | null
+              thinkingLevel: string
+              tokenCount: number
+            }
+            skipNextSessionReloadRef.current = detail.sessionPath
+            syncSessionDetail(detail)
+            await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
+          } else {
+            setActiveSessionId(created.id)
+            setActiveSessionPath(created.path)
+            setCurrentDir(created.cwd)
+            await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.id)])
+          }
+        }
+
+        await loadSessions()
+      } catch (error) {
+        setNewSessionError(error instanceof Error ? error.message : 'Failed to create a new session.')
+      } finally {
+        setIsCreatingSession(false)
+      }
     },
     [loadArtifacts, loadSessions, loadWorkspaceFiles, syncSessionDetail],
   )
 
   const handleComposerCommand = useCallback((command: string) => {
     if (command === '/new') {
+      setNewSessionError(null)
       setShowNewSessionDialog(true)
     }
   }, [])
@@ -1197,7 +1217,10 @@ export default function App() {
               setPreviewFile(null)
               if (selected?.cwd) setCurrentDir(selected.cwd)
             }}
-            onSessionCreate={() => setShowNewSessionDialog(true)}
+            onSessionCreate={() => {
+              setNewSessionError(null)
+              setShowNewSessionDialog(true)
+            }}
             onOpenModels={() => setShowProvider(true)}
             onOpenSkills={() => setShowSkills(true)}
             onOpenSettings={() => setShowSettings(true)}
@@ -1256,7 +1279,12 @@ export default function App() {
         isOpen={showNewSessionDialog}
         currentDir={currentDir}
         directoryOptions={directoryOptions}
-        onClose={() => setShowNewSessionDialog(false)}
+        isCreating={isCreatingSession}
+        error={newSessionError}
+        onClose={() => {
+          setNewSessionError(null)
+          setShowNewSessionDialog(false)
+        }}
         onCreate={(cwd) => { void handleCreateSession(cwd) }}
         onBrowseDirectory={handlePickDirectory}
       />

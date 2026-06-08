@@ -1,5 +1,10 @@
 import 'chart.js/auto'
 import { PPTXViewer } from 'pptxviewjs'
+import {
+  clampAlpha,
+  patchPptxProcessorForImageFidelity,
+  withCanvasAlpha,
+} from './lib/pptx-fidelity'
 import { calculatePptxSlideDisplaySize } from './lib/pptx-layout'
 
 type ViewerMessage =
@@ -10,7 +15,7 @@ type ViewerMessage =
       requestId: number
       slideIndex: number
       initialScrollTop?: number
-      content: number[]
+      content: Uint8Array | number[]
     }
   | {
       source: 'pi-pptx-preview'
@@ -27,7 +32,7 @@ type ViewerResponse =
     }
   | {
       source: 'pi-pptx-preview'
-      type: 'loaded' | 'rendered' | 'status'
+      type: 'loaded' | 'rendered' | 'status' | 'slideError'
       fileKey: string
       requestId?: number
       slideCount: number
@@ -65,6 +70,10 @@ const DEFAULT_SLIDE_RATIO = 16 / 9
 const PLACEHOLDER_CANVAS_WIDTH = 1600
 const VISIBLE_RENDER_NEIGHBOR_RANGE = 1
 const VIEWPORT_RENDER_MARGIN = 1.25
+const PPTX_RENDER_OPTIONS = {
+  quality: 'high' as const,
+  scale: 1,
+}
 
 let viewer: PPTXViewer | null = null
 let viewerShell: ViewerShell | null = null
@@ -78,6 +87,153 @@ let statusFrameId: number | null = null
 let lazyRenderFrameId: number | null = null
 let lastStatusKey = ''
 let resizeObserver: ResizeObserver | null = null
+
+function resolveSlideBackgroundFill(drawingDocument: any, slide: any): any {
+  if (slide?.backgroundFill) {
+    return drawingDocument.getBackgroundColor(slide.backgroundFill)
+  }
+  if (slide?.layout?.commonSlideData?.backgroundFill) {
+    return drawingDocument.getBackgroundColor(slide.layout.commonSlideData.backgroundFill)
+  }
+  if (slide?.layout?.cSld?.bg) {
+    return drawingDocument.getBackgroundColor(slide.layout.cSld.bg)
+  }
+  if (slide?.layout?.master?.commonSlideData?.backgroundFill) {
+    return drawingDocument.getBackgroundColor(slide.layout.master.commonSlideData.backgroundFill)
+  }
+
+  const theme = slide?.layout?.master?.theme
+  if (theme?.colors?.bg1) return theme.colors.bg1
+  if (theme?.colors?.bg2) return theme.colors.bg2
+  return null
+}
+
+function getPptxProcessorPatchTargets(viewerInstance: PPTXViewer): any[] {
+  const rootProcessor = (viewerInstance as PPTXViewer & { processor?: any }).processor
+  const targets = [
+    rootProcessor,
+    rootProcessor?.processor,
+    rootProcessor?.drawingDocument,
+    rootProcessor?.processor?.drawingDocument,
+  ].filter(Boolean)
+  return Array.from(new Set(targets))
+}
+
+function patchDrawingDocumentBackground(processor: any): void {
+  const drawingDocument = processor.drawingDocument
+  if (!drawingDocument || drawingDocument.__piBackgroundAlphaPatched) return
+
+  if (drawingDocument && typeof drawingDocument.drawSlideBackground === 'function') {
+    drawingDocument.__piBackgroundAlphaPatched = true
+    drawingDocument.drawSlideBackground = function drawSlideBackgroundWithAlpha(slide: any) {
+      if (!this.graphics || !this.graphics.context) return
+
+      const ctx = this.graphics.context as CanvasRenderingContext2D
+      const backgroundFill = resolveSlideBackgroundFill(this, slide)
+
+      if (this.coordinateSystem) {
+        const { scale, offsetX, offsetY } = this.coordinateSystem
+        const slideWidthPx = this.coordinateSystem.slideWidthPx
+        const slideHeightPx = this.coordinateSystem.slideHeightPx
+        const actualSlideWidth = Math.round(slideWidthPx * scale)
+        const actualSlideHeight = Math.round(slideHeightPx * scale)
+        const snappedOffsetX = Math.round(offsetX)
+        const snappedOffsetY = Math.round(offsetY)
+
+        ctx.save()
+        try {
+          if (backgroundFill && backgroundFill.type === 'image' && backgroundFill.imageData?.relationshipId) {
+            const cacheKey =
+              backgroundFill.imageData.resolvedCacheKey || backgroundFill.imageData.relationshipId
+            const imageEntry = this.processor?.imageCache?.get(cacheKey)
+            const alpha = clampAlpha(backgroundFill.imageData?.effects?.alpha)
+
+            if (imageEntry?.image) {
+              withCanvasAlpha(ctx, alpha, () => {
+                ctx.drawImage(
+                  imageEntry.image,
+                  snappedOffsetX,
+                  snappedOffsetY,
+                  actualSlideWidth,
+                  actualSlideHeight,
+                )
+              })
+              return
+            }
+
+            ctx.fillStyle = '#ffffff'
+          } else if (backgroundFill && backgroundFill.type === 'gradient' && backgroundFill.gradient) {
+            const gradient = backgroundFill.gradient
+            const stops = gradient.stops || []
+            let canvasGradient: CanvasGradient
+
+            if (gradient.type === 'radial') {
+              const centerX = snappedOffsetX + actualSlideWidth / 2
+              const centerY = snappedOffsetY + actualSlideHeight / 2
+              const radius = Math.max(actualSlideWidth, actualSlideHeight) / 2
+              canvasGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
+            } else {
+              const angle = (gradient.angle || 0) * Math.PI / 180
+              const cos = Math.cos(angle)
+              const sin = Math.sin(angle)
+              const x0 = snappedOffsetX + actualSlideWidth / 2 - cos * actualSlideWidth / 2
+              const y0 = snappedOffsetY + actualSlideHeight / 2 - sin * actualSlideHeight / 2
+              const x1 = snappedOffsetX + actualSlideWidth / 2 + cos * actualSlideWidth / 2
+              const y1 = snappedOffsetY + actualSlideHeight / 2 + sin * actualSlideHeight / 2
+              canvasGradient = ctx.createLinearGradient(x0, y0, x1, y1)
+            }
+
+            for (const stop of stops) {
+              const position = stop.position !== undefined ? stop.position / 100000 : 0
+              const color = this.parseColorToHex(stop.color) || '#ffffff'
+              canvasGradient.addColorStop(Math.min(1, Math.max(0, position)), color)
+            }
+            ctx.fillStyle = canvasGradient
+          } else {
+            ctx.fillStyle = (typeof backgroundFill === 'string' ? backgroundFill : null) || '#ffffff'
+          }
+
+          ctx.fillRect(snappedOffsetX, snappedOffsetY, actualSlideWidth, actualSlideHeight)
+        } finally {
+          ctx.restore()
+        }
+        return
+      }
+
+      ctx.save()
+      try {
+        if (backgroundFill && backgroundFill.type === 'image' && backgroundFill.imageData?.relationshipId) {
+          const cacheKey =
+            backgroundFill.imageData.resolvedCacheKey || backgroundFill.imageData.relationshipId
+          const imageEntry = this.processor?.imageCache?.get(cacheKey)
+          const alpha = clampAlpha(backgroundFill.imageData?.effects?.alpha)
+
+          if (imageEntry?.image) {
+            withCanvasAlpha(ctx, alpha, () => {
+              ctx.drawImage(imageEntry.image, 0, 0, this.canvas.width, this.canvas.height)
+            })
+            return
+          }
+
+          ctx.fillStyle = '#ffffff'
+        } else {
+          ctx.fillStyle = (typeof backgroundFill === 'string' ? backgroundFill : null) || '#ffffff'
+        }
+
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+      } finally {
+        ctx.restore()
+      }
+    }
+  }
+}
+
+function installPptxViewerFidelityPatches(viewerInstance: PPTXViewer): void {
+  for (const processor of getPptxProcessorPatchTargets(viewerInstance)) {
+    patchPptxProcessorForImageFidelity(processor)
+    patchDrawingDocumentBackground(processor)
+  }
+}
 
 function postToParent(message: ViewerResponse): void {
   window.parent.postMessage(message, '*')
@@ -136,9 +292,13 @@ function createShell(): ViewerShell {
   root.innerHTML = [
     '<style>',
     'html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1919; }',
-    'body { font-family: "JetBrains Mono", monospace; color: rgba(255,255,255,0.72); }',
+    'body { font-family: SimSun, "Songti SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: rgba(255,255,255,0.72); }',
     `#${VIEWER_ROOT_ID} { height: 100%; }`,
-    '.pptx-scroll { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 8px 8px 22px; box-sizing: border-box; }',
+    '.pptx-scroll { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 8px 8px 22px; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) rgba(255,255,255,0.04); }',
+    '.pptx-scroll::-webkit-scrollbar { width: 10px; }',
+    '.pptx-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.035); border-radius: 999px; }',
+    '.pptx-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24); border: 2px solid #1a1919; border-radius: 999px; }',
+    '.pptx-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.34); }',
     '.pptx-slide-list { display: flex; flex-direction: column; gap: 14px; }',
     '.pptx-slide { display: flex; flex-direction: column; gap: 8px; }',
     '.pptx-slide-meta { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; font-size: 10px; letter-spacing: 0.04em; color: rgba(255,255,255,0.24); }',
@@ -202,7 +362,7 @@ function getElementHorizontalPadding(element: HTMLElement): number {
   return (Number.isFinite(left) ? left : 0) + (Number.isFinite(right) ? right : 0)
 }
 
-function syncSlideCanvasDisplay(entry: SlideEntry): boolean {
+function syncSlideCanvasDisplay(entry: SlideEntry, resizeReadyCanvas = false): boolean {
   const availableWidth = entry.card.clientWidth || viewerShell?.scrollContainer.clientWidth || window.innerWidth
   const cardPadding = getElementHorizontalPadding(entry.card)
   const nextSize = calculatePptxSlideDisplaySize({
@@ -226,7 +386,7 @@ function syncSlideCanvasDisplay(entry: SlideEntry): boolean {
   entry.canvas.style.width = nextWidth
   entry.canvas.style.height = nextHeight
 
-  if (entry.state !== 'ready') {
+  if (entry.state !== 'ready' || resizeReadyCanvas) {
     const pixelRatio = window.devicePixelRatio || 1
     entry.canvas.width = Math.max(1, Math.round(nextSize.width * pixelRatio))
     entry.canvas.height = Math.max(1, Math.round(nextSize.height * pixelRatio))
@@ -239,7 +399,7 @@ function syncAllSlideCanvasDisplay(markReadySlidesForRerender = false): boolean 
   let didResizeAnyCanvas = false
 
   for (const entry of slideEntries) {
-    const didChange = syncSlideCanvasDisplay(entry)
+    const didChange = syncSlideCanvasDisplay(entry, markReadySlidesForRerender)
     if (!didChange) {
       continue
     }
@@ -373,7 +533,7 @@ function buildStatusKey(currentSlide: number, scrollTop: number): string {
   return `${activeFileKey}:${slideCount}:${currentSlide}:${Math.round(scrollTop)}`
 }
 
-function postViewerState(type: 'loaded' | 'rendered' | 'status', requestId?: number): void {
+function postViewerState(type: 'loaded' | 'rendered' | 'status' | 'slideError', requestId?: number): void {
   if (!viewerShell || !activeFileKey) return
 
   const currentSlide = getCurrentSlideFromScroll()
@@ -462,7 +622,7 @@ async function ensureSlideRendered(
     setSlideState(entry, 'rendering')
 
     try {
-      await viewer.renderSlide(index, entry.canvas)
+      await viewer.renderSlide(index, entry.canvas, PPTX_RENDER_OPTIONS)
 
       if (options.sessionId !== activeSessionId) return
 
@@ -582,7 +742,10 @@ async function handleLoadMessage(message: Extract<ViewerMessage, { type: 'load' 
     backgroundColor: '#ffffff',
   })
 
-  await viewer.loadFile(Uint8Array.from(message.content))
+  await (viewer as PPTXViewer & { _initializeProcessor?: () => Promise<unknown> })._initializeProcessor?.()
+  installPptxViewerFidelityPatches(viewer)
+  await viewer.loadFile(message.content instanceof Uint8Array ? message.content : Uint8Array.from(message.content))
+  installPptxViewerFidelityPatches(viewer)
 
   if (sessionId !== activeSessionId || !viewer) return
 
@@ -628,12 +791,13 @@ async function handleNavigateMessage(message: Extract<ViewerMessage, { type: 'na
   const sessionId = activeSessionId
   const targetSlide = clampSlideIndex(message.slideIndex)
 
-  await ensureSlideRendered(targetSlide, { critical: true, sessionId })
+  await ensureSlideRendered(targetSlide, { critical: false, sessionId })
   scrollToSlide(targetSlide)
   await waitForFrame()
 
   scheduleVisibleRender(sessionId)
-  postViewerState('rendered', message.requestId)
+  const targetEntry = slideEntries[targetSlide]
+  postViewerState(targetEntry?.state === 'failed' ? 'slideError' : 'rendered', message.requestId)
 }
 
 window.addEventListener('message', (event: MessageEvent<ViewerMessage>) => {

@@ -1,7 +1,8 @@
 import { shell } from 'electron'
-import { exec } from 'child_process'
-import { existsSync } from 'fs'
+import { execFile } from 'child_process'
+import { existsSync, statSync } from 'fs'
 import { extname } from 'path'
+import { pathToFileURL } from 'url'
 
 export type FileType = 'office' | 'code' | 'markdown' | 'html' | 'image' | 'unknown'
 
@@ -114,6 +115,15 @@ export function hasSource(ext: string): boolean {
 }
 
 export async function openInExternalEditor(filePath: string): Promise<void> {
+  if (!existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`)
+  }
+
+  const stats = statSync(filePath)
+  if (!stats.isFile()) {
+    throw new Error(`Path is not a file: ${filePath}`)
+  }
+
   const ext = extname(filePath).toLowerCase()
   const type = detectFileType(ext)
 
@@ -125,7 +135,7 @@ export async function openInExternalEditor(filePath: string): Promise<void> {
     case 'markdown':
       try {
         await new Promise<void>((resolve, reject) => {
-          exec(`code -r "${filePath}"`, (err) => {
+          execFile('code', ['-r', filePath], (err) => {
             if (err) reject(err)
             else resolve()
           })
@@ -135,7 +145,7 @@ export async function openInExternalEditor(filePath: string): Promise<void> {
       }
       break
     case 'html':
-      await shell.openExternal(`file://${filePath}`)
+      await shell.openExternal(pathToFileURL(filePath).toString())
       break
     default:
       await shell.openPath(filePath)

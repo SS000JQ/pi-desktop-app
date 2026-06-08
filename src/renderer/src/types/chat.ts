@@ -1,4 +1,4 @@
-export type { FilePreviewData } from '../../../shared/preview-types'
+export type { BinaryPreviewContent, FilePreviewData } from '../../../shared/preview-types'
 
 export interface ToolCall {
   id: string

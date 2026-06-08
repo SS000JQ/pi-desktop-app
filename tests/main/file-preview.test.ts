@@ -118,7 +118,7 @@ describe('readPreviewFile', () => {
     expect(preview.type).toBe('pptx')
     if (preview.type !== 'pptx') return
 
-    expect(preview.content).toEqual([0, 1, 2, 3, 4, 5])
+    expect(Array.from(preview.content)).toEqual([0, 1, 2, 3, 4, 5])
     expect(preview.summary).toBeUndefined()
   })
 
@@ -131,10 +131,25 @@ describe('readPreviewFile', () => {
 
     const preview = await readPreviewFile(filePath)
 
-    expect(preview).toEqual({
-      type: 'pdf',
-      content: Array.from(pdfBytes),
-    })
+    expect(preview.type).toBe('pdf')
+    if (preview.type !== 'pdf') return
+    expect(Array.from(preview.content)).toEqual(Array.from(pdfBytes))
+  })
+
+  it('returns a controllable fallback instead of reading oversized binary previews', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'pi-preview-'))
+    tempDirs.push(tempDir)
+    const filePath = join(tempDir, 'huge.pdf')
+    writeFileSync(filePath, Buffer.alloc(50 * 1024 * 1024 + 1))
+
+    const preview = await readPreviewFile(filePath)
+
+    expect(preview.type).toBe('binary')
+    if (preview.type !== 'binary') return
+    expect(preview.ext).toBe('.pdf')
+    expect(preview.size).toBe(50 * 1024 * 1024 + 1)
+    expect(preview.limit).toBe(50 * 1024 * 1024)
+    expect(preview.reason).toMatch(/too large/i)
   })
 
   it('returns raw docx bytes together with a fallback html rendering', async () => {

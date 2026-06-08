@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx'
 import type {
+  BinaryPreviewContent,
   FilePreviewData,
   ResultItem,
   RuntimeStatus,
@@ -105,7 +106,7 @@ interface PptxViewMemory {
 
 interface PptxViewerMessage {
   source?: string
-  type?: 'ready' | 'loaded' | 'rendered' | 'status' | 'error'
+  type?: 'ready' | 'loaded' | 'rendered' | 'status' | 'slideError' | 'error'
   fileKey?: string
   requestId?: number
   slideCount?: number
@@ -209,9 +210,15 @@ function getRenderErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-function toArrayBuffer(bytes: number[]): ArrayBuffer {
-  const array = Uint8Array.from(bytes)
-  return array.buffer.slice(array.byteOffset, array.byteOffset + array.byteLength)
+function toUint8Array(content: BinaryPreviewContent): Uint8Array {
+  return content instanceof Uint8Array ? content : Uint8Array.from(content)
+}
+
+function toArrayBuffer(content: BinaryPreviewContent): ArrayBuffer {
+  const array = toUint8Array(content)
+  const copy = new ArrayBuffer(array.byteLength)
+  new Uint8Array(copy).set(array)
+  return copy
 }
 
 function buildSpreadsheetSheetView(sheetName: string, sheet: XLSX.WorkSheet): SpreadsheetSheetView {
@@ -525,6 +532,7 @@ export default function PreviewPanel({
   const pdfStageRef = useRef<HTMLDivElement | null>(null)
   const pdfDocumentRef = useRef<PdfDocumentProxyLike | null>(null)
   const pdfLoadingTaskRef = useRef<PdfLoadingTaskLike | null>(null)
+  const pdfRenderRequestIdRef = useRef(0)
   const pdfPageMemoryRef = useRef<Record<string, number>>({})
   const [pdfCurrentPage, setPdfCurrentPage] = useState(1)
   const [pdfPageCount, setPdfPageCount] = useState(0)
@@ -540,6 +548,7 @@ export default function PreviewPanel({
   const [spreadsheetRenderError, setSpreadsheetRenderError] = useState<string | null>(null)
   const pdfContent = previewFile?.type === 'pdf' ? previewFile.content : null
   const pptxContent = previewFile?.type === 'pptx' ? previewFile.content : null
+  const docxContent = previewFile?.type === 'docx' ? previewFile.content : null
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -604,7 +613,7 @@ export default function PreviewPanel({
     const saved = imageViewMemoryRef.current[previewFile.path]
     setImageViewMode(saved?.mode || 'fit')
     setImageZoom(saved?.zoom || 1)
-  }, [previewFile?.path, previewFile?.type])
+  }, [previewFile?.path, previewFile?.type, docxContent])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'image') return
@@ -648,6 +657,8 @@ export default function PreviewPanel({
       const payload = event.data as PptxViewerMessage | undefined
 
       if (!payload || payload.source !== PPTX_VIEWER_CHANNEL || !payload.type) return
+      const frameWindow = pptxFrameRef.current?.contentWindow
+      if (frameWindow && event.source !== frameWindow) return
 
       if (payload.type === 'ready') {
         pptxFrameReadyRef.current = true
@@ -699,6 +710,11 @@ export default function PreviewPanel({
       syncPptxStatus()
       clearPptxRequestTimeout()
       pptxActiveRequestRef.current = null
+      if (payload.type === 'slideError') {
+        setPptxRenderError(null)
+        setPptxIsRendering(false)
+        return
+      }
       setPptxRenderError(null)
       setPptxIsRendering(false)
     }
@@ -738,7 +754,7 @@ export default function PreviewPanel({
     if (!previewFile || previewFile.type !== 'xlsx') return null
 
     try {
-      const workbook = XLSX.read(Uint8Array.from(previewFile.content), {
+      const workbook = XLSX.read(toUint8Array(previewFile.content), {
         type: 'array',
         cellDates: true,
         cellNF: true,
@@ -837,6 +853,8 @@ export default function PreviewPanel({
 
       setPptxSlideCount(0)
       setPptxIsRendering(false)
+      pptxActiveRequestRef.current = null
+      pptxRequestTimeoutRef.current = null
       setPptxRenderError('The presentation viewer did not respond. Showing the text fallback instead.')
     }, 8000)
   }
@@ -875,7 +893,11 @@ export default function PreviewPanel({
     })
   }
 
-  const renderPdfPage = async (documentProxy: PdfDocumentProxyLike, pageNumber: number) => {
+  const renderPdfPage = async (
+    documentProxy: PdfDocumentProxyLike,
+    pageNumber: number,
+    requestId: number,
+  ): Promise<boolean> => {
     const canvas = pdfCanvasRef.current
     const stage = pdfStageRef.current
 
@@ -884,6 +906,11 @@ export default function PreviewPanel({
     }
 
     const page = await documentProxy.getPage(pageNumber)
+    if (requestId !== pdfRenderRequestIdRef.current) {
+      page.cleanup?.()
+      return false
+    }
+
     const baseViewport = page.getViewport({ scale: 1 })
     const availableWidth = Math.max(stage.clientWidth - 48, 320)
     const scale = Math.max(Math.min(availableWidth / baseViewport.width, 2), 0.75)
@@ -893,6 +920,11 @@ export default function PreviewPanel({
 
     if (!context) {
       throw new Error('The PDF canvas context is unavailable.')
+    }
+
+    if (requestId !== pdfRenderRequestIdRef.current) {
+      page.cleanup?.()
+      return false
     }
 
     canvas.width = Math.floor(viewport.width * outputScale)
@@ -908,7 +940,13 @@ export default function PreviewPanel({
       transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
     }).promise
 
+    if (requestId !== pdfRenderRequestIdRef.current) {
+      page.cleanup?.()
+      return false
+    }
+
     page.cleanup?.()
+    return true
   }
 
   useEffect(() => {
@@ -942,6 +980,8 @@ export default function PreviewPanel({
 
     const loadPdf = async () => {
       destroyPdf()
+      const requestId = pdfRenderRequestIdRef.current + 1
+      pdfRenderRequestIdRef.current = requestId
       setPdfIsRendering(true)
       setPdfRenderError(null)
 
@@ -963,8 +1003,9 @@ export default function PreviewPanel({
           documentProxy.numPages,
         )
 
-        await renderPdfPage(documentProxy, targetPage)
+        const rendered = await renderPdfPage(documentProxy, targetPage, requestId)
         if (cancelled) return
+        if (!rendered) return
 
         pdfPageMemoryRef.current[previewFile.path] = targetPage
         setPdfCurrentPage(targetPage)
@@ -984,9 +1025,43 @@ export default function PreviewPanel({
 
     return () => {
       cancelled = true
+      pdfRenderRequestIdRef.current += 1
       destroyPdf()
     }
   }, [collapsed, previewFile?.path, previewFile?.type, pdfContent])
+
+  useEffect(() => {
+    if (!previewFile || previewFile.type !== 'pdf' || collapsed || !pdfStageRef.current) {
+      return
+    }
+
+    if (typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(() => {
+      const documentProxy = pdfDocumentRef.current
+      if (!documentProxy) return
+
+      const requestId = pdfRenderRequestIdRef.current + 1
+      pdfRenderRequestIdRef.current = requestId
+      setPdfIsRendering(true)
+      setPdfRenderError(null)
+
+      void renderPdfPage(documentProxy, pdfCurrentPage, requestId)
+        .catch((error) => {
+          if (requestId === pdfRenderRequestIdRef.current) {
+            setPdfRenderError(getRenderErrorMessage(error, 'This PDF could not be rendered in the viewer.'))
+          }
+        })
+        .finally(() => {
+          if (requestId === pdfRenderRequestIdRef.current) {
+            setPdfIsRendering(false)
+          }
+        })
+    })
+
+    observer.observe(pdfStageRef.current)
+    return () => observer.disconnect()
+  }, [collapsed, pdfCurrentPage, previewFile?.path, previewFile?.type])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'docx' || collapsed || !docxContainerRef.current) {
@@ -1031,7 +1106,7 @@ export default function PreviewPanel({
       cancelled = true
       container.innerHTML = ''
     }
-  }, [collapsed, previewFile?.path, previewFile?.type])
+  }, [collapsed, previewFile?.path, previewFile?.type, docxContent])
 
   const handlePptxNavigate = async (targetSlide: number) => {
     if (!previewFile || previewFile.type !== 'pptx' || !pptxFrameReadyRef.current) return
@@ -1059,17 +1134,24 @@ export default function PreviewPanel({
     if (!documentProxy) return
 
     const nextPage = Math.max(1, Math.min(targetPage, Math.max(pdfPageCount, 1)))
+    const requestId = pdfRenderRequestIdRef.current + 1
+    pdfRenderRequestIdRef.current = requestId
     setPdfIsRendering(true)
     setPdfRenderError(null)
 
     try {
-      await renderPdfPage(documentProxy, nextPage)
+      const rendered = await renderPdfPage(documentProxy, nextPage, requestId)
+      if (!rendered) return
       pdfPageMemoryRef.current[previewFile.path] = nextPage
       setPdfCurrentPage(nextPage)
     } catch (error) {
-      setPdfRenderError(getRenderErrorMessage(error, 'This PDF could not be rendered in the viewer.'))
+      if (requestId === pdfRenderRequestIdRef.current) {
+        setPdfRenderError(getRenderErrorMessage(error, 'This PDF could not be rendered in the viewer.'))
+      }
     } finally {
-      setPdfIsRendering(false)
+      if (requestId === pdfRenderRequestIdRef.current) {
+        setPdfIsRendering(false)
+      }
     }
   }
 
@@ -1251,7 +1333,13 @@ export default function PreviewPanel({
         <div className="pv-viewer-shell">
           <SummaryAlert message="Document rendering failed. Showing HTML fallback instead." />
           {previewFile.fallbackHtml ? (
-            <div className="pv-md pv-office-doc" dangerouslySetInnerHTML={{ __html: previewFile.fallbackHtml }} />
+            <iframe
+              className="pv-html-frame pv-docx-fallback-frame"
+              title={`${previewFile.name} fallback`}
+              sandbox="allow-same-origin"
+              referrerPolicy="no-referrer"
+              srcDoc={buildHtmlSrcDoc(previewFile.fallbackHtml, previewFile.path)}
+            />
           ) : (
             <div className="pv-empty-note">{docxRenderError}</div>
           )}

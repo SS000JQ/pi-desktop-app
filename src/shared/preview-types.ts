@@ -14,23 +14,25 @@ export interface WorkbookPreviewSummary {
   sheets: WorkbookPreviewSummarySheet[]
 }
 
+export type BinaryPreviewContent = Uint8Array | number[]
+
 export type FilePreviewData =
   | { type: 'text'; content: string }
   | { type: 'image'; content: string }
-  | { type: 'pdf'; content: number[] }
+  | { type: 'pdf'; content: BinaryPreviewContent }
   | {
       type: 'docx'
-      content: number[]
+      content: BinaryPreviewContent
       fallbackHtml?: string
     }
   | {
       type: 'pptx'
-      content: number[]
+      content: BinaryPreviewContent
       summary?: SlidePreviewSummary[]
     }
   | {
       type: 'xlsx'
-      content: number[]
+      content: BinaryPreviewContent
       summary?: WorkbookPreviewSummary
     }
-  | { type: 'binary'; ext?: string; reason?: string }
+  | { type: 'binary'; ext?: string; reason?: string; size?: number; limit?: number }

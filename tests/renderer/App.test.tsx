@@ -677,7 +677,7 @@ describe('App', () => {
     })
   })
 
-  it('does not default a new chat back to the current app workspace when opening the dialog', async () => {
+  it('defaults a new chat to the current workspace when opening the dialog', async () => {
     window.piDesktop = createPiDesktopMock()
 
     render(<App />)
@@ -686,8 +686,33 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
 
     const radios = screen.getAllByRole('radio') as HTMLInputElement[]
-    expect(radios[radios.length - 1]?.checked).toBe(true)
-    expect(radios[0]?.checked).toBe(false)
+    expect(radios[0]?.checked).toBe(true)
+    expect(radios[radios.length - 1]?.checked).toBe(false)
+  })
+
+  it('keeps the new chat dialog open and shows an error when session creation fails', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      success: false,
+      error: 'Permission denied while creating the session',
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      session: {
+        ...createPiDesktopMock().session,
+        create: createMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Permission denied while creating the session')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: 'New Chat' })).toBeTruthy()
+    })
   })
 
   it('rehydrates a newly created session from Pi session detail instead of keeping the old workspace state', async () => {
@@ -947,6 +972,72 @@ describe('App', () => {
 
     expect(await screen.findByText('Preview unavailable')).toBeTruthy()
     expect(screen.getByText('Permission denied while reading preview')).toBeTruthy()
+  })
+
+  it('keeps the latest selected preview when an older file read resolves late', async () => {
+    let resolveSlow: ((value: unknown) => void) | null = null
+    let resolveFast: ((value: unknown) => void) | null = null
+    const slowRead = new Promise((resolve) => {
+      resolveSlow = resolve
+    })
+    const fastRead = new Promise((resolve) => {
+      resolveFast = resolve
+    })
+
+    const readMock = vi.fn((path: string) => {
+      if (path.endsWith('slow.md')) return slowRead
+      if (path.endsWith('fast.md')) return fastRead
+      return Promise.resolve({ success: true, data: { type: 'text', content: '' } })
+    })
+
+    window.piDesktop = createPiDesktopMock({
+      files: {
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              name: 'slow.md',
+              path: 'D:/PI/app/slow.md',
+              isDir: false,
+              size: 100,
+              modifiedAt: new Date().toISOString(),
+            },
+            {
+              name: 'fast.md',
+              path: 'D:/PI/app/fast.md',
+              isDir: false,
+              size: 100,
+              modifiedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        read: readMock,
+        save: vi.fn().mockResolvedValue({ success: true }),
+        open: vi.fn().mockResolvedValue({ success: true }),
+        pickDirectory: vi.fn().mockResolvedValue({ success: true, data: null }),
+      },
+    })
+
+    render(<App />)
+
+    expect((await screen.findAllByText('slow.md')).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getAllByText('slow.md')[0])
+    fireEvent.click(screen.getAllByText('fast.md')[0])
+
+    await act(async () => {
+      resolveFast?.({ success: true, data: { type: 'text', content: 'Fast content' } })
+    })
+
+    expect(await screen.findByText('Fast content')).toBeTruthy()
+
+    await act(async () => {
+      resolveSlow?.({ success: true, data: { type: 'text', content: 'Slow content' } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Fast content')).toBeTruthy()
+      expect(screen.queryByText('Slow content')).toBeNull()
+    })
   })
 
   it('shows a preparing status immediately after the user sends a message', async () => {

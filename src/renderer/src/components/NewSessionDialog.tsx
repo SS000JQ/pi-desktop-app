@@ -4,6 +4,8 @@ interface NewSessionDialogProps {
   isOpen: boolean
   currentDir?: string
   directoryOptions: string[]
+  isCreating?: boolean
+  error?: string | null
   onClose: () => void
   onCreate: (cwd?: string) => void
   onBrowseDirectory?: () => Promise<string | null | undefined>
@@ -13,6 +15,8 @@ export default function NewSessionDialog({
   isOpen,
   currentDir,
   directoryOptions,
+  isCreating = false,
+  error = null,
   onClose,
   onCreate,
   onBrowseDirectory,
@@ -36,13 +40,8 @@ export default function NewSessionDialog({
     const preferredKnownDir =
       directoryOptions.find((dir) => dir && dir !== currentDir) || currentDir || directoryOptions[0] || ''
 
-    setSelectedDir((previous) => previous || preferredKnownDir)
-    setSelectedMode((previous) => {
-      if (previous === 'custom' && customDir.trim()) return 'custom'
-      if (previous === 'known' && (selectedDir || preferredKnownDir)) return 'known'
-      if (previous === 'default') return 'default'
-      return 'default'
-    })
+    setSelectedDir(preferredKnownDir)
+    setSelectedMode(currentDir ? 'current' : 'default')
   }, [currentDir, customDir, directoryOptions, isOpen, selectedDir])
 
   if (!isOpen) {
@@ -159,13 +158,30 @@ export default function NewSessionDialog({
               <div className="cim">Creates the session inside <code>Pi-Desktop-Session</code>.</div>
             </div>
           </label>
+
+          {error && (
+            <div
+              role="alert"
+              style={{
+                border: '1px solid rgba(255, 94, 94, 0.26)',
+                borderRadius: 12,
+                padding: '10px 12px',
+                color: 'rgba(255, 210, 210, 0.94)',
+                background: 'rgba(255, 94, 94, 0.08)',
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              {error}
+            </div>
+          )}
         </div>
         <div className="modal-ftr" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.18)' }}>
             Sessions stay bound to the directory you pick here.
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onClose} className="bs">Cancel</button>
+            <button onClick={onClose} className="bs" disabled={isCreating}>Cancel</button>
             <button
               onClick={() => {
                 const trimmedCustomDir = customDir.trim()
@@ -181,11 +197,13 @@ export default function NewSessionDialog({
               }}
               className="bp"
               disabled={
+                isCreating
+                ||
                 (selectedMode === 'custom' && !customDir.trim())
                 || (selectedMode === 'known' && !selectedDir)
               }
             >
-              Create
+              {isCreating ? 'Creating...' : 'Create'}
             </button>
           </div>
         </div>

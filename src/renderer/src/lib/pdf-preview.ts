@@ -1,12 +1,17 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
+import type { BinaryPreviewContent } from '../types/chat'
 
 export function resolvePdfPreviewAssetUrl(assetPath: string): string {
   return new URL(`./pdfjs/${assetPath}`, window.location.href).toString()
 }
 
-export function buildPdfDocumentParams(content: number[]) {
+function toUint8Array(content: BinaryPreviewContent): Uint8Array {
+  return content instanceof Uint8Array ? content : Uint8Array.from(content)
+}
+
+export function buildPdfDocumentParams(content: BinaryPreviewContent) {
   return {
-    data: Uint8Array.from(content),
+    data: toUint8Array(content),
     cMapUrl: resolvePdfPreviewAssetUrl('cmaps/'),
     cMapPacked: true,
     standardFontDataUrl: resolvePdfPreviewAssetUrl('standard_fonts/'),
@@ -17,7 +22,7 @@ export function buildPdfDocumentParams(content: number[]) {
   }
 }
 
-export function getPdfDocumentLoadingTask(content: number[]) {
+export function getPdfDocumentLoadingTask(content: BinaryPreviewContent) {
   pdfjs.GlobalWorkerOptions.workerSrc = resolvePdfPreviewAssetUrl('pdf.worker.mjs')
   return pdfjs.getDocument(buildPdfDocumentParams(content))
 }
