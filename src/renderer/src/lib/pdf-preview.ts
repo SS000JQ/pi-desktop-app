@@ -6,7 +6,7 @@ export function resolvePdfPreviewAssetUrl(assetPath: string): string {
 }
 
 function toUint8Array(content: BinaryPreviewContent): Uint8Array {
-  return content instanceof Uint8Array ? content : Uint8Array.from(content)
+  return content instanceof Uint8Array ? new Uint8Array(content) : Uint8Array.from(content)
 }
 
 export function buildPdfDocumentParams(content: BinaryPreviewContent) {

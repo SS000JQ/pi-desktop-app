@@ -43,6 +43,16 @@ describe('pdf-preview runtime helpers', () => {
     expect(params.enableXfa).toBe(true)
   })
 
+  it('clones Uint8Array content before passing it to pdf.js', () => {
+    const content = new Uint8Array([1, 2, 3, 4])
+    const params = buildPdfDocumentParams(content)
+
+    expect(params.data).toBeInstanceOf(Uint8Array)
+    expect(params.data).not.toBe(content)
+    expect(params.data.buffer).not.toBe(content.buffer)
+    expect(Array.from(params.data)).toEqual([1, 2, 3, 4])
+  })
+
   it('configures the legacy worker before loading a document', () => {
     const task = { promise: Promise.resolve(null) }
     pdfGetDocumentMock.mockReturnValue(task)

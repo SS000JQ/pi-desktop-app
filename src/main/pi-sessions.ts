@@ -3,6 +3,7 @@ import { basename, dirname } from 'path'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { loadPiCodingAgentModule } from './pi-sdk'
 import { getProviderByModelKey } from './providers'
+import { repairUserHomePath } from './path-utils'
 
 export interface PiSessionSummary {
   id: string
@@ -113,11 +114,12 @@ export async function listPiSessions(): Promise<PiSessionSummary[]> {
   const detailedSessions = await Promise.all(
     sessions.map(async (session) => {
       const detail = await openPiSession(session.path).catch(() => null)
+      const cwd = repairUserHomePath(session.cwd)
       return {
         id: session.id,
         path: session.path,
-        cwd: session.cwd,
-        title: buildSessionTitle(session.name, session.firstMessage, session.cwd),
+        cwd,
+        title: buildSessionTitle(session.name, session.firstMessage, cwd),
         model: detail?.model || null,
         tokenCount: detail?.tokenCount || 0,
         messageCount: session.messageCount,
@@ -139,12 +141,14 @@ export async function openPiSession(sessionPath: string): Promise<PiSessionDetai
   const header = sessionManager.getHeader()
 
   const messages = sessionContext.messages.filter(isSupportedSessionMessage)
+  const cwd = repairUserHomePath(sessionManager.getCwd())
+  const headerCwd = repairUserHomePath(header?.cwd || cwd)
 
   return {
     sessionId: sessionManager.getSessionId(),
     sessionPath,
-    cwd: sessionManager.getCwd(),
-    title: buildSessionTitle(sessionManager.getSessionName(), getFirstMessagePreview(messages), header?.cwd || sessionManager.getCwd()),
+    cwd,
+    title: buildSessionTitle(sessionManager.getSessionName(), getFirstMessagePreview(messages), headerCwd),
     messages,
     model: sessionContext.model ? `${sessionContext.model.provider}/${sessionContext.model.modelId}` : null,
     thinkingLevel: sessionContext.thinkingLevel || 'medium',

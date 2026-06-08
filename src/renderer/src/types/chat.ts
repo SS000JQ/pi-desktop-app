@@ -2,6 +2,7 @@ export type { BinaryPreviewContent, FilePreviewData } from '../../../shared/prev
 
 export interface ToolCall {
   id: string
+  toolCallId?: string
   name: string
   args: string
   status: 'running' | 'done' | 'error'
@@ -26,6 +27,9 @@ export interface RuntimeStatus {
   lastAction?: string
   startedAt?: number
   elapsedMs?: number
+  updatedAt?: number
+  runId?: string
+  messageId?: string
   isWaitingForUser: boolean
   isStalled?: boolean
   errorSummary?: string
@@ -38,24 +42,38 @@ export type AgentEvent =
   | {
       type: 'token'
       text: string
+      runId?: string
+      sessionId?: string
+      sessionPath?: string
+    }
+  | {
+      type: 'thinking_delta'
+      text: string
+      runId?: string
       sessionId?: string
       sessionPath?: string
     }
   | {
       type: 'tool_started'
       toolName?: string
+      toolCallId?: string
       args?: unknown
+      runId?: string
       sessionId?: string
       sessionPath?: string
     }
   | {
       type: 'tool_finished' | 'tool_failed'
       toolName?: string
+      toolCallId?: string
+      error?: string
+      runId?: string
       sessionId?: string
       sessionPath?: string
     }
   | {
       type: 'done'
+      runId?: string
       session?: {
         sessionId: string
         sessionPath: string
@@ -72,12 +90,14 @@ export type AgentEvent =
   | {
       type: 'artifact_created'
       path?: string
+      runId?: string
       sessionId?: string
       sessionPath?: string
     }
   | {
       type: 'error'
       error?: string
+      runId?: string
       sessionId?: string
       sessionPath?: string
     }
@@ -85,11 +105,28 @@ export type AgentEvent =
       type: 'status'
     } & RuntimeStatus)
 
+export interface MessagePart {
+  type: 'text' | 'thinking' | 'toolResult' | 'customSummary'
+  text: string
+  title?: string
+  collapsed?: boolean
+  state?: 'streaming' | 'complete'
+  updatedAt?: number
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: number
+  runId?: string
+  parts?: MessagePart[]
+  anchors?: {
+    answerStart?: string
+    latestOutput?: string
+    toolSummary?: string
+    finalAnswer?: string
+  }
   toolCalls?: ToolCall[]
   attachments?: string[]
   isStreaming?: boolean
@@ -154,6 +191,7 @@ export interface ArtifactVersion {
 export interface ArtifactEntity {
   id: string
   sessionId: string
+  sessionPath?: string
   title: string
   artifactType: ArtifactType
   sourceKind: ArtifactSourceKind

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { app } from 'electron'
 import { join } from 'path'
 import { getConfigValue } from './config-store'
+import { resolveOptionalExistingDirectory } from './path-utils'
 import { getCliAgentPaths, getCliProviderState } from './providers'
 
 export interface DesktopStateEntry {
@@ -29,23 +30,23 @@ export interface DesktopConnectorEntry {
 
 const RECOVERY_PATH = join(app.getPath('userData'), 'pi-desktop', 'active-session.json')
 
-function readActiveSessionId(): string | null {
+function readActiveSessionKey(): string | null {
   try {
     if (!existsSync(RECOVERY_PATH)) return null
-    const data = JSON.parse(readFileSync(RECOVERY_PATH, 'utf-8')) as { id?: string }
-    return data.id || null
+    const data = JSON.parse(readFileSync(RECOVERY_PATH, 'utf-8')) as { id?: string; path?: string }
+    return data.path || data.id || null
   } catch {
     return null
   }
 }
 
-export function saveActiveSessionId(sessionId: string): void {
+export function saveActiveSessionId(sessionId: string, sessionPath?: string): void {
   try {
     const dir = join(app.getPath('userData'), 'pi-desktop')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     writeFileSync(
       RECOVERY_PATH,
-      JSON.stringify({ id: sessionId, timestamp: new Date().toISOString() }, null, 2),
+      JSON.stringify({ id: sessionId, path: sessionPath, timestamp: new Date().toISOString() }, null, 2),
       'utf-8',
     )
   } catch {
@@ -54,7 +55,7 @@ export function saveActiveSessionId(sessionId: string): void {
 }
 
 export function getActiveSessionId(): string | null {
-  return readActiveSessionId()
+  return readActiveSessionKey()
 }
 
 export function getDesktopStateSummary(): {
@@ -63,9 +64,10 @@ export function getDesktopStateSummary(): {
   connectors: DesktopConnectorEntry[]
 } {
   const workingDirectory = getConfigValue('workingDirectory')
+  const resolvedWorkingDirectory = resolveOptionalExistingDirectory(typeof workingDirectory === 'string' ? workingDirectory : null)
   const { agentDir, settingsPath, authPath, modelsPath } = getCliAgentPaths()
   const providerState = getCliProviderState()
-  const activeSessionId = readActiveSessionId()
+  const activeSessionId = readActiveSessionKey()
   const skillsDir = join(agentDir, 'skills')
   const discoveredSkillEntries = existsSync(skillsDir)
     ? readdirSync(skillsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() || entry.isFile())
@@ -93,7 +95,7 @@ export function getDesktopStateSummary(): {
     {
       id: 'working-directory',
       label: 'Current working directory',
-      value: typeof workingDirectory === 'string' && workingDirectory ? workingDirectory : process.cwd(),
+      value: resolvedWorkingDirectory || '(not set)',
       source: join(app.getPath('userData'), 'pi-desktop', 'config.json'),
     },
     {

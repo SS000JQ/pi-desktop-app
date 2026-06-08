@@ -64,6 +64,7 @@ interface ArtifactVersion {
 interface ArtifactEntity {
   id: string
   sessionId: string
+  sessionPath?: string
   title: string
   artifactType: ArtifactType
   sourceKind: ArtifactSourceKind
@@ -94,6 +95,7 @@ interface PiDesktopApi {
       sessionId: string
       sessionPath: string
       createdNewSession: boolean
+      runId: string
     }>>
     abort: (sessionPath?: string) => Promise<IpcResponse>
   }
@@ -206,13 +208,13 @@ interface PiDesktopApi {
     pickDirectory: (startPath?: string) => Promise<IpcResponse<string | null>>
   }
   artifacts: {
-    list: (sessionId?: string) => Promise<IpcResponse<ArtifactEntity[]>>
+    list: (sessionKey?: string) => Promise<IpcResponse<ArtifactEntity[]>>
     get: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
     history: (artifactId: string) => Promise<IpcResponse<ArtifactVersion[]>>
     refresh: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
     pin: (artifactId: string, pinned: boolean) => Promise<IpcResponse<ArtifactEntity | null>>
     markPrimary: (artifactId: string) => Promise<IpcResponse<ArtifactEntity | null>>
-    view: (payload: { sessionId: string; path: string }) => Promise<IpcResponse<ArtifactEntity | null>>
+    view: (payload: { sessionId: string; sessionPath?: string; path: string }) => Promise<IpcResponse<ArtifactEntity | null>>
   }
 }
 

@@ -1,9 +1,11 @@
 import { getModel } from '@earendil-works/pi-ai'
 import { readdirSync, statSync } from 'fs'
-import { join } from 'path'
+import { extname, join } from 'path'
+import { homedir } from 'os'
 import { getConfigValue } from './config-store'
 import { openPiSession } from './pi-sessions'
 import { loadPiCodingAgentModule } from './pi-sdk'
+import { resolveOptionalExistingDirectory, resolveRuntimeDirectory } from './path-utils'
 import {
   getDefaultModel,
   getDefaultProvider,
@@ -21,6 +23,7 @@ export interface PiBridgeEvent {
   type:
     | 'run_started'
     | 'assistant_token'
+    | 'assistant_thinking'
     | 'assistant_message'
     | 'tool_started'
     | 'tool_finished'
@@ -124,7 +127,7 @@ export class PiBridge {
     }
 
     const sessionDetails = await openPiSession(sessionPath)
-    const cwd = sessionDetails.cwd || this.getWorkingDirectory()
+    const cwd = resolveRuntimeDirectory(sessionDetails.cwd, this.getWorkingDirectory())
     const resolved = this.resolveModel(modelKey)
     if (!resolved) {
       throw new Error('No configured Pi model available')
@@ -176,6 +179,8 @@ export class PiBridge {
       case 'message_update':
         if (event.assistantMessageEvent.type === 'text_delta') {
           emit({ type: 'assistant_token', sessionId, text: event.assistantMessageEvent.delta })
+        } else if (event.assistantMessageEvent.type === 'thinking_delta') {
+          emit({ type: 'assistant_thinking', sessionId, text: event.assistantMessageEvent.delta })
         }
         break
       case 'message_end':
@@ -211,51 +216,79 @@ export class PiBridge {
 
   private getWorkingDirectory(): string {
     const configured = getConfigValue('workingDirectory')
-    return typeof configured === 'string' && configured ? configured : process.cwd()
+    return resolveOptionalExistingDirectory(typeof configured === 'string' ? configured : null)
+      || join(homedir(), 'Pi-Desktop-Session')
   }
 
   private snapshotFiles(cwd: string): Map<string, number> {
     const files = new Map<string, number>()
-    try {
-      for (const name of readdirSync(cwd)) {
-        const fullPath = join(cwd, name)
-        try {
-          const stat = statSync(fullPath)
-          if (stat.isFile()) {
-            files.set(fullPath, stat.mtimeMs)
-          }
-        } catch {
-          // Skip unreadable entries.
-        }
+    for (const file of this.listArtifactCandidateFiles(cwd)) {
+      try {
+        files.set(file, statSync(file).mtimeMs)
+      } catch {
+        // Skip unreadable entries.
       }
-    } catch {
-      // Ignore unreadable cwd.
     }
     return files
   }
 
   private detectArtifacts(cwd: string, beforeFiles: Map<string, number>): string[] {
     const recent: string[] = []
-    try {
-      for (const name of readdirSync(cwd)) {
-        const fullPath = join(cwd, name)
+    for (const fullPath of this.listArtifactCandidateFiles(cwd)) {
+      try {
+        const stat = statSync(fullPath)
+        const previousMtime = beforeFiles.get(fullPath)
+        if (previousMtime === undefined || stat.mtimeMs > previousMtime) {
+          recent.push(fullPath)
+        }
+      } catch {
+        // Skip unreadable entries.
+      }
+    }
+
+    return recent.slice(0, 5)
+  }
+
+  private listArtifactCandidateFiles(cwd: string): string[] {
+    const files: string[] = []
+    const ignoredDirectories = new Set(['.git', 'node_modules', 'out', 'dist', 'build', '.run-logs'])
+    const visit = (dir: string, depth: number): void => {
+      if (depth > 4 || files.length >= 2000) return
+      let entries: string[]
+      try {
+        entries = readdirSync(dir)
+      } catch {
+        return
+      }
+
+      for (const name of entries) {
+        if (files.length >= 2000) return
+        const fullPath = join(dir, name)
         try {
           const stat = statSync(fullPath)
-          if (!stat.isFile()) continue
-
-          const previousMtime = beforeFiles.get(fullPath)
-          if (previousMtime === undefined || stat.mtimeMs > previousMtime) {
-            recent.push(fullPath)
+          if (stat.isDirectory()) {
+            if (!ignoredDirectories.has(name)) {
+              visit(fullPath, depth + 1)
+            }
+            continue
+          }
+          if (stat.isFile() && this.isArtifactCandidate(fullPath)) {
+            files.push(fullPath)
           }
         } catch {
           // Skip unreadable entries.
         }
       }
-    } catch {
-      return []
     }
 
-    return recent.slice(0, 5)
+    visit(cwd, 0)
+    return files
+  }
+
+  private isArtifactCandidate(path: string): boolean {
+    return ['.md', '.txt', '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.pptm', '.csv', '.xlsx', '.html', '.htm'].includes(
+      extname(path).toLowerCase(),
+    )
   }
 
   private resolveModel(modelKey?: string): ResolvedRuntimeModel | null {

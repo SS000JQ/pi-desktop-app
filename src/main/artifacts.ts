@@ -18,6 +18,7 @@ export interface ArtifactVersionRecord {
 export interface ArtifactRecord {
   id: string
   sessionId: string
+  sessionPath?: string
   title: string
   artifactType: ArtifactType
   sourceKind: ArtifactSourceKind
@@ -100,10 +101,10 @@ function summarizeArtifact(type: ArtifactType, title: string, status: ArtifactSt
   }
 }
 
-export function listArtifacts(sessionId?: string): ArtifactRecord[] {
+export function listArtifacts(sessionKey?: string): ArtifactRecord[] {
   const store = readStore()
-  const filtered = sessionId
-    ? store.artifacts.filter((artifact) => artifact.sessionId === sessionId)
+  const filtered = sessionKey
+    ? store.artifacts.filter((artifact) => artifact.sessionPath === sessionKey || artifact.sessionId === sessionKey)
     : store.artifacts
   return [...filtered].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 }
@@ -114,6 +115,7 @@ export function getArtifact(artifactId: string): ArtifactRecord | null {
 
 export function upsertArtifactFromPath(input: {
   sessionId: string
+  sessionPath?: string
   path: string
   status: ArtifactStatus
   sourceKind?: ArtifactSourceKind
@@ -125,10 +127,15 @@ export function upsertArtifactFromPath(input: {
   const title = basename(input.path)
   const artifactType = detectArtifactType(input.path)
   const existing = store.artifacts.find(
-    (artifact) => artifact.sessionId === input.sessionId && artifact.sourcePath === input.path,
+    (artifact) =>
+      (input.sessionPath
+        ? artifact.sessionPath === input.sessionPath
+        : artifact.sessionId === input.sessionId)
+      && artifact.sourcePath === input.path,
   )
 
   if (existing) {
+    existing.sessionPath = input.sessionPath ?? existing.sessionPath
     existing.status = input.status
     existing.updatedAt = now
     existing.snapshot = input.snapshot ?? existing.snapshot
@@ -152,6 +159,7 @@ export function upsertArtifactFromPath(input: {
   const artifact: ArtifactRecord = {
     id: generateId('artifact'),
     sessionId: input.sessionId,
+    sessionPath: input.sessionPath,
     title,
     artifactType,
     sourceKind: input.sourceKind || 'pi_generated',
@@ -185,6 +193,7 @@ export function upsertArtifactFromPath(input: {
 
 export function upsertArtifact(input: {
   sessionId: string
+  sessionPath?: string
   title: string
   status: ArtifactStatus
   artifactType?: ArtifactType
@@ -196,6 +205,7 @@ export function upsertArtifact(input: {
   if (input.sourcePath) {
     return upsertArtifactFromPath({
       sessionId: input.sessionId,
+      sessionPath: input.sessionPath,
       path: input.sourcePath,
       status: input.status,
       sourceKind: input.sourceKind,
@@ -209,12 +219,15 @@ export function upsertArtifact(input: {
   const artifactType = input.artifactType || 'file'
   const existing = store.artifacts.find(
     (artifact) =>
-      artifact.sessionId === input.sessionId
+      (input.sessionPath
+        ? artifact.sessionPath === input.sessionPath
+        : artifact.sessionId === input.sessionId)
       && artifact.title === input.title
       && !artifact.sourcePath,
   )
 
   if (existing) {
+    existing.sessionPath = input.sessionPath ?? existing.sessionPath
     existing.status = input.status
     existing.updatedAt = now
     existing.snapshot = input.snapshot ?? existing.snapshot
@@ -237,6 +250,7 @@ export function upsertArtifact(input: {
   const artifact: ArtifactRecord = {
     id: generateId('artifact'),
     sessionId: input.sessionId,
+    sessionPath: input.sessionPath,
     title: input.title,
     artifactType,
     sourceKind: input.sourceKind || 'pi_generated',
@@ -268,12 +282,14 @@ export function upsertArtifact(input: {
 
 export function recordArtifactFailure(input: {
   sessionId: string
+  sessionPath?: string
   title?: string
   artifactType?: ArtifactType
   errorSummary: string
 }): ArtifactRecord {
   return upsertArtifact({
     sessionId: input.sessionId,
+    sessionPath: input.sessionPath,
     title: input.title || 'Failed run',
     status: 'failed',
     artifactType: input.artifactType || 'brief',
@@ -299,8 +315,12 @@ export function markArtifactPrimary(artifactId: string): ArtifactRecord | null {
   const store = readStore()
   const artifact = store.artifacts.find((entry) => entry.id === artifactId)
   if (!artifact) return null
+  const sessionPath = artifact.sessionPath
   for (const entry of store.artifacts) {
-    if (entry.sessionId === artifact.sessionId) {
+    const sameSession = sessionPath
+      ? entry.sessionPath === sessionPath
+      : !entry.sessionPath && entry.sessionId === artifact.sessionId
+    if (sameSession) {
       entry.metadata = {
         ...entry.metadata,
         primary: entry.id === artifactId,
@@ -314,11 +334,13 @@ export function markArtifactPrimary(artifactId: string): ArtifactRecord | null {
 
 export function recordManualArtifactView(input: {
   sessionId: string
+  sessionPath?: string
   path: string
   snapshot?: string
 }): ArtifactRecord {
   return upsertArtifactFromPath({
     sessionId: input.sessionId,
+    sessionPath: input.sessionPath,
     path: input.path,
     status: 'ready',
     sourceKind: 'manual',

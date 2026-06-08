@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import MessageRow from './MessageRow'
 import type { Message } from '../types/chat'
 
@@ -10,13 +10,52 @@ interface MessageListProps {
 }
 
 export default function MessageList({ messages, isStreaming, onRegenerate, onEditMessage }: MessageListProps) {
+  const scrollerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [isUserReviewing, setIsUserReviewing] = useState(false)
+  const [unreadUpdateCount, setUnreadUpdateCount] = useState(0)
+  const wasAtBottomRef = useRef(true)
+  const previousSignatureRef = useRef('')
+
+  const isNearBottom = useCallback(() => {
+    const scroller = scrollerRef.current
+    if (!scroller) return true
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 96
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const nearBottom = isNearBottom()
+    wasAtBottomRef.current = nearBottom
+    setIsUserReviewing(!nearBottom)
+    if (nearBottom) {
+      setUnreadUpdateCount(0)
+    }
+  }, [isNearBottom])
+
+  const jumpToLatest = useCallback(() => {
+    wasAtBottomRef.current = true
+    setIsUserReviewing(false)
+    setUnreadUpdateCount(0)
+    if (typeof bottomRef.current?.scrollIntoView === 'function') {
+      bottomRef.current.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [])
 
   useEffect(() => {
-    if (typeof bottomRef.current?.scrollIntoView === 'function') {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    const signature = `${messages.length}:${messages[messages.length - 1]?.id || ''}:${messages[messages.length - 1]?.content?.length || 0}:${isStreaming ? 'streaming' : 'idle'}`
+    const changed = previousSignatureRef.current && previousSignatureRef.current !== signature
+    previousSignatureRef.current = signature
+
+    if (wasAtBottomRef.current && typeof bottomRef.current?.scrollIntoView === 'function') {
+      bottomRef.current.scrollIntoView({ behavior: 'auto' })
+      return
     }
-  }, [messages])
+
+    if (changed && !wasAtBottomRef.current) {
+      setIsUserReviewing(true)
+      setUnreadUpdateCount((count) => count + 1)
+    }
+  }, [isStreaming, messages])
 
   if (messages.length === 0) {
     return (
@@ -30,7 +69,7 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
   }
 
   return (
-    <div className="msgs">
+    <div className="msgs" ref={scrollerRef} onScroll={handleScroll}>
       {messages.map(msg => (
         <MessageRow
           key={msg.id}
@@ -46,6 +85,11 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
         </div>
       )}
       <div ref={bottomRef} />
+      {isUserReviewing && unreadUpdateCount > 0 && (
+        <button type="button" className="jump-latest" onClick={jumpToLatest}>
+          New output · Jump to latest
+        </button>
+      )}
     </div>
   )
 }

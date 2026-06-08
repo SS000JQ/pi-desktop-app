@@ -725,6 +725,12 @@ export default function PreviewPanel({
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'pdf') {
+      pdfRenderRequestIdRef.current += 1
+      pdfLoadingTaskRef.current?.destroy?.()
+      pdfDocumentRef.current?.cleanup?.()
+      pdfDocumentRef.current?.destroy?.()
+      pdfLoadingTaskRef.current = null
+      pdfDocumentRef.current = null
       setPdfCurrentPage(1)
       setPdfPageCount(0)
       setPdfIsRendering(false)
@@ -737,7 +743,7 @@ export default function PreviewPanel({
     setPdfPageCount(0)
     setPdfIsRendering(false)
     setPdfRenderError(null)
-  }, [previewFile?.path, previewFile?.type])
+  }, [previewFile?.path, previewFile?.type, pdfContent])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'docx') {
@@ -1028,7 +1034,7 @@ export default function PreviewPanel({
       pdfRenderRequestIdRef.current += 1
       destroyPdf()
     }
-  }, [collapsed, previewFile?.path, previewFile?.type, pdfContent])
+  }, [collapsed, previewFile?.path, previewFile?.type, pdfContent, pdfRenderError])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'pdf' || collapsed || !pdfStageRef.current) {

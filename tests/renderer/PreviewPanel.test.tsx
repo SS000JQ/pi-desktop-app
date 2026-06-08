@@ -28,6 +28,7 @@ const pdfGetDocumentMock = vi.fn()
 const docxRenderAsyncMock = vi.fn()
 const iframePostMessageMock = vi.fn()
 let iframeContentWindowMock: { postMessage: typeof iframePostMessageMock }
+let resizeObserverCallbacks: ResizeObserverCallback[]
 
 class MockPPTXViewer {
   currentSlideIndex = 0
@@ -91,6 +92,7 @@ describe('PreviewPanel', () => {
     docxBehavior = {
       html: '<h1>Quarterly Brief</h1><p>Prepared for review.</p>',
     }
+    resizeObserverCallbacks = []
 
     pdfGetDocumentMock.mockReset()
     pdfGetDocumentMock.mockImplementation(() => {
@@ -142,6 +144,28 @@ describe('PreviewPanel', () => {
         setTransform: vi.fn(),
         clearRect: vi.fn(),
       })),
+    })
+
+    class MockResizeObserver {
+      callback: ResizeObserverCallback
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback
+        resizeObserverCallbacks.push(callback)
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+      unobserve = vi.fn()
+    }
+
+    Object.defineProperty(window, 'ResizeObserver', {
+      configurable: true,
+      value: MockResizeObserver,
+    })
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: MockResizeObserver,
     })
   })
 
@@ -324,6 +348,89 @@ describe('PreviewPanel', () => {
     await waitFor(() => {
       expect(pdfGetDocumentMock).toHaveBeenCalledTimes(2)
     })
+  })
+
+  it('recovers from a failed pdf render when the same file receives valid content', async () => {
+    pdfBehavior.shouldFail = true
+    const { rerender } = render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    expect(await screen.findByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeTruthy()
+
+    pdfBehavior.shouldFail = false
+    rerender(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70, 10],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('1 / 2')).toBeTruthy()
+    })
+    expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
+  })
+
+  it('keeps a loaded pdf visible after ResizeObserver requests a redraw', async () => {
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('1 / 2')).toBeTruthy()
+    })
+
+    await act(async () => {
+      for (const callback of resizeObserverCallbacks) {
+        callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+      }
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('1 / 2')).toBeTruthy()
+    })
+    expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
   })
 
   it('renders docx and xlsx viewer branches', async () => {

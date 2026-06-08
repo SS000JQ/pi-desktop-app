@@ -66,6 +66,22 @@ interface StoredMessage {
   fullOutputPath?: string
 }
 
+interface SessionDetail {
+  sessionId: string
+  sessionPath: string
+  cwd: string
+  title: string
+  messages: unknown[]
+  model: string | null
+  thinkingLevel: string
+  tokenCount: number
+}
+
+interface SyncSessionOptions {
+  activate?: boolean
+  updateWorkspace?: boolean
+}
+
 interface ContextResourceItem {
   id: string
   label: string
@@ -78,8 +94,28 @@ interface WorkspaceViewModel {
   directories: WorkspaceFileEntry[]
 }
 
+const DEFAULT_CONNECTORS: ConnectorSummaryEntry[] = [
+  {
+    id: 'web-search',
+    label: 'Web search',
+    value: 'Available in the current desktop runtime',
+    source: 'Desktop runtime',
+    status: 'active',
+  },
+]
+
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+function dirname(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const index = normalized.lastIndexOf('/')
+  return index > 0 ? normalized.slice(0, index) : ''
+}
+
+function basename(path: string): string {
+  return path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || path
 }
 
 function isPathWithinRoot(path: string, root: string): boolean {
@@ -116,13 +152,99 @@ function extractContentText(content: StoredMessage['content']): string {
   return content
     .map((part) => {
       if (part.type === 'text') return part.text || ''
-      if (part.type === 'thinking') return part.thinking ? `[thinking]\n${part.thinking}` : '[thinking]'
       if (part.type === 'image') return `[image: ${part.source?.media_type || part.source?.type || 'image'}]`
       return ''
     })
     .filter(Boolean)
     .join('\n')
     .trim()
+}
+
+function splitThinkingText(content: string): Message['parts'] | undefined {
+  const trimmed = content.trim()
+  if (!trimmed) return undefined
+
+  const tagPattern = /<thinking>([\s\S]*?)<\/thinking>/gi
+  const parts: NonNullable<Message['parts']> = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = tagPattern.exec(content)) !== null) {
+    const before = content.slice(lastIndex, match.index).trim()
+    if (before) {
+      parts.push({ type: 'text', text: before })
+    }
+    const thinking = (match[1] || '').trim()
+    if (thinking) {
+      parts.push({ type: 'thinking', title: 'Thinking', text: thinking, collapsed: true })
+    }
+    lastIndex = match.index + match[0].length
+  }
+
+  const after = content.slice(lastIndex).trim()
+  if (after) {
+    parts.push({ type: 'text', text: after })
+  }
+
+  if (parts.some((part) => part.type === 'thinking')) {
+    return parts
+  }
+
+  const labeledThinking = trimmed.match(/^(?:thinking|reasoning|思考)\s*[:：]\s*([\s\S]*?)(?:\n{2,}|(?:\n(?:answer|final|最终|回答)\s*[:：]\s*))([\s\S]*)$/i)
+  if (!labeledThinking) return undefined
+
+  const thinking = (labeledThinking[1] || '').trim()
+  const answer = (labeledThinking[2] || '').trim()
+  if (!thinking || !answer) return undefined
+
+  return [
+    { type: 'thinking', title: 'Thinking', text: thinking, collapsed: true },
+    { type: 'text', text: answer },
+  ]
+}
+
+function buildMessageParts(content: StoredMessage['content']): Message['parts'] {
+  if (typeof content === 'string') {
+    return splitThinkingText(content) || (content ? [{ type: 'text', text: content }] : undefined)
+  }
+  if (!Array.isArray(content)) return undefined
+
+  const parts = content
+    .map((part): NonNullable<Message['parts']>[number] | null => {
+      if (part.type === 'text' && part.text) {
+        return { type: 'text', text: part.text }
+      }
+      if (part.type === 'thinking') {
+        return {
+          type: 'thinking',
+          title: 'Thinking',
+          text: part.thinking || part.text || '',
+          collapsed: true,
+        }
+      }
+      if (part.type === 'image') {
+        return {
+          type: 'customSummary',
+          title: 'Image',
+          text: `[image: ${part.source?.media_type || part.source?.type || 'image'}]`,
+        }
+      }
+      return null
+    })
+    .filter((part): part is NonNullable<Message['parts']>[number] => Boolean(part))
+
+  return parts.length > 0 ? parts : undefined
+}
+
+function visibleContentFromParts(parts: Message['parts'], fallback: string): string {
+  if (!parts?.length) return fallback
+  const visible = parts
+    .filter((part) => part.type !== 'thinking')
+    .map((part) => part.text)
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+  return visible || fallback
 }
 
 function extractToolCalls(content: StoredMessage['content']): Message['toolCalls'] {
@@ -150,11 +272,14 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
     : undefined
 
   if (message.role === 'user' || message.role === 'assistant') {
+    const parts = buildMessageParts(message.content)
+    const contentText = extractContentText(message.content)
     return {
       id: `${sessionId}-msg-${index}`,
       role: message.role === 'assistant' ? 'assistant' : 'user',
-      content: extractContentText(message.content),
+      content: message.role === 'assistant' ? visibleContentFromParts(parts, contentText) : contentText,
       timestamp,
+      parts,
       toolCalls: message.role === 'assistant' ? extractToolCalls(message.content) : undefined,
       rawContent,
       kind: 'standard',
@@ -167,6 +292,12 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
       role: 'assistant',
       content: `Tool result (${message.toolName || message.toolCallId || 'tool'})\n${extractContentText(message.content)}`.trim(),
       timestamp,
+      parts: [{
+        type: 'toolResult',
+        title: `Tool result (${message.toolName || message.toolCallId || 'tool'})`,
+        text: extractContentText(message.content),
+        collapsed: true,
+      }],
       rawContent,
       kind: 'toolResult',
     }
@@ -179,6 +310,11 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
       role: 'assistant',
       content: `[${message.customType || 'custom'}]\n${extractContentText(message.content)}`.trim(),
       timestamp,
+      parts: [{
+        type: 'customSummary',
+        title: message.customType || 'Custom',
+        text: extractContentText(message.content),
+      }],
       rawContent,
       kind: 'custom',
     }
@@ -190,6 +326,7 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
       role: 'assistant',
       content: `Branch summary\n${message.summary || ''}`.trim(),
       timestamp,
+      parts: [{ type: 'customSummary', title: 'Branch summary', text: message.summary || '' }],
       kind: 'branchSummary',
     }
   }
@@ -200,6 +337,11 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
       role: 'assistant',
       content: `Compaction summary${typeof message.tokensBefore === 'number' ? ` (${message.tokensBefore} tokens before)` : ''}\n${message.summary || ''}`.trim(),
       timestamp,
+      parts: [{
+        type: 'customSummary',
+        title: `Compaction summary${typeof message.tokensBefore === 'number' ? ` (${message.tokensBefore} tokens before)` : ''}`,
+        text: `${typeof message.tokensBefore === 'number' ? `${message.tokensBefore} tokens before\n` : ''}${message.summary || ''}`.trim(),
+      }],
       kind: 'compactionSummary',
     }
   }
@@ -252,12 +394,29 @@ function isDocumentLike(path: string): boolean {
 
 function buildWorkspaceViewModel(
   files: WorkspaceFileEntry[],
-  _activeArtifacts: ArtifactEntity[],
-  _recentOpenedPaths: string[],
+  activeArtifacts: ArtifactEntity[],
+  recentOpenedPaths: string[],
 ): WorkspaceViewModel {
-  const sorted = uniqueWorkspaceEntries(sortWorkspaceFiles(files))
+  const artifactFiles = activeArtifacts
+    .filter((artifact) => artifact.status !== 'failed' && artifact.sourcePath && isDocumentLike(artifact.sourcePath))
+    .map((artifact) => ({
+      name: basename(artifact.sourcePath || artifact.title),
+      path: artifact.sourcePath || artifact.title,
+      isDir: false,
+      size: 0,
+      modifiedAt: new Date(artifact.updatedAt).toISOString(),
+    }))
 
-  const filesOnly = sorted.filter((entry) => !entry.isDir)
+  const sorted = uniqueWorkspaceEntries(sortWorkspaceFiles([...artifactFiles, ...files]))
+
+  const filesOnly = sorted
+    .filter((entry) => !entry.isDir)
+    .sort((a, b) => {
+      const aRecent = recentOpenedPaths.includes(a.path) ? 1 : 0
+      const bRecent = recentOpenedPaths.includes(b.path) ? 1 : 0
+      if (aRecent !== bRecent) return bRecent - aRecent
+      return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    })
   const directories = sorted.filter((entry) => entry.isDir)
 
   return { files: filesOnly, directories }
@@ -333,7 +492,7 @@ function artifactToResultItem(artifact: ArtifactEntity): ResultItem {
 }
 
 function buildSessionStatus(runtimeStatus: RuntimeStatus | null, sessionPath: string): Session['status'] {
-  if (!runtimeStatus || runtimeStatus.sessionPath !== sessionPath) return 'idle'
+  if (!runtimeStatus || !runtimeStatus.sessionPath || normalizePath(runtimeStatus.sessionPath) !== normalizePath(sessionPath)) return 'idle'
   if (runtimeStatus.status === 'waiting') return 'waiting'
   if (runtimeStatus.status === 'failed') return 'failed'
   if (runtimeStatus.status === 'completed' || runtimeStatus.status === 'idle') return 'idle'
@@ -365,6 +524,7 @@ export default function App() {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [currentModel, setCurrentModel] = useState('')
   const [currentDir, setCurrentDir] = useState('')
+  const [runtimeWorkspaceDir, setRuntimeWorkspaceDir] = useState('')
   const [thinkingLevel, setThinkingLevel] = useState('medium')
   const [isInitialized, setIsInitialized] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
@@ -389,21 +549,41 @@ export default function App() {
   const [hasProvider, setHasProvider] = useState(false)
   const currentDirRef = useRef(currentDir)
   const activeSessionPathRef = useRef<string | null>(activeSessionPath)
+  const latestSessionDetailsRef = useRef<Record<string, SessionDetail>>({})
   const workspaceRequestRef = useRef(0)
   const sessionRequestRef = useRef(0)
   const previewRequestRef = useRef(0)
   const skipNextSessionReloadRef = useRef<string | null>(null)
+  const isStreamingRef = useRef(false)
 
   const hasRunnableProvider = useCallback((providerList: ProviderSummary[]) => {
     return providerList.some((provider) => provider.hasAuth && provider.models.length > 0)
   }, [])
 
-  const directoryOptions = Array.from(new Set([currentDir, ...sessions.map((session) => session.cwd)].filter(Boolean)))
-  const activeSession = sessions.find((session) => session.id === activeSessionId) || null
+  const effectiveCurrentDir = currentDir || runtimeWorkspaceDir
+  const directoryOptions = Array.from(new Set([effectiveCurrentDir, ...sessions.map((session) => session.cwd)].filter(Boolean)))
+  const activeSession =
+    sessions.find((session) => activeSessionPath && normalizePath(session.path) === normalizePath(activeSessionPath))
+    || sessions.find((session) => session.id === activeSessionId)
+    || null
+  const workspaceFilesRoot = workspaceFiles.length > 0 ? dirname(workspaceFiles[0].path) : ''
+  const sessionWorkspaceDir = activeSessionPath && activeSession ? activeSession.cwd : ''
+  const visibleWorkspaceDir = sessionWorkspaceDir || effectiveCurrentDir || workspaceFilesRoot
+  const activeArtifactKey = activeSessionPath || activeSessionId
   const activeArtifacts = useMemo(() => {
-    if (!activeSessionId) return []
-    return artifactsBySession[activeSessionId] || []
-  }, [activeSessionId, artifactsBySession])
+    if (!activeArtifactKey) return []
+    return artifactsBySession[activeArtifactKey] || []
+  }, [activeArtifactKey, artifactsBySession])
+  const activeRuntimeStatus = useMemo(() => {
+    if (!runtimeStatus) return null
+    if (runtimeStatus.sessionId && activeSessionId && runtimeStatus.sessionId !== activeSessionId) return null
+    if (
+      runtimeStatus.sessionPath
+      && activeSessionPath
+      && normalizePath(runtimeStatus.sessionPath) !== normalizePath(activeSessionPath)
+    ) return null
+    return runtimeStatus
+  }, [activeSessionId, activeSessionPath, runtimeStatus])
 
   const onAssistantMessage = useCallback((message: Message) => {
     setMessages((previous) => {
@@ -417,8 +597,14 @@ export default function App() {
     })
   }, [])
 
-  const onStreamStart = useCallback(() => setIsStreaming(true), [])
-  const onStreamEnd = useCallback(() => setIsStreaming(false), [])
+  const onStreamStart = useCallback(() => {
+    isStreamingRef.current = true
+    setIsStreaming(true)
+  }, [])
+  const onStreamEnd = useCallback(() => {
+    isStreamingRef.current = false
+    setIsStreaming(false)
+  }, [])
 
   const showRuntimeError = useCallback(
     (error: string) => {
@@ -475,6 +661,17 @@ export default function App() {
     return files
   }, [])
 
+  const refreshWorkspaceTree = useCallback(async (dir: string): Promise<void> => {
+    if (!dir) {
+      await loadWorkspaceFiles('')
+      return
+    }
+
+    await loadWorkspaceFiles(dir)
+    const expandedDirectories = Object.keys(workspaceChildrenByDir).filter((path) => isPathWithinRoot(path, dir))
+    await Promise.all(expandedDirectories.map((path) => loadWorkspaceDirectory(path)))
+  }, [loadWorkspaceDirectory, loadWorkspaceFiles, workspaceChildrenByDir])
+
   const loadContextSummary = useCallback(async () => {
     const response = await window.piDesktop.desktop.getStateSummary()
     if (!response.success || !response.data) {
@@ -483,27 +680,26 @@ export default function App() {
       return
     }
 
-    setContextSkills(response.data.skills as SkillSummaryEntry[])
-    setContextConnectors((response.data.connectors || []) as ConnectorSummaryEntry[])
+    setContextSkills(Array.isArray(response.data.skills) ? response.data.skills as SkillSummaryEntry[] : [])
+    setContextConnectors(Array.isArray(response.data.connectors) ? response.data.connectors as ConnectorSummaryEntry[] : DEFAULT_CONNECTORS)
   }, [])
 
-  const loadArtifacts = useCallback(async (sessionId: string | null) => {
-    if (!sessionId) {
+  const loadArtifacts = useCallback(async (sessionKey: string | null) => {
+    if (!sessionKey) {
       setActiveArtifactId(null)
       return []
     }
 
     const artifactApi = window.piDesktop.artifacts
     if (!artifactApi?.list) {
-      setArtifactsBySession((previous) => ({ ...previous, [sessionId]: [] }))
+      setArtifactsBySession((previous) => ({ ...previous, [sessionKey]: [] }))
       setActiveArtifactId(null)
       return []
     }
 
-    const response = await artifactApi.list(sessionId)
+    const response = await artifactApi.list(sessionKey)
     if (!response.success || !Array.isArray(response.data)) {
-      setArtifactsBySession((previous) => ({ ...previous, [sessionId]: [] }))
-      setActiveArtifactId((previous) => (previous && previous.startsWith(`${sessionId}:`) ? null : previous))
+      setArtifactsBySession((previous) => ({ ...previous, [sessionKey]: [] }))
       return []
     }
 
@@ -511,7 +707,7 @@ export default function App() {
       .map((artifact) => normalizeArtifact(artifact))
       .sort((a, b) => b.updatedAt - a.updatedAt)
 
-    setArtifactsBySession((previous) => ({ ...previous, [sessionId]: nextArtifacts }))
+    setArtifactsBySession((previous) => ({ ...previous, [sessionKey]: nextArtifacts }))
     setActiveArtifactId((previous) => {
       if (previous && nextArtifacts.some((artifact) => artifact.id === previous)) {
         return previous
@@ -521,13 +717,33 @@ export default function App() {
     return nextArtifacts
   }, [])
 
+  const adoptRuntimeWorkspace = useCallback(
+    async (dir: string): Promise<WorkspaceFileEntry[]> => {
+      if (!dir) return []
+
+      if (currentDir) {
+        currentDirRef.current = currentDir
+        return loadWorkspaceFiles(currentDir)
+      }
+
+      if (!runtimeWorkspaceDir || normalizePath(runtimeWorkspaceDir) !== normalizePath(dir)) {
+        currentDirRef.current = dir
+        setRuntimeWorkspaceDir(dir)
+        setWorkspaceChildrenByDir({})
+      }
+
+      return loadWorkspaceFiles(dir)
+    },
+    [currentDir, loadWorkspaceFiles, runtimeWorkspaceDir],
+  )
+
   const handleSelectArtifact = useCallback((path: string) => {
-    if (!activeSessionId) return
-    const match = (artifactsBySession[activeSessionId] || []).find((artifact) => artifact.sourcePath === path)
+    if (!activeArtifactKey) return
+    const match = (artifactsBySession[activeArtifactKey] || []).find((artifact) => artifact.sourcePath === path)
     if (match) {
       setActiveArtifactId(match.id)
     }
-  }, [activeSessionId, artifactsBySession])
+  }, [activeArtifactKey, artifactsBySession])
 
   const handleOpenPreviewFile = useCallback(async (path: string) => {
     const requestId = previewRequestRef.current + 1
@@ -550,8 +766,9 @@ export default function App() {
     }
 
     if (activeSessionId && window.piDesktop.artifacts?.view) {
-      void window.piDesktop.artifacts.view({ sessionId: activeSessionId, path }).then(() => {
-        void loadArtifacts(activeSessionId)
+      const sessionKey = activeSessionPath || activeSessionId
+      void window.piDesktop.artifacts.view({ sessionId: activeSessionId, sessionPath: activeSessionPath || undefined, path }).then(() => {
+        void loadArtifacts(sessionKey)
       })
     }
 
@@ -563,7 +780,7 @@ export default function App() {
     })
     setRightPanelCollapsed(false)
     setRecentOpenedPaths((previous) => [path, ...previous.filter((entry) => entry !== path)].slice(0, 10))
-  }, [activeSessionId, loadArtifacts])
+  }, [activeSessionId, activeSessionPath, loadArtifacts])
 
   const handleBrowseWorkspaceDirectory = useCallback(
     async (path: string) => {
@@ -609,24 +826,47 @@ export default function App() {
       return []
     }
 
-    const nextSessions: Session[] = (response.data as SessionListItem[]).map((session) => ({
-      id: session.id,
-      path: session.path,
-      cwd: session.cwd,
-      source: session.source,
-      title: session.title,
-      createdAt: new Date(session.createdAt).getTime(),
-      updatedAt: new Date(session.updatedAt).getTime(),
-      messages: [],
-      model: session.model || undefined,
-      tokenCount: session.tokenCount,
-      messageCount: session.messageCount,
-      thinkingLevel: 'medium',
-      cwdLabel: session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd,
-      lastActiveLabel: undefined,
-      status: buildSessionStatus(runtimeStatus, session.path),
-    }))
+    const nextSessions: Session[] = (response.data as SessionListItem[]).map((session) => {
+      const cachedDetail = latestSessionDetailsRef.current[normalizePath(session.path)]
+      const baseUpdatedAt = new Date(session.updatedAt).getTime()
+      const baseSession: Session = {
+        id: session.id,
+        path: session.path,
+        cwd: session.cwd,
+        source: session.source,
+        title: session.title,
+        createdAt: new Date(session.createdAt).getTime(),
+        updatedAt: baseUpdatedAt,
+        messages: [],
+        model: session.model || undefined,
+        tokenCount: session.tokenCount,
+        messageCount: session.messageCount,
+        thinkingLevel: 'medium',
+        cwdLabel: session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd,
+        lastActiveLabel: undefined,
+        status: buildSessionStatus(runtimeStatus, session.path),
+      }
 
+      if (!cachedDetail) return baseSession
+
+      const detailMessages = toUiMessages(cachedDetail.sessionPath || cachedDetail.sessionId, cachedDetail.messages as StoredMessage[])
+      const detailUpdatedAt = detailMessages[detailMessages.length - 1]?.timestamp || baseUpdatedAt
+      return {
+        ...baseSession,
+        id: cachedDetail.sessionId || baseSession.id,
+        path: cachedDetail.sessionPath || baseSession.path,
+        cwd: cachedDetail.cwd || baseSession.cwd,
+        title: cachedDetail.title || baseSession.title,
+        updatedAt: Math.max(baseUpdatedAt, detailUpdatedAt),
+        messages: detailMessages,
+        model: cachedDetail.model || baseSession.model,
+        tokenCount: cachedDetail.tokenCount,
+        messageCount: detailMessages.length || baseSession.messageCount,
+        thinkingLevel: cachedDetail.thinkingLevel || baseSession.thinkingLevel,
+        cwdLabel: (cachedDetail.cwd || baseSession.cwd).split(/[\\/]/).filter(Boolean).pop() || cachedDetail.cwd || baseSession.cwd,
+        status: buildSessionStatus(runtimeStatus, cachedDetail.sessionPath || baseSession.path),
+      }
+    })
     let mergedSessions = nextSessions
     setSessions((previous) => {
       const activePath = activeSessionPathRef.current
@@ -645,24 +885,27 @@ export default function App() {
   }, [runtimeStatus])
 
   const syncSessionDetail = useCallback(
-    (detail: {
-      sessionId: string
-      sessionPath: string
-      cwd: string
-      title: string
-      messages: unknown[]
-      model: string | null
-      thinkingLevel: string
-      tokenCount: number
-    }) => {
-      const nextMessages = toUiMessages(detail.sessionId, detail.messages as StoredMessage[])
-      setActiveSessionId(detail.sessionId)
-      setActiveSessionPath(detail.sessionPath)
-      setCurrentDir(detail.cwd)
-      setWorkspaceChildrenByDir({})
-      setThinkingLevel(detail.thinkingLevel || 'medium')
-      if (detail.model) setCurrentModel(detail.model)
-      setMessages(nextMessages)
+    (detail: SessionDetail, options: SyncSessionOptions = {}) => {
+      const { activate = false, updateWorkspace = false } = options
+      const nextMessages = toUiMessages(detail.sessionPath || detail.sessionId, detail.messages as StoredMessage[])
+      if (detail.sessionPath) {
+        latestSessionDetailsRef.current[normalizePath(detail.sessionPath)] = detail
+      }
+      if (activate) {
+        setActiveSessionId(detail.sessionId)
+        setActiveSessionPath(detail.sessionPath)
+        activeSessionPathRef.current = detail.sessionPath
+        setThinkingLevel(detail.thinkingLevel || 'medium')
+        if (detail.model) setCurrentModel(detail.model)
+      }
+      if (updateWorkspace) {
+        setCurrentDir(detail.cwd)
+        setRuntimeWorkspaceDir('')
+        setWorkspaceChildrenByDir({})
+      }
+      if (activate && !isStreamingRef.current) {
+        setMessages(nextMessages)
+      }
 
       setSessions((previous) => {
         const existingSession = previous.find((session) => session.path === detail.sessionPath)
@@ -715,23 +958,14 @@ export default function App() {
         return
       }
 
-      const detail = response.data as {
-        sessionId: string
-        sessionPath: string
-        cwd: string
-        title: string
-        messages: unknown[]
-        model: string | null
-        thinkingLevel: string
-        tokenCount: number
-      }
-      syncSessionDetail(detail)
+      const detail = response.data as SessionDetail
+      syncSessionDetail(detail, { activate: true })
       if (sessionRequestRef.current !== requestId) {
         return
       }
-      await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
+      await loadArtifacts(detail.sessionPath || detail.sessionId)
     },
-    [loadArtifacts, loadWorkspaceFiles, syncSessionDetail],
+    [loadArtifacts, syncSessionDetail],
   )
 
   const updateSessionRuntime = useCallback(
@@ -753,16 +987,7 @@ export default function App() {
         return
       }
 
-      syncSessionDetail(response.data as {
-        sessionId: string
-        sessionPath: string
-        cwd: string
-        title: string
-        messages: unknown[]
-        model: string | null
-        thinkingLevel: string
-        tokenCount: number
-      })
+      syncSessionDetail(response.data as SessionDetail, { activate: true })
       await loadSessions()
     },
     [activeSessionPath, loadSessions, showRuntimeError, syncSessionDetail],
@@ -773,8 +998,10 @@ export default function App() {
       if (!dir || dir === currentDir) return
 
       setCurrentDir(dir)
+      setRuntimeWorkspaceDir('')
       setWorkspaceChildrenByDir({})
       setPreviewFile(null)
+      setRuntimeStatus(null)
       await window.piDesktop.config.set('workingDirectory', dir)
 
       const matchingSession = [...sessions].filter((session) => session.cwd === dir).sort((a, b) => b.updatedAt - a.updatedAt)[0]
@@ -811,21 +1038,48 @@ export default function App() {
     onStreamStart,
     onStreamEnd,
     onRuntimeStatus: setRuntimeStatus,
-    onArtifactCreated: ({ path, sessionId }) => {
-      const targetSessionId = sessionId || activeSessionId
-      if (!targetSessionId) return
+    onArtifactCreated: ({ path, sessionId, sessionPath }) => {
+      const targetSessionKey = sessionPath || sessionId || activeSessionPath || activeSessionId
+      if (!targetSessionKey) return
 
-      void loadArtifacts(targetSessionId)
-      void loadWorkspaceFiles(currentDirRef.current)
+      void (async () => {
+        await loadArtifacts(targetSessionKey)
+        const sessionWorkspace = sessions.find((session) =>
+          (sessionPath && normalizePath(session.path) === normalizePath(sessionPath))
+          || (!sessionPath && session.id === sessionId)
+        )?.cwd
+        const artifactWorkspace = sessionWorkspace || dirname(path)
+        if (!currentDir && !activeSessionPathRef.current) {
+          currentDirRef.current = artifactWorkspace
+          setRuntimeWorkspaceDir(artifactWorkspace)
+        }
+        await refreshWorkspaceTree(artifactWorkspace)
+      })()
     },
     onSessionSynced: (detail) => {
-      syncSessionDetail(detail)
-      void loadSessions()
-      void loadWorkspaceFiles(detail.cwd)
-      void loadArtifacts(detail.sessionId)
+      sessionRequestRef.current += 1
+      skipNextSessionReloadRef.current = detail.sessionPath
+      const shouldActivate =
+        !activeSessionPathRef.current
+        || normalizePath(activeSessionPathRef.current) === normalizePath(detail.sessionPath)
+      syncSessionDetail(detail, {
+        activate: shouldActivate,
+        updateWorkspace: false,
+      })
+      void (async () => {
+        await loadSessions()
+        syncSessionDetail(detail, {
+          activate: shouldActivate,
+          updateWorkspace: false,
+        })
+        await Promise.all([
+          loadArtifacts(detail.sessionPath || detail.sessionId),
+          refreshWorkspaceTree(detail.cwd),
+        ])
+      })()
     },
     currentModel,
-    currentDir,
+    currentDir: visibleWorkspaceDir,
     currentSessionId: activeSessionId || undefined,
     currentSessionPath: activeSessionPath || undefined,
     thinkingLevel,
@@ -845,20 +1099,25 @@ export default function App() {
       const workingDirectory =
         workingDirRes.success && typeof workingDirRes.data === 'string' && workingDirRes.data
           ? workingDirRes.data
-          : sessionsLoaded[0]?.cwd || ''
+          : ''
       const wizardCompleted = wizardRes.success ? wizardRes.data === 'true' || wizardRes.data === true : false
 
       setCurrentDir(workingDirectory)
+      setRuntimeWorkspaceDir('')
       setHasProvider(hasRunnableProvider(providersLoaded))
 
-      const preferredSessionId = activeSessionRes.success && typeof activeSessionRes.data === 'string' ? activeSessionRes.data : null
-      const preferredSession = sessionsLoaded.find((session) => session.id === preferredSessionId) || sessionsLoaded[0] || null
+      const preferredSessionKey = activeSessionRes.success && typeof activeSessionRes.data === 'string' ? activeSessionRes.data : null
+      const preferredSession = sessionsLoaded.find((session) =>
+        preferredSessionKey
+        && (
+          normalizePath(session.path) === normalizePath(preferredSessionKey)
+          || session.id === preferredSessionKey
+        )
+      ) || null
       setActiveSessionId(preferredSession?.id || null)
       setActiveSessionPath(preferredSession?.path || null)
 
-      if (!preferredSession?.path) {
-        await loadWorkspaceFiles(workingDirectory)
-      }
+      await loadWorkspaceFiles(preferredSession?.cwd || workingDirectory)
 
       setShowWizard(!wizardCompleted && !hasRunnableProvider(providersLoaded))
       setIsInitialized(true)
@@ -874,20 +1133,20 @@ export default function App() {
 
   useEffect(() => {
     setRuntimeStatus(null)
-  }, [activeSessionPath, currentDir, currentModel])
+  }, [activeSessionPath, currentModel])
 
   useEffect(() => {
-    currentDirRef.current = currentDir
-  }, [currentDir])
+    currentDirRef.current = visibleWorkspaceDir
+  }, [visibleWorkspaceDir])
 
   useEffect(() => {
     activeSessionPathRef.current = activeSessionPath
   }, [activeSessionPath])
 
   useEffect(() => {
-    if (!currentDir) return
-    void loadWorkspaceFiles(currentDir)
-  }, [currentDir, loadWorkspaceFiles])
+    if (!visibleWorkspaceDir) return
+    void loadWorkspaceFiles(visibleWorkspaceDir)
+  }, [loadWorkspaceFiles, visibleWorkspaceDir])
 
   useEffect(() => {
     setSessions((previous) =>
@@ -899,19 +1158,20 @@ export default function App() {
   }, [runtimeStatus])
 
   useEffect(() => {
-    if (!activeSessionId) {
+    if (!activeArtifactKey) {
       setActiveArtifactId(null)
       return
     }
-    const preferred = pickPreferredArtifact(artifactsBySession[activeSessionId] || [])
+    const preferred = pickPreferredArtifact(artifactsBySession[activeArtifactKey] || [])
     setActiveArtifactId((previous) => previous || preferred?.id || null)
-  }, [activeSessionId, artifactsBySession])
+  }, [activeArtifactKey, artifactsBySession])
 
   const handleSendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || isStreaming || !currentModel) return
 
       const startedAt = Date.now()
+      onStreamStart()
       setRuntimeStatus({
         status: 'preparing',
         statusLabel: 'Preparing',
@@ -935,19 +1195,19 @@ export default function App() {
 
       const response = await sendMessage(text)
       if (response?.success && response.data) {
-        const data = response.data as { sessionId: string; sessionPath: string; createdNewSession: boolean }
+        const data = response.data as { sessionId: string; sessionPath: string; createdNewSession: boolean; runId: string }
         if (data.createdNewSession || !activeSessionPath) {
           setActiveSessionId(data.sessionId)
           setActiveSessionPath(data.sessionPath)
-          await Promise.all([loadSessions(), loadArtifacts(data.sessionId)])
+          await Promise.all([loadSessions(), loadArtifacts(data.sessionPath || data.sessionId)])
         }
       }
     },
-    [activeSessionId, activeSessionPath, currentModel, isStreaming, loadArtifacts, loadSessions, sendMessage],
+    [activeSessionId, activeSessionPath, currentModel, isStreaming, loadArtifacts, loadSessions, onStreamStart, sendMessage],
   )
 
   const handleArtifactAction = useCallback((action: 'improve' | 'regenerate' | 'summarize' | 'new_task', path: string) => {
-    const artifact = activeSessionId ? (artifactsBySession[activeSessionId] || []).find((entry) => entry.sourcePath === path) : undefined
+    const artifact = activeArtifactKey ? (artifactsBySession[activeArtifactKey] || []).find((entry) => entry.sourcePath === path) : undefined
     const title = artifact?.title || path.split(/[/\\]/).pop() || path
     const type = artifact?.artifactType || 'file'
 
@@ -963,7 +1223,7 @@ export default function App() {
     }
 
     void handleSendMessage(prompt)
-  }, [activeSessionId, artifactsBySession, handleSendMessage])
+  }, [activeArtifactKey, artifactsBySession, handleSendMessage])
 
   const handleCreateSession = useCallback(
     async (cwd?: string) => {
@@ -1012,29 +1272,21 @@ export default function App() {
             model: created.model || null,
             thinkingLevel: created.thinkingLevel || 'medium',
             tokenCount: created.tokenCount || 0,
-          })
-          await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.sessionId)])
+          }, { activate: true, updateWorkspace: true })
+          await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.sessionPath || created.sessionId)])
         } else {
           const detailResponse = await window.piDesktop.session.switch(created.path)
           if (detailResponse.success && detailResponse.data) {
-            const detail = detailResponse.data as {
-              sessionId: string
-              sessionPath: string
-              cwd: string
-              title: string
-              messages: unknown[]
-              model: string | null
-              thinkingLevel: string
-              tokenCount: number
-            }
+            const detail = detailResponse.data as SessionDetail
             skipNextSessionReloadRef.current = detail.sessionPath
-            syncSessionDetail(detail)
-            await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionId)])
+            syncSessionDetail(detail, { activate: true, updateWorkspace: true })
+            await Promise.all([loadWorkspaceFiles(detail.cwd), loadArtifacts(detail.sessionPath || detail.sessionId)])
           } else {
             setActiveSessionId(created.id)
             setActiveSessionPath(created.path)
             setCurrentDir(created.cwd)
-            await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.id)])
+            setRuntimeWorkspaceDir('')
+            await Promise.all([loadWorkspaceFiles(created.cwd), loadArtifacts(created.path || created.id)])
           }
         }
 
@@ -1100,8 +1352,9 @@ export default function App() {
   }, [leftPanelCollapsed, rightPanelCollapsed])
 
   const tokenCount = activeSession?.tokenCount || 0
-  const tokenPct = Math.min(Math.round((tokenCount / 8000) * 100), 100)
-  const showTokenWarning = tokenPct > 70
+  const contextLimit: number | null = null
+  const tokenPct = contextLimit ? Math.min(Math.round((tokenCount / contextLimit) * 100), 100) : 0
+  const showTokenWarning = Boolean(contextLimit && tokenPct > 70)
   const selectedModelOption = modelOptions.find((option) => option.id === currentModel)
   const currentModelLabel = selectedModelOption?.label || (currentModel ? `${currentModel} (unconfigured)` : '')
 
@@ -1182,7 +1435,7 @@ export default function App() {
     <>
       <div className="app-shell">
         <TopBar
-          currentDir={currentDir}
+          currentDir={visibleWorkspaceDir}
           directoryOptions={directoryOptions}
           currentModel={currentModel}
           currentModelLabel={currentModelLabel}
@@ -1195,7 +1448,7 @@ export default function App() {
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowProfile(true)}
           tokenCount={tokenCount}
-          tokenLimit={8000}
+          tokenLimit={contextLimit}
         />
 
         {showTokenWarning && (
@@ -1208,14 +1461,13 @@ export default function App() {
         <div className="body-layout">
           <LeftPanel
             sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSessionSelect={(id) => {
-              const selected = sessions.find((session) => session.id === id)
-              setActiveSessionId(id)
+            activeSessionPath={activeSessionPath}
+            onSessionSelect={(path) => {
+              const selected = sessions.find((session) => session.path === path)
+              setActiveSessionId(selected?.id || null)
               setActiveSessionPath(selected?.path || null)
               setWorkspaceChildrenByDir({})
               setPreviewFile(null)
-              if (selected?.cwd) setCurrentDir(selected.cwd)
             }}
             onSessionCreate={() => {
               setNewSessionError(null)
@@ -1234,7 +1486,7 @@ export default function App() {
             onSendMessage={handleSendMessage}
             onCommand={handleComposerCommand}
             isStreaming={isStreaming}
-            runtimeStatus={runtimeStatus}
+            runtimeStatus={activeRuntimeStatus}
             onSetMessages={setMessages}
           />
           <PreviewPanel
@@ -1242,12 +1494,12 @@ export default function App() {
             onToggleCollapse={() => setRightPanelCollapsed((state) => !state)}
             panelWidth={rightPanelWidth}
             onResize={setRightPanelWidth}
-            currentWorkspace={currentDir}
+            currentWorkspace={visibleWorkspaceDir}
             workspaceFiles={workspaceView.files}
             workspaceDirectories={workspaceView.directories}
             workspaceChildrenByDir={workspaceChildrenByDir}
             recentResults={resultsForPanel}
-            runtimeStatus={runtimeStatus}
+            runtimeStatus={activeRuntimeStatus}
             previewFile={previewFile}
             contextUploads={contextUploads}
             contextConnectors={connectorItems}
@@ -1267,7 +1519,7 @@ export default function App() {
           />
         </div>
 
-        <StatusBar currentModel={currentModelLabel || currentModel} activeSessionCount={sessions.length} currentDir={currentDir} />
+        <StatusBar currentModel={currentModelLabel || currentModel} activeSessionCount={sessions.length} currentDir={visibleWorkspaceDir} />
       </div>
 
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
@@ -1277,7 +1529,7 @@ export default function App() {
       {showSkills && <Skills onClose={() => setShowSkills(false)} />}
       <NewSessionDialog
         isOpen={showNewSessionDialog}
-        currentDir={currentDir}
+        currentDir={visibleWorkspaceDir}
         directoryOptions={directoryOptions}
         isCreating={isCreatingSession}
         error={newSessionError}

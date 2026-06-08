@@ -3,8 +3,8 @@ import type { Session } from '../types/chat'
 
 interface LeftPanelProps {
   sessions: Session[]
-  activeSessionId: string | null
-  onSessionSelect: (id: string) => void
+  activeSessionPath: string | null
+  onSessionSelect: (path: string) => void
   onSessionCreate: () => void
   onOpenModels: () => void
   onOpenSkills: () => void
@@ -34,7 +34,7 @@ function getDirectoryLabel(cwd: string): string {
 
 export default function LeftPanel({
   sessions,
-  activeSessionId,
+  activeSessionPath,
   onSessionSelect,
   onSessionCreate,
   onOpenModels,
@@ -156,8 +156,8 @@ export default function LeftPanel({
           recentSessions.map((session) => (
             <button
               key={session.path || session.id}
-              onClick={() => onSessionSelect(session.id)}
-              className={`l-session-card ${session.id === activeSessionId ? 'active' : ''}`}
+              onClick={() => onSessionSelect(session.path)}
+              className={`l-session-card ${session.path === activeSessionPath ? 'active' : ''}`}
               title={`${session.title}\n${session.cwd}`}
             >
               <div className="l-session-title-row">
@@ -180,8 +180,8 @@ export default function LeftPanel({
               {grouped.map((session) => (
                 <button
                   key={session.path || session.id}
-                  onClick={() => onSessionSelect(session.id)}
-                  className={`l-session-card ${session.id === activeSessionId ? 'active' : ''}`}
+                  onClick={() => onSessionSelect(session.path)}
+                  className={`l-session-card ${session.path === activeSessionPath ? 'active' : ''}`}
                 >
                   <div className="l-session-title-row">
                     <span className="l-session-title">{session.title}</span>

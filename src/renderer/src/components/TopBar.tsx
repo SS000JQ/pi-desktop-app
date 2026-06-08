@@ -15,7 +15,7 @@ interface TopBarProps {
   onOpenSettings?: () => void
   onOpenProfile?: () => void
   tokenCount?: number
-  tokenLimit?: number
+  tokenLimit?: number | null
 }
 
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
@@ -34,7 +34,7 @@ export default function TopBar({
   onOpenSettings,
   onOpenProfile,
   tokenCount = 0,
-  tokenLimit = 8000,
+  tokenLimit = null,
 }: TopBarProps) {
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showDirPicker, setShowDirPicker] = useState(false)
@@ -141,7 +141,13 @@ export default function TopBar({
           )}
         </div>
 
-        <div className="tk"><span>{tokenCount.toLocaleString()}</span> / {tokenLimit.toLocaleString()}</div>
+        <div className="tk" title={tokenLimit ? 'Estimated context usage' : 'Historical tokens recorded for this session'}>
+          {tokenLimit ? (
+            <><span>{tokenCount.toLocaleString()}</span> / {tokenLimit.toLocaleString()}</>
+          ) : (
+            <><span>History tokens:</span> {tokenCount.toLocaleString()}</>
+          )}
+        </div>
         <button className="ibtn" title="Search">S</button>
         <button className="ibtn" onClick={onOpenProfile} title="Profile">P</button>
         <button className="ibtn ibtn-wide" onClick={onOpenSettings} title="Settings">Set</button>
