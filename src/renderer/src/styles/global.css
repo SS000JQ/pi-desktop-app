@@ -1680,10 +1680,25 @@ body {
 .pv-pptx-canvas,
 .pv-image-canvas {
   max-width: 100%;
-  max-height: 72vh;
   background: #ffffff;
   border-radius: 8px;
   box-shadow: 0 18px 40px rgba(0,0,0,0.24);
+}
+
+.pv-pptx-canvas,
+.pv-image-canvas {
+  max-height: 72vh;
+}
+
+.pv-pdf-canvas-shell {
+  align-items: flex-start;
+  max-height: calc(100vh - 190px);
+  overflow: auto;
+}
+
+.pv-doc-canvas {
+  height: auto;
+  max-height: none;
 }
 
 .pv-pptx-frame {
@@ -1852,6 +1867,33 @@ body {
 .pv-docx-root .pv-docx-stage-wrapper,
 .pv-docx-root .pv-docx-stage {
   width: 100%;
+}
+
+.pv-docx-root .pv-docx-stage-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 30px 28px 36px !important;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.12)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    0 18px 42px rgba(0,0,0,0.28);
+}
+
+.pv-docx-root .pv-docx-page {
+  max-width: min(100%, 860px);
+  margin-right: auto !important;
+  margin-left: auto !important;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 20px 46px rgba(0,0,0,0.3);
 }
 
 .pv-sheet-tabs {

@@ -27,6 +27,8 @@ export type PreviewFile = FilePreviewData & {
 
 const PPTX_VIEWER_CHANNEL = 'pi-pptx-preview'
 const pptxViewerPageUrl = new URL('../../pptx-viewer.html', import.meta.url).toString()
+const DOCX_MIN_VERTICAL_PADDING = 72
+const DOCX_MIN_HORIZONTAL_PADDING = 96
 
 interface ContextResourceItem {
   id: string
@@ -178,6 +180,38 @@ function getDirectoryFileUrl(filePath: string): string {
   const normalized = filePath.replace(/\\/g, '/')
   const directory = normalized.replace(/\/[^/\\]*$/, '/')
   return toFileUrl(directory)
+}
+
+function parsePixelValue(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function ensureMinimumPadding(
+  element: HTMLElement,
+  property: 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft',
+  minimumPx: number,
+): void {
+  const computed = window.getComputedStyle(element)[property]
+  const current = parsePixelValue(computed || element.style[property])
+  if (current < minimumPx) {
+    element.style[property] = `${minimumPx}px`
+  }
+}
+
+function normalizeDocxPreviewLayout(container: HTMLElement): void {
+  container.querySelectorAll<HTMLElement>('.docx-wrapper').forEach((wrapper) => {
+    wrapper.classList.add('pv-docx-stage-wrapper')
+  })
+
+  container.querySelectorAll<HTMLElement>('.docx').forEach((page) => {
+    page.classList.add('pv-docx-page')
+    page.style.boxSizing = 'border-box'
+    ensureMinimumPadding(page, 'paddingTop', DOCX_MIN_VERTICAL_PADDING)
+    ensureMinimumPadding(page, 'paddingRight', DOCX_MIN_HORIZONTAL_PADDING)
+    ensureMinimumPadding(page, 'paddingBottom', DOCX_MIN_VERTICAL_PADDING)
+    ensureMinimumPadding(page, 'paddingLeft', DOCX_MIN_HORIZONTAL_PADDING)
+  })
 }
 
 function isAbsoluteResourceUrl(value: string): boolean {
@@ -1021,7 +1055,8 @@ export default function PreviewPanel({
     visibleCanvas.width = renderCanvas.width
     visibleCanvas.height = renderCanvas.height
     visibleCanvas.style.width = `${viewport.width}px`
-    visibleCanvas.style.height = `${viewport.height}px`
+    visibleCanvas.style.height = ''
+    visibleCanvas.style.aspectRatio = `${viewport.width} / ${viewport.height}`
     visibleContext.setTransform(1, 0, 0, 1, 0, 0)
     visibleContext.clearRect(0, 0, visibleCanvas.width, visibleCanvas.height)
     visibleContext.drawImage(renderCanvas, 0, 0)
@@ -1187,6 +1222,9 @@ export default function PreviewPanel({
           renderFootnotes: true,
           renderEndnotes: true,
         })
+        if (!cancelled && docxContainerRef.current) {
+          normalizeDocxPreviewLayout(docxContainerRef.current)
+        }
       } catch (error) {
         if (!cancelled) {
           setDocxRenderError(getRenderErrorMessage(error, 'This document could not be rendered in the viewer.'))
@@ -1415,7 +1453,7 @@ export default function PreviewPanel({
         </div>
         <div className="pv-viewer-stage" ref={pdfStageRef}>
           {pdfIsRendering && <div className="pv-viewer-loading">Loading PDF...</div>}
-          <div className="pv-canvas-shell">
+          <div className="pv-canvas-shell pv-pdf-canvas-shell">
             <canvas ref={pdfCanvasRef} className="pv-doc-canvas" />
           </div>
         </div>

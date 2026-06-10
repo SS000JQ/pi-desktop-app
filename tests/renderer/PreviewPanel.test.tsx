@@ -487,6 +487,35 @@ describe('PreviewPanel', () => {
     expect(screen.queryByText('PDF rendering failed. Use Open for the native viewer if needed.')).toBeNull()
   })
 
+  it('keeps pdf canvas height intrinsic so max constraints cannot squash the page', async () => {
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.pdf',
+          name: 'report.pdf',
+          ext: '.pdf',
+          type: 'pdf',
+          content: [37, 80, 68, 70],
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(pdfRenderMock).toHaveBeenCalledTimes(1)
+    })
+
+    const canvas = document.querySelector('.pv-doc-canvas') as HTMLCanvasElement
+    expect(canvas.style.width).toBe('480px')
+    expect(canvas.style.height).toBe('')
+    expect(canvas.style.aspectRatio).toBe('480 / 360')
+  })
+
   it('serializes pdf panel-width redraws so they cannot render into an active canvas', async () => {
     let finishFirstRender: (() => void) | null = null
     pdfBehavior.renderPromises = [
@@ -671,6 +700,47 @@ describe('PreviewPanel', () => {
     await waitFor(() => {
       expect(docxRenderAsyncMock).toHaveBeenCalledTimes(2)
     })
+  })
+
+  it('adds comfortable minimum paper padding to rendered docx pages', async () => {
+    docxBehavior.html = `
+      <div class="docx-wrapper">
+        <section class="docx" style="padding: 12px 18px 10px 20px">
+          <h1>Quarterly Brief</h1>
+          <p>Prepared for review.</p>
+        </section>
+      </div>
+    `
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/brief.docx',
+          name: 'brief.docx',
+          ext: '.docx',
+          type: 'docx',
+          content: [1, 2, 3],
+          fallbackHtml: '<h1>Fallback Docx</h1>',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Quarterly Brief')).toBeTruthy()
+    })
+
+    const page = document.querySelector('.pv-docx-page') as HTMLElement
+    expect(page).toBeTruthy()
+    expect(page.style.paddingTop).toBe('72px')
+    expect(page.style.paddingRight).toBe('96px')
+    expect(page.style.paddingBottom).toBe('72px')
+    expect(page.style.paddingLeft).toBe('96px')
   })
 
   it('renders an html preview in an iframe and allows source toggle', async () => {
