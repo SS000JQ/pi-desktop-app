@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { getConfigValue } from './config-store'
 import { openPiSession } from './pi-sessions'
 import { loadPiCodingAgentModule } from './pi-sdk'
+import { createPiResourceLoader } from './pi-resources'
 import { resolveOptionalExistingDirectory, resolveRuntimeDirectory } from './path-utils'
 import {
   getDefaultModel,
@@ -47,6 +48,7 @@ export interface PiBridgeEvent {
 interface SessionBinding {
   sessionId: string
   session: AgentSession
+  resourceLoader?: { reload: () => Promise<unknown> | unknown }
   unsubscribe?: () => void
   cwd: string
   modelKey?: string
@@ -92,12 +94,81 @@ export class PiBridge {
   }
 
   async abort(sessionKey: string, emit: (event: PiBridgeEvent) => void): Promise<void> {
-    const binding =
-      this.bindings.get(sessionKey)
-      || Array.from(this.bindings.values()).find((entry) => entry.sessionPath === sessionKey)
+    const binding = this.resolveBinding(sessionKey)
     if (!binding) return
     await binding.session.abort()
     emit({ type: 'run_aborted', sessionId: binding.sessionId })
+  }
+
+  async compact(sessionKey: string, customInstructions?: string): Promise<unknown> {
+    const binding = this.requireBinding(sessionKey)
+    const session = binding.session as AgentSession & {
+      compact?: (customInstructions?: string) => Promise<unknown>
+    }
+    if (typeof session.compact !== 'function') {
+      throw new Error('Pi runtime compact is not available for this session')
+    }
+    return session.compact(customInstructions)
+  }
+
+  async getTools(sessionKey: string): Promise<Array<{ name: string; description: string; active: boolean; source?: string }>> {
+    const binding = this.requireBinding(sessionKey)
+    const session = binding.session as AgentSession & {
+      getAllTools?: () => Array<{ name: string; description?: string; sourceInfo?: unknown }>
+      getActiveToolNames?: () => string[]
+    }
+    if (typeof session.getAllTools !== 'function') return []
+
+    const activeNames = typeof session.getActiveToolNames === 'function'
+      ? new Set(session.getActiveToolNames())
+      : new Set<string>()
+    return session.getAllTools().map((tool) => ({
+      name: tool.name,
+      description: tool.description || '',
+      active: activeNames.has(tool.name),
+      source: this.sourceFromInfo(tool.sourceInfo),
+    }))
+  }
+
+  async setTools(sessionKey: string, toolNames: string[]): Promise<void> {
+    const binding = this.requireBinding(sessionKey)
+    const session = binding.session as AgentSession & {
+      setActiveToolsByName?: (toolNames: string[]) => Promise<void> | void
+    }
+    if (typeof session.setActiveToolsByName !== 'function') {
+      throw new Error('Pi runtime tool selection is not available for this session')
+    }
+    await session.setActiveToolsByName(toolNames)
+  }
+
+  async steer(sessionKey: string, message: string): Promise<void> {
+    const binding = this.requireBinding(sessionKey)
+    const session = binding.session as AgentSession & {
+      steer?: (message: string) => Promise<void> | void
+    }
+    if (typeof session.steer !== 'function') {
+      throw new Error('Pi runtime steering is not available for this session')
+    }
+    await session.steer(message)
+  }
+
+  async followUp(sessionKey: string, message: string): Promise<void> {
+    const binding = this.requireBinding(sessionKey)
+    const session = binding.session as AgentSession & {
+      followUp?: (message: string) => Promise<void> | void
+    }
+    if (typeof session.followUp !== 'function') {
+      throw new Error('Pi runtime follow-up is not available for this session')
+    }
+    await session.followUp(message)
+  }
+
+  async reloadResources(sessionKey: string): Promise<void> {
+    const binding = this.requireBinding(sessionKey)
+    if (!binding.resourceLoader) {
+      throw new Error('No Pi resource loader is bound to this session')
+    }
+    await binding.resourceLoader.reload()
   }
 
   async dispose(): Promise<void> {
@@ -147,6 +218,7 @@ export class PiBridge {
     const runtimeModel =
       modelRegistry.find(resolved.provider.providerId, resolved.modelConfig.id)
       || getModel(resolved.provider.providerId as any, resolved.modelConfig.id as any)
+    const resourceLoader = await createPiResourceLoader(cwd)
     const { session } = await createAgentSession({
       cwd,
       model: runtimeModel,
@@ -154,6 +226,7 @@ export class PiBridge {
       authStorage,
       modelRegistry,
       sessionManager: SessionManager.open(sessionPath),
+      resourceLoader,
     })
 
     const unsubscribe = session.subscribe((event) => {
@@ -163,6 +236,7 @@ export class PiBridge {
     const binding: SessionBinding = {
       sessionId,
       session,
+      resourceLoader,
       unsubscribe,
       cwd,
       modelKey,
@@ -223,6 +297,30 @@ export class PiBridge {
     return resolveOptionalExistingDirectory(typeof configured === 'string' ? configured : null)
       || (typeof defaultSessionDirectory === 'string' && defaultSessionDirectory.trim())
       || join(homedir(), 'Pi-Desktop-Session')
+  }
+
+  private resolveBinding(sessionKey: string): SessionBinding | undefined {
+    return this.bindings.get(sessionKey)
+      || Array.from(this.bindings.values()).find((entry) => entry.sessionPath === sessionKey || entry.sessionId === sessionKey)
+  }
+
+  private requireBinding(sessionKey: string): SessionBinding {
+    const binding = this.resolveBinding(sessionKey)
+    if (!binding) {
+      throw new Error('No active Pi runtime session is available for this command')
+    }
+    return binding
+  }
+
+  private sourceFromInfo(sourceInfo: unknown): string | undefined {
+    if (!sourceInfo) return undefined
+    if (typeof sourceInfo === 'string') return sourceInfo
+    if (typeof sourceInfo === 'object') {
+      const record = sourceInfo as Record<string, unknown>
+      const value = record.source || record.name || record.path
+      return typeof value === 'string' ? value : undefined
+    }
+    return undefined
   }
 
   private snapshotFiles(cwd: string): Map<string, number> {

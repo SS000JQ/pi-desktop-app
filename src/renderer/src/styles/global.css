@@ -752,6 +752,81 @@ body {
 .cmd-icon { font-size: 13px; }
 .cmd-name { font-weight: 500; }
 .cmd-desc { color: rgba(255,255,255,0.12); margin-left: 4px; font-size: 12px; }
+.cmd-group { padding: 6px 10px 2px; color: rgba(255,255,255,0.16); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.cmd-item.disabled { opacity: 0.58; }
+.cmd-disabled-reason { display: block; margin-top: 2px; color: rgba(255,204,0,0.38); }
+.cmd-notice { position: absolute; bottom: 100%; left: 14px; right: 14px; margin-bottom: 4px; padding: 7px 9px; border: 1px solid rgba(255,204,0,0.12); border-radius: 4px; background: #211f17; color: rgba(255,220,130,0.72); font-size: 12px; }
+
+.tools-modal {
+  background: #1a1919;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 4px;
+  width: 460px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.tools-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.5);
+  font-size: 14px;
+  font-weight: 500;
+}
+.tools-head-actions,
+.tools-presets {
+  display: flex;
+  gap: 8px;
+}
+.tools-head-actions button,
+.tools-presets button {
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.03);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  color: rgba(255,255,255,0.32);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.tools-body { padding: 12px 14px; overflow-y: auto; }
+.tools-note,
+.tools-notice,
+.tools-empty,
+.tools-active {
+  font-size: 12px;
+  color: rgba(255,255,255,0.24);
+  line-height: 1.5;
+}
+.tools-presets { margin: 10px 0; }
+.tools-notice { margin: 8px 0; color: rgba(255,220,130,0.6); }
+.tools-list { display: grid; gap: 6px; margin-top: 10px; }
+.tools-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 4px;
+}
+.tools-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.12);
+}
+.tools-dot.active { background: rgba(48,209,88,0.7); }
+.tools-name { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.48); font-size: 12px; }
+.tools-name span { color: rgba(255,255,255,0.2); font-size: 10px; border: 1px solid rgba(255,255,255,0.05); border-radius: 999px; padding: 1px 6px; }
+.tools-desc { margin-top: 4px; color: rgba(255,255,255,0.26); font-size: 12px; line-height: 1.45; }
+.tools-source { margin-top: 4px; color: rgba(255,255,255,0.12); font-size: 10px; }
+.tools-active { margin-top: 10px; }
+.cmd-hint { color: rgba(255,255,255,0.25); margin-right: 4px; }
 
 /* ── Cowork-style Right Panel ── */
 .prev { flex-shrink: 0; border-left: 1px solid var(--bd); display: flex; flex-direction: column; background: #1a1919; position: relative; overflow: hidden; }

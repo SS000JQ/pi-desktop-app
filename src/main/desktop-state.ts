@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { app } from 'electron'
 import { join } from 'path'
 import { getConfigValue } from './config-store'
 import { resolveOptionalExistingDirectory } from './path-utils'
 import { getCliAgentPaths, getCliProviderState } from './providers'
+import { getPiResources } from './pi-resources'
 
 export interface DesktopStateEntry {
   id: string
@@ -58,20 +59,17 @@ export function getActiveSessionId(): string | null {
   return readActiveSessionKey()
 }
 
-export function getDesktopStateSummary(): {
+export async function getDesktopStateSummary(): Promise<{
   memory: DesktopStateEntry[]
   skills: DesktopSkillEntry[]
   connectors: DesktopConnectorEntry[]
-} {
+}> {
   const workingDirectory = getConfigValue('workingDirectory')
   const resolvedWorkingDirectory = resolveOptionalExistingDirectory(typeof workingDirectory === 'string' ? workingDirectory : null)
   const { agentDir, settingsPath, authPath, modelsPath } = getCliAgentPaths()
   const providerState = getCliProviderState()
   const activeSessionId = readActiveSessionKey()
   const skillsDir = join(agentDir, 'skills')
-  const discoveredSkillEntries = existsSync(skillsDir)
-    ? readdirSync(skillsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() || entry.isFile())
-    : []
 
   const memory: DesktopStateEntry[] = [
     {
@@ -112,19 +110,20 @@ export function getDesktopStateSummary(): {
     },
   ]
 
-  const skills: DesktopSkillEntry[] = discoveredSkillEntries.length > 0
-    ? discoveredSkillEntries.map((entry) => ({
+  const resourceSummary = await getPiResources(resolvedWorkingDirectory)
+  const skills: DesktopSkillEntry[] = resourceSummary.skills.length > 0
+    ? resourceSummary.skills.map((entry) => ({
         id: entry.name,
         label: entry.name,
-        value: entry.isDirectory() ? 'Discovered in Pi CLI skills directory' : 'Skill resource file',
-        source: join(skillsDir, entry.name),
-        status: 'active' as const,
+        value: entry.description || 'Discovered by Pi resource loader',
+        source: entry.source,
+        status: entry.status === 'active' ? 'active' as const : 'inactive' as const,
       }))
     : [
         {
           id: 'skills-unavailable',
           label: 'Skill sync status',
-          value: 'No Pi CLI skill entries discovered yet',
+          value: resourceSummary.diagnostics[0] || 'No Pi skill entries discovered yet',
           source: skillsDir,
           status: 'inactive' as const,
         },

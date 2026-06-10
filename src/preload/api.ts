@@ -120,6 +120,29 @@ export interface EnvironmentCheckResult {
   items: EnvironmentCheckItem[]
 }
 
+export interface RuntimeToolInfo {
+  name: string
+  description: string
+  active: boolean
+  source?: string
+}
+
+export interface ProjectTrustStatus {
+  cwd: string
+  hasProjectResources: boolean
+  trusted: boolean
+  reason?: string
+  trustFile?: string
+}
+
+export interface SkillSearchResult {
+  packageName: string
+  name: string
+  installs?: string
+  url?: string
+  description?: string
+}
+
 export interface ProviderUpsertInput {
   providerId: string
   displayName: string
@@ -278,6 +301,67 @@ export interface PiDesktopApi {
       }>
     }>>
     getEnvironmentStatus: () => Promise<IpcResponse<EnvironmentCheckResult>>
+    getPiResources: (cwd?: string, sessionPath?: string) => Promise<IpcResponse<{
+      skills: Array<{
+        name: string
+        description: string
+        source: string
+        filePath: string
+        baseDir: string
+        scope: 'global' | 'project' | 'settings' | 'package' | 'other'
+        disableModelInvocation: boolean
+        status: 'active' | 'inactive' | 'error'
+        diagnostics?: string[]
+      }>
+      prompts: Array<{
+        name: string
+        description: string
+        source: string
+        argumentHint?: string
+      }>
+      extensions: Array<{
+        name: string
+        source: string
+        status: 'active' | 'inactive' | 'error'
+        diagnostics?: string[]
+      }>
+      extensionCommands: Array<{
+        name: string
+        description: string
+        source: string
+      }>
+      diagnostics: string[]
+    }>>
+    getSlashCommands: (cwd?: string, sessionPath?: string) => Promise<IpcResponse<Array<{
+      id: string
+      command: string
+      label: string
+      description: string
+      kind: 'desktop' | 'pi_runtime' | 'skill' | 'prompt' | 'extension' | 'context' | 'unsupported'
+      source: string
+      execution: 'desktop' | 'runtime' | 'prompt' | 'disabled'
+      group?: 'Desktop' | 'Pi Runtime' | 'Skills' | 'Prompts' | 'Extensions' | 'Context' | 'Unsupported'
+      argumentHint?: string
+      requiresIdle?: boolean
+      disabledReason?: string
+    }>>>
+  }
+  piRuntime: {
+    getState: (sessionPath?: string) => Promise<IpcResponse<{ sessionPath: string | null; active: boolean }>>
+    getTools: (sessionPath: string) => Promise<IpcResponse<RuntimeToolInfo[]>>
+    setTools: (payload: { sessionPath: string; toolNames: string[] }) => Promise<IpcResponse>
+    compact: (payload: { sessionPath: string; customInstructions?: string }) => Promise<IpcResponse>
+    reloadResources: (payload: { sessionPath: string }) => Promise<IpcResponse>
+    cloneSession: (payload: { sessionPath: string }) => Promise<IpcResponse>
+    trustProject: (payload: { cwd: string; trust: boolean }) => Promise<IpcResponse>
+    getProjectTrustStatus: (payload: { cwd: string }) => Promise<IpcResponse<ProjectTrustStatus>>
+    steer: (payload: { sessionPath: string; message: string; images?: unknown[] }) => Promise<IpcResponse>
+    followUp: (payload: { sessionPath: string; message: string; images?: unknown[] }) => Promise<IpcResponse>
+  }
+  skills: {
+    search: (payload: { query: string; limit?: number }) => Promise<IpcResponse<SkillSearchResult[]>>
+    install: (payload: { packageName: string; scope: 'global' | 'project'; cwd?: string }) => Promise<IpcResponse>
+    setModelInvocation: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse>
   }
   onAgentEvent: (callback: (event: unknown | RuntimeStatusPayload) => void) => () => void
   profiles: {

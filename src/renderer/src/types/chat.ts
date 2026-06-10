@@ -342,3 +342,59 @@ export interface ConnectorSummaryEntry {
   source: string
   status: 'active' | 'inactive'
 }
+
+export type SlashCommandKind = 'desktop' | 'pi_runtime' | 'skill' | 'prompt' | 'extension' | 'context' | 'unsupported'
+export type SlashCommandExecution = 'desktop' | 'runtime' | 'prompt' | 'disabled'
+export type SlashCommandGroup = 'Desktop' | 'Pi Runtime' | 'Skills' | 'Prompts' | 'Extensions' | 'Context' | 'Unsupported'
+
+export interface SlashCommand {
+  id: string
+  command: string
+  label: string
+  description: string
+  kind: SlashCommandKind
+  source: string
+  execution?: SlashCommandExecution
+  group?: SlashCommandGroup
+  argumentHint?: string
+  requiresIdle?: boolean
+  disabledReason?: string
+}
+
+export interface PiSkillResource {
+  name: string
+  description: string
+  source: string
+  filePath?: string
+  baseDir?: string
+  scope?: 'global' | 'project' | 'settings' | 'package' | 'other'
+  disableModelInvocation?: boolean
+  status: 'active' | 'inactive' | 'error'
+  diagnostics?: string[]
+}
+
+export interface PiPromptResource {
+  name: string
+  description: string
+  source: string
+  argumentHint?: string
+}
+
+export interface PiExtensionResource {
+  name: string
+  source: string
+  status: 'active' | 'inactive' | 'error'
+  diagnostics?: string[]
+}
+
+export interface PiResourcesResult {
+  skills: PiSkillResource[]
+  prompts: PiPromptResource[]
+  extensions: PiExtensionResource[]
+  extensionCommands: Array<{
+    name: string
+    description: string
+    source: string
+  }>
+  diagnostics: string[]
+}

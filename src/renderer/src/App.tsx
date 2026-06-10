@@ -9,6 +9,7 @@ import Welcome from './screens/Welcome'
 import Settings from './screens/Settings'
 import ProviderManager from './screens/ProviderManager'
 import Skills from './screens/Skills'
+import Tools from './screens/Tools'
 import type {
   ArtifactEntity,
   ConnectorSummaryEntry,
@@ -21,6 +22,7 @@ import type {
   RuntimeStatus,
   Session,
   SkillSummaryEntry,
+  SlashCommand,
   ToolCall,
   WorkspaceFileEntry,
 } from './types/chat'
@@ -713,11 +715,13 @@ export default function App() {
   const [recentOpenedPaths, setRecentOpenedPaths] = useState<string[]>([])
   const [contextSkills, setContextSkills] = useState<SkillSummaryEntry[]>([])
   const [contextConnectors, setContextConnectors] = useState<ConnectorSummaryEntry[]>([])
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([])
 
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProvider, setShowProvider] = useState(false)
   const [showSkills, setShowSkills] = useState(false)
+  const [showTools, setShowTools] = useState(false)
   const [defaultSessionDirectory, setDefaultSessionDirectory] = useState('')
   const [pinnedSessionPaths, setPinnedSessionPaths] = useState<string[]>([])
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
@@ -902,6 +906,14 @@ export default function App() {
     setContextSkills(Array.isArray(response.data.skills) ? response.data.skills as SkillSummaryEntry[] : [])
     setContextConnectors(Array.isArray(response.data.connectors) ? response.data.connectors as ConnectorSummaryEntry[] : DEFAULT_CONNECTORS)
   }, [])
+
+  const loadSlashCommands = useCallback(async (cwd = visibleWorkspaceDir, sessionPath = activeSessionPath) => {
+    const getSlashCommands = window.piDesktop.desktop.getSlashCommands
+    if (typeof getSlashCommands !== 'function') return
+    const response = await getSlashCommands(cwd || undefined, sessionPath || undefined)
+    if (!response.success || !Array.isArray(response.data)) return
+    setSlashCommands(response.data as SlashCommand[])
+  }, [activeSessionPath, visibleWorkspaceDir])
 
   const loadArtifacts = useCallback(async (sessionKey: string | null) => {
     if (!sessionKey) {
@@ -1412,6 +1424,10 @@ export default function App() {
   }, [loadWorkspaceFiles, visibleWorkspaceDir])
 
   useEffect(() => {
+    void loadSlashCommands()
+  }, [loadSlashCommands])
+
+  useEffect(() => {
     setSessions((previous) =>
       previous.map((session) => ({
         ...session,
@@ -1488,6 +1504,9 @@ export default function App() {
       })
 
       const response = await sendMessage(text)
+      if (text.trim().split(/\s+/)[0] === '/reload') {
+        void loadSlashCommands()
+      }
       if (response?.success && response.data) {
         const data = response.data as { sessionId: string; sessionPath: string; createdNewSession: boolean; runId: string }
         const resolvedSessionKey = getMessageSessionKey(data.sessionPath, data.sessionId)
@@ -1516,7 +1535,7 @@ export default function App() {
         }
       }
     },
-    [activeSessionId, activeSessionPath, currentModel, isStreaming, loadArtifacts, loadSessions, onStreamStart, sendMessage],
+    [activeSessionId, activeSessionPath, currentModel, isStreaming, loadArtifacts, loadSessions, loadSlashCommands, onStreamStart, sendMessage],
   )
 
   const handleArtifactAction = useCallback((action: 'improve' | 'regenerate' | 'summarize' | 'new_task', path: string) => {
@@ -1614,11 +1633,107 @@ export default function App() {
   )
 
   const handleComposerCommand = useCallback((command: string) => {
-    if (command === '/new') {
+    const trimmed = command.trim()
+    const [baseCommand, ...args] = trimmed.split(/\s+/)
+    const commandArgs = args.join(' ')
+
+    if (baseCommand === '/new') {
       setNewSessionError(null)
       setShowNewSessionDialog(true)
+      return
     }
-  }, [])
+    if (baseCommand === '/settings') {
+      setShowSettings(true)
+      return
+    }
+    if (baseCommand === '/model') {
+      setShowProvider(true)
+      return
+    }
+    if (baseCommand === '/skills') {
+      setShowSkills(true)
+      return
+    }
+    if (baseCommand === '/tools') {
+      setShowTools(true)
+      return
+    }
+    if (baseCommand === '/workspace') {
+      void handleBrowseDirectory()
+      return
+    }
+    if (baseCommand === '/compact') {
+      if (!activeSessionPath) {
+        onAssistantMessage({
+          id: `runtime-${Date.now()}`,
+          role: 'assistant',
+          content: 'No active Pi session is available for /compact yet.',
+          timestamp: Date.now(),
+        })
+        return
+      }
+      void window.piDesktop.piRuntime.compact({
+        sessionPath: activeSessionPath,
+        customInstructions: commandArgs || undefined,
+      }).then((response) => {
+        onAssistantMessage({
+          id: `runtime-${Date.now()}`,
+          role: 'assistant',
+          content: response.success
+            ? 'Pi compacted the current session context.'
+            : `Pi could not compact this session: ${response.error || 'Unknown error'}`,
+          timestamp: Date.now(),
+        })
+      })
+      return
+    }
+    if (baseCommand === '/reload') {
+      if (!activeSessionPath) {
+        void loadSlashCommands(visibleWorkspaceDir, activeSessionPath)
+        return
+      }
+      void window.piDesktop.piRuntime.reloadResources({ sessionPath: activeSessionPath }).then((response) => {
+        void loadSlashCommands(visibleWorkspaceDir, activeSessionPath)
+        onAssistantMessage({
+          id: `runtime-${Date.now()}`,
+          role: 'assistant',
+          content: response.success
+            ? 'Pi resources and slash commands were reloaded.'
+            : `Pi resources could not be reloaded: ${response.error || 'Unknown error'}`,
+          timestamp: Date.now(),
+        })
+      })
+      return
+    }
+    if (baseCommand === '/session') {
+      onAssistantMessage({
+        id: `runtime-${Date.now()}`,
+        role: 'assistant',
+        content: activeSessionPath
+          ? `Current Pi session: ${activeSessionPath}`
+          : 'No active Pi session is selected.',
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if (baseCommand === '/clone' || baseCommand === '/trust') {
+      onAssistantMessage({
+        id: `runtime-${Date.now()}`,
+        role: 'assistant',
+        content: `${baseCommand} is visible because Pi supports it, but the native desktop flow is not fully implemented yet.`,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if (baseCommand === '/help') {
+      onAssistantMessage({
+        id: `help-${Date.now()}`,
+        role: 'assistant',
+        content: 'Pi Desktop commands: /new, /settings, /model, /skills, /tools, /workspace. Runtime commands: /compact, /reload, /session. Skill and prompt commands such as /skill:name are sent to Pi as prompt text.',
+        timestamp: Date.now(),
+      })
+    }
+  }, [activeSessionPath, handleBrowseDirectory, loadSlashCommands, onAssistantMessage, visibleWorkspaceDir])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1811,6 +1926,7 @@ export default function App() {
             isStreaming={isActiveSessionStreaming}
             isInputDisabled={isStreaming}
             runtimeStatus={activeRuntimeStatus}
+            slashCommands={slashCommands}
             onSetMessages={setMessages}
           />
           <PreviewPanel
@@ -1854,7 +1970,19 @@ export default function App() {
         />
       )}
       {showProvider && <ProviderManager onClose={() => { setShowProvider(false); void loadProviders() }} />}
-      {showSkills && <Skills onClose={() => setShowSkills(false)} />}
+      {showSkills && (
+        <Skills
+          currentDir={visibleWorkspaceDir}
+          sessionPath={activeSessionPath || undefined}
+          onClose={() => setShowSkills(false)}
+        />
+      )}
+      {showTools && (
+        <Tools
+          sessionPath={activeSessionPath}
+          onClose={() => setShowTools(false)}
+        />
+      )}
       <NewSessionDialog
         isOpen={showNewSessionDialog}
         currentDir={visibleWorkspaceDir}

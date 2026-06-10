@@ -143,6 +143,17 @@ function createPiDesktopMock(overrides: Partial<Window['piDesktop']> = {}): Wind
           skills: [],
         },
       }),
+      getPiResources: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          skills: [],
+          prompts: [],
+          extensions: [],
+          extensionCommands: [],
+          diagnostics: [],
+        },
+      }),
+      getSlashCommands: vi.fn().mockResolvedValue({ success: true, data: [] }),
     },
     profiles: {
       list: vi.fn().mockResolvedValue({ success: true, data: [] }),

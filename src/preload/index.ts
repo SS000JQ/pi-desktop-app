@@ -37,6 +37,25 @@ const api: PiDesktopApi = {
   desktop: {
     getStateSummary: () => ipcRenderer.invoke('desktop:getStateSummary'),
     getEnvironmentStatus: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_ENVIRONMENT),
+    getPiResources: (cwd, sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_PI_RESOURCES, { cwd, sessionPath }),
+    getSlashCommands: (cwd, sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_SLASH_COMMANDS, { cwd, sessionPath }),
+  },
+  piRuntime: {
+    getState: (sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_GET_STATE, sessionPath),
+    getTools: (sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_GET_TOOLS, sessionPath),
+    setTools: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_SET_TOOLS, payload),
+    compact: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_COMPACT, payload),
+    reloadResources: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_RELOAD_RESOURCES, payload),
+    cloneSession: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_CLONE_SESSION, payload),
+    trustProject: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_TRUST_PROJECT, payload),
+    getProjectTrustStatus: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_GET_PROJECT_TRUST_STATUS, payload),
+    steer: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_STEER, payload),
+    followUp: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_FOLLOW_UP, payload),
+  },
+  skills: {
+    search: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SEARCH, payload),
+    install: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_INSTALL, payload),
+    setModelInvocation: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_MODEL_INVOCATION, payload),
   },
   profiles: {
     list: () => ipcRenderer.invoke('profiles:list'),

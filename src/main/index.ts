@@ -47,6 +47,8 @@ import {
   getDesktopStateSummary,
   saveActiveSessionId,
 } from './desktop-state'
+import { getPiResources, getSlashCommands } from './pi-resources'
+import { installSkill, searchSkills, setSkillModelInvocation } from './skills-manager'
 import {
   artifactHistory,
   getArtifact,
@@ -798,8 +800,167 @@ ipcMain.handle('session:getActive', async () => {
   return { success: true, data: getActiveSessionId() }
 })
 
+async function resolveResourceRequestCwd(payload?: { cwd?: string | null; sessionPath?: string | null }): Promise<string | null> {
+  if (payload?.sessionPath) {
+    try {
+      const session = await openPiSession(payload.sessionPath)
+      return session.cwd || payload.cwd || null
+    } catch {
+      return payload.cwd || null
+    }
+  }
+  return payload?.cwd || null
+}
+
 ipcMain.handle('desktop:getStateSummary', async () => {
-  return { success: true, data: getDesktopStateSummary() }
+  return { success: true, data: await getDesktopStateSummary() }
+})
+
+ipcMain.handle(IPC_CHANNELS.DESKTOP_PI_RESOURCES, async (_event, payload?: { cwd?: string | null; sessionPath?: string | null }) => {
+  try {
+    const cwd = await resolveResourceRequestCwd(payload)
+    return { success: true, data: await getPiResources(cwd) }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to load Pi resources',
+    }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.DESKTOP_SLASH_COMMANDS, async (_event, payload?: { cwd?: string | null; sessionPath?: string | null }) => {
+  try {
+    const cwd = await resolveResourceRequestCwd(payload)
+    return { success: true, data: await getSlashCommands(cwd) }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to load slash commands',
+    }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_GET_STATE, async (_event, sessionPath?: string) => {
+  return {
+    success: true,
+    data: {
+      sessionPath: sessionPath || null,
+      active: Boolean(sessionPath),
+    },
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_GET_TOOLS, async (_event, sessionPath: string) => {
+  try {
+    return { success: true, data: await piBridge.getTools(sessionPath) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to read Pi tools' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_SET_TOOLS, async (_event, payload: { sessionPath: string; toolNames: string[] }) => {
+  try {
+    await piBridge.setTools(payload.sessionPath, payload.toolNames)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update Pi tools' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_COMPACT, async (_event, payload: { sessionPath: string; customInstructions?: string }) => {
+  try {
+    return { success: true, data: await piBridge.compact(payload.sessionPath, payload.customInstructions) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to compact Pi session' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_RELOAD_RESOURCES, async (_event, payload: { sessionPath: string }) => {
+  try {
+    await piBridge.reloadResources(payload.sessionPath)
+    const cwd = await resolveResourceRequestCwd({ sessionPath: payload.sessionPath })
+    return {
+      success: true,
+      data: {
+        resources: await getPiResources(cwd),
+        commands: await getSlashCommands(cwd),
+      },
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to reload Pi resources' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_STEER, async (_event, payload: { sessionPath: string; message: string }) => {
+  try {
+    await piBridge.steer(payload.sessionPath, payload.message)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to steer Pi session' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_FOLLOW_UP, async (_event, payload: { sessionPath: string; message: string }) => {
+  try {
+    await piBridge.followUp(payload.sessionPath, payload.message)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to queue Pi follow-up' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_CLONE_SESSION, async () => {
+  return { success: false, error: 'Native Pi session cloning is not implemented in Pi Desktop yet.' }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_GET_PROJECT_TRUST_STATUS, async (_event, payload: { cwd?: string }) => {
+  const cwd = payload?.cwd || ''
+  const hasProjectResources = Boolean(cwd) && (
+    existsSync(join(cwd, '.pi', 'settings.json'))
+    || existsSync(join(cwd, '.pi', 'skills'))
+    || existsSync(join(cwd, '.pi', 'prompts'))
+    || existsSync(join(cwd, '.pi', 'extensions'))
+  )
+  return {
+    success: true,
+    data: {
+      cwd,
+      hasProjectResources,
+      trusted: false,
+      reason: hasProjectResources ? 'Project trust management is not wired yet.' : 'No project Pi resources detected.',
+      trustFile: cwd ? join(cwd, '.pi', 'settings.json') : undefined,
+    },
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PI_RUNTIME_TRUST_PROJECT, async () => {
+  return { success: false, error: 'Project trust changes are not implemented in Pi Desktop yet.' }
+})
+
+ipcMain.handle(IPC_CHANNELS.SKILLS_SEARCH, async (_event, payload: { query: string; limit?: number }) => {
+  try {
+    return { success: true, data: await searchSkills(payload) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to search skills' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.SKILLS_INSTALL, async (_event, payload) => {
+  try {
+    await installSkill(payload)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to install skill' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.SKILLS_SET_MODEL_INVOCATION, async (_event, payload: { filePath: string; disabled: boolean }) => {
+  try {
+    setSkillModelInvocation(payload.filePath, payload.disabled)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update skill settings' }
+  }
 })
 
 ipcMain.handle('artifacts:list', async (_event, sessionKey?: string) => {
