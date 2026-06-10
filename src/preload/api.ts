@@ -33,10 +33,15 @@ export interface RuntimeStatusPayload {
   lastAction?: string
   startedAt?: number
   elapsedMs?: number
+  lastEventAt?: number
+  terminalAt?: number
   isWaitingForUser: boolean
   isStalled?: boolean
   errorSummary?: string
   resultSummary?: string
+  activeToolName?: string
+  activeToolState?: 'running' | 'done' | 'failed'
+  lastProgressMessage?: string
   runId?: string
   messageId?: string
   updatedAt?: number

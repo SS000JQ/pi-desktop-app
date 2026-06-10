@@ -1,5 +1,6 @@
 # Mockup files (visual companion)
 .superpowers/
+.codex-runtime/
 
 # Session data
 .claude/session-data/

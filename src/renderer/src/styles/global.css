@@ -2308,9 +2308,76 @@ body {
   white-space: nowrap;
 }
 
+.runtime-status-progress {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255,255,255,0.26);
+  font-size: 11px;
+}
+
 .runtime-status-context {
   font-size: 11px;
   color: rgba(255,255,255,0.18);
+}
+
+.runtime-thinking-panel {
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  padding: 8px 10px;
+}
+
+.runtime-thinking-header,
+.runtime-thinking-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runtime-thinking-header {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runtime-thinking-state {
+  font-size: 11px;
+  color: rgba(255,255,255,0.26);
+  white-space: nowrap;
+}
+
+.runtime-thinking-toggle {
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.42);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 0;
+}
+
+.runtime-thinking-toggle:hover {
+  color: rgba(255,255,255,0.66);
+}
+
+.runtime-thinking-preview {
+  margin-top: 8px;
+  color: rgba(255,255,255,0.4);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.runtime-thinking-preview.expanded {
+  display: block;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .pv-tb {
@@ -2428,6 +2495,56 @@ body {
 
 .pv-result-actions button:hover {
   color: rgba(0,122,255,0.72);
+}
+
+.pv-result-note {
+  font-size: 10px;
+  color: rgba(255,255,255,0.28);
+}
+
+.pv-result-steps,
+.pv-result-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pv-result-step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(255,255,255,0.08);
+}
+
+.pv-result-step.active {
+  border-left-color: rgba(0,122,255,0.42);
+}
+
+.pv-result-step.done {
+  border-left-color: rgba(48,209,88,0.42);
+}
+
+.pv-result-step.error {
+  border-left-color: rgba(255,94,94,0.42);
+}
+
+.pv-result-step-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.58);
+}
+
+.pv-result-step-detail {
+  font-size: 10px;
+  color: rgba(255,255,255,0.26);
+}
+
+.pv-result-file {
+  font-size: 10px;
+  color: rgba(255,255,255,0.34);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 1040px) {

@@ -70,10 +70,15 @@ type RuntimeStatusPayload = {
   lastAction?: string
   startedAt?: number
   elapsedMs?: number
+  lastEventAt?: number
+  terminalAt?: number
   isWaitingForUser: boolean
   isStalled?: boolean
   errorSummary?: string
   resultSummary?: string
+  activeToolName?: string
+  activeToolState?: 'running' | 'done' | 'failed'
+  lastProgressMessage?: string
   runId?: string
   messageId?: string
   updatedAt?: number
@@ -347,13 +352,16 @@ ipcMain.handle(
           const completeRun = (resultSummary: string): void => {
             if (hasFinished) return
             hasFinished = true
+            const completedAt = Date.now()
             emitRuntimeStatus({
               status: 'completed',
               statusLabel: 'Completed',
               lastAction: 'Response finished',
               isWaitingForUser: false,
               resultSummary,
-              updatedAt: Date.now(),
+              updatedAt: completedAt,
+              lastEventAt: completedAt,
+              terminalAt: completedAt,
               runId,
               sessionId,
               sessionPath,
@@ -386,6 +394,7 @@ ipcMain.handle(
             isWaitingForUser: false,
             startedAt: Date.now(),
             updatedAt: Date.now(),
+            lastEventAt: Date.now(),
             runId,
             sessionId,
             sessionPath,
@@ -399,23 +408,27 @@ ipcMain.handle(
             payload.thinkingLevel,
             (event) => {
               if (event.type === 'run_started') {
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'processing',
                   statusLabel: 'Processing',
                   lastAction: 'Pi has started working on your request',
                   isWaitingForUser: false,
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
                   runId,
                   sessionId,
                   sessionPath,
                 })
               } else if (event.type === 'assistant_token') {
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'generating',
                   statusLabel: 'Generating content',
                   lastAction: 'Drafting the response',
                   isWaitingForUser: false,
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
                   runId,
                   sessionId,
                   sessionPath,
@@ -428,12 +441,14 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'assistant_thinking') {
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'processing',
                   statusLabel: 'Thinking',
                   lastAction: 'Pi is reasoning through the request',
                   isWaitingForUser: false,
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
                   runId,
                   sessionId,
                   sessionPath,
@@ -446,12 +461,27 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'assistant_message') {
-                completeRun(event.text ? `${event.text.slice(0, 80)}${event.text.length > 80 ? '...' : ''}` : 'Reply ready')
+                const updatedAt = Date.now()
+                emitRuntimeStatus({
+                  status: 'generating',
+                  statusLabel: 'Generating content',
+                  lastAction: 'Final response ready, syncing session',
+                  isWaitingForUser: false,
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  runId,
+                  sessionId,
+                  sessionPath,
+                })
               } else if (event.type === 'tool_started') {
                 const toolCallId = resolveToolCallId(event.toolName, 'toolCallId' in event ? String(event.toolCallId || '') : undefined)
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   ...buildToolStatus(event.toolName, event.args),
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  activeToolName: event.toolName,
+                  activeToolState: 'running',
                   runId,
                   sessionId,
                   sessionPath,
@@ -467,12 +497,16 @@ ipcMain.handle(
                 })
               } else if (event.type === 'tool_finished') {
                 const toolCallId = finishToolCallId(event.toolName, 'toolCallId' in event ? String(event.toolCallId || '') : undefined)
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'processing',
                   statusLabel: 'Processing',
                   lastAction: event.toolName ? `${event.toolName} finished, continuing` : 'Tool finished, continuing',
                   isWaitingForUser: false,
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  activeToolName: event.toolName,
+                  activeToolState: 'done',
                   runId,
                   sessionId,
                   sessionPath,
@@ -494,13 +528,16 @@ ipcMain.handle(
                     status: 'ready',
                   })
                 }
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
-                  status: 'completed',
-                  statusLabel: 'Completed',
+                  status: 'writing_file',
+                  statusLabel: 'Writing file',
                   lastAction: 'Created a new result file',
                   isWaitingForUser: false,
                   resultSummary: event.path ? `Created ${event.path.split(/[\\/]/).pop()}` : 'Created a new result',
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  lastProgressMessage: event.path ? `Created ${event.path.split(/[\\/]/).pop()}` : 'Created a new result',
                   runId,
                   sessionId,
                   sessionPath,
@@ -516,13 +553,17 @@ ipcMain.handle(
                 completeRun('Pi session synced')
               } else if (event.type === 'tool_failed') {
                 const toolCallId = finishToolCallId(event.toolName, 'toolCallId' in event ? String(event.toolCallId || '') : undefined)
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'processing',
                   statusLabel: 'Processing',
                   lastAction: event.toolName ? `${event.toolName} failed, continuing` : 'Tool failed, continuing',
                   isWaitingForUser: false,
                   errorSummary: summarizeError(event.error || `${event.toolName || 'Tool'} failed`),
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  activeToolName: event.toolName,
+                  activeToolState: 'failed',
                   runId,
                   sessionId,
                   sessionPath,
@@ -537,13 +578,16 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'run_failed') {
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'failed',
                   statusLabel: 'Failed',
                   lastAction: 'Pi failed to complete the request',
                   isWaitingForUser: false,
                   errorSummary: summarizeError(event.error || 'Pi failed'),
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  terminalAt: updatedAt,
                   runId,
                   sessionId,
                   sessionPath,
@@ -562,13 +606,16 @@ ipcMain.handle(
                   sessionPath,
                 })
               } else if (event.type === 'run_aborted') {
+                const updatedAt = Date.now()
                 emitRuntimeStatus({
                   status: 'failed',
                   statusLabel: 'Stopped',
                   lastAction: 'Run was aborted',
                   isWaitingForUser: false,
                   errorSummary: 'Run aborted',
-                  updatedAt: Date.now(),
+                  updatedAt,
+                  lastEventAt: updatedAt,
+                  terminalAt: updatedAt,
                   runId,
                   sessionId,
                   sessionPath,
@@ -584,13 +631,16 @@ ipcMain.handle(
             },
           )
         } catch (err) {
+          const updatedAt = Date.now()
           emitRuntimeStatus({
             status: 'failed',
             statusLabel: 'Failed',
             lastAction: 'Pi could not start this request',
             isWaitingForUser: false,
             errorSummary: summarizeError(err instanceof Error ? err.message : 'Unknown error'),
-            updatedAt: Date.now(),
+            updatedAt,
+            lastEventAt: updatedAt,
+            terminalAt: updatedAt,
             runId,
             sessionId,
             sessionPath,

@@ -9,11 +9,12 @@ interface ChatViewProps {
   onSendMessage: (text: string) => void
   onCommand?: (command: string) => void
   isStreaming: boolean
+  isInputDisabled?: boolean
   runtimeStatus: RuntimeStatus | null
   onSetMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void
 }
 
-export default function ChatView({ messages, onSendMessage, onCommand, isStreaming, runtimeStatus, onSetMessages }: ChatViewProps) {
+export default function ChatView({ messages, onSendMessage, onCommand, isStreaming, isInputDisabled, runtimeStatus, onSetMessages }: ChatViewProps) {
   const handleRegenerate = useCallback((msgId: string) => {
     const msgIndex = messages.findIndex(m => m.id === msgId)
     const userMessages = messages.slice(0, msgIndex).filter(m => m.role === 'user')
@@ -41,7 +42,7 @@ export default function ChatView({ messages, onSendMessage, onCommand, isStreami
         onRegenerate={handleRegenerate}
         onEditMessage={handleEditMessage}
       />
-      <InputBar onSendMessage={onSendMessage} onCommand={onCommand} isStreaming={isStreaming} />
+      <InputBar onSendMessage={onSendMessage} onCommand={onCommand} isStreaming={isInputDisabled ?? isStreaming} />
     </div>
   )
 }

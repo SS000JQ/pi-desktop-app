@@ -28,14 +28,54 @@ export interface RuntimeStatus {
   startedAt?: number
   elapsedMs?: number
   updatedAt?: number
+  lastEventAt?: number
+  terminalAt?: number
   runId?: string
   messageId?: string
   isWaitingForUser: boolean
   isStalled?: boolean
   errorSummary?: string
   resultSummary?: string
+  activeToolName?: string
+  activeToolState?: 'running' | 'done' | 'failed'
+  lastProgressMessage?: string
   sessionId?: string
   sessionPath?: string
+  thinkingPreview?: string
+  thinkingUpdatedAt?: number
+  hasThinking?: boolean
+}
+
+export type RunActivityFileKind = 'read' | 'written' | 'generated' | 'referenced'
+
+export interface RunActivityFile {
+  path: string
+  label: string
+  kind: RunActivityFileKind
+}
+
+export interface RunActivityStep {
+  id: string
+  label: string
+  detail?: string
+  at: number
+  state: 'active' | 'done' | 'error' | 'info'
+}
+
+export interface RunActivity {
+  runId?: string
+  sessionId?: string
+  sessionPath?: string
+  status: RuntimePhase
+  statusLabel: string
+  lastAction?: string
+  startedAt: number
+  lastEventAt: number
+  activeToolName?: string
+  activeToolState?: 'running' | 'done' | 'failed'
+  recentSteps: RunActivityStep[]
+  files: RunActivityFile[]
+  resultPaths: string[]
 }
 
 export type AgentEvent =
@@ -120,6 +160,8 @@ export interface Message {
   content: string
   timestamp: number
   runId?: string
+  sessionId?: string
+  sessionPath?: string
   parts?: MessagePart[]
   anchors?: {
     answerStart?: string

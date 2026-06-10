@@ -8,6 +8,7 @@ import StatusBar from './components/StatusBar'
 import Welcome from './screens/Welcome'
 import Settings from './screens/Settings'
 import ProviderManager from './screens/ProviderManager'
+import Skills from './screens/Skills'
 import type {
   ArtifactEntity,
   ConnectorSummaryEntry,
@@ -16,9 +17,11 @@ import type {
   ModelOption,
   ProviderSummary,
   ResultItem,
+  RunActivity,
   RuntimeStatus,
   Session,
   SkillSummaryEntry,
+  ToolCall,
   WorkspaceFileEntry,
 } from './types/chat'
 import { useChatIPC } from './hooks/useChatIPC'
@@ -61,6 +64,7 @@ interface StoredMessage {
   cancelled?: boolean
   truncated?: boolean
   fullOutputPath?: string
+  isError?: boolean
 }
 
 interface SessionDetail {
@@ -77,6 +81,7 @@ interface SessionDetail {
 interface SyncSessionOptions {
   activate?: boolean
   updateWorkspace?: boolean
+  preferPersistedMessages?: boolean
 }
 
 interface ContextResourceItem {
@@ -364,9 +369,145 @@ function toUiMessage(sessionId: string, message: StoredMessage, index: number): 
 }
 
 function toUiMessages(sessionId: string, storedMessages: StoredMessage[]): Message[] {
-  return storedMessages
-    .map((message, index) => toUiMessage(sessionId, message, index))
-    .filter((message): message is Message => Boolean(message))
+  const uiMessages: Message[] = []
+  let bufferedAssistantTurn: Array<{ message: StoredMessage; index: number }> = []
+  let assistantTurnIndex = 0
+
+  const flushBufferedAssistantTurn = () => {
+    if (bufferedAssistantTurn.length === 0) return
+
+    const aggregated = toAggregatedAssistantTurn(
+      sessionId,
+      bufferedAssistantTurn.map((entry) => entry.message),
+      assistantTurnIndex,
+    )
+    assistantTurnIndex += 1
+    const bufferedEntries = bufferedAssistantTurn
+    bufferedAssistantTurn = []
+
+    if (aggregated) {
+      uiMessages.push(aggregated)
+      return
+    }
+
+    bufferedEntries.forEach(({ message, index }) => {
+      const uiMessage = toUiMessage(sessionId, message, index)
+      if (uiMessage) uiMessages.push(uiMessage)
+    })
+  }
+
+  storedMessages.forEach((message, index) => {
+    if (message.role === 'user') {
+      flushBufferedAssistantTurn()
+      const uiMessage = toUiMessage(sessionId, message, index)
+      if (uiMessage) uiMessages.push(uiMessage)
+      return
+    }
+
+    if (message.role === 'assistant' || message.role === 'toolResult') {
+      bufferedAssistantTurn.push({ message, index })
+      return
+    }
+
+    flushBufferedAssistantTurn()
+    const uiMessage = toUiMessage(sessionId, message, index)
+    if (uiMessage) uiMessages.push(uiMessage)
+  })
+
+  flushBufferedAssistantTurn()
+  return uiMessages
+}
+
+function toAggregatedAssistantTurn(sessionId: string, turnMessages: StoredMessage[], turnIndex: number): Message | null {
+  const thinkingParts: NonNullable<Message['parts']> = []
+  let finalVisibleParts: NonNullable<Message['parts']> = []
+  let finalText = ''
+  let lastTimestamp = Date.now()
+  const toolCalls: ToolCall[] = []
+  const toolCallIndexById = new Map<string, number>()
+  let hasAssistantMessage = false
+
+  turnMessages.forEach((message, index) => {
+    const timestamp =
+      typeof message.timestamp === 'number'
+        ? message.timestamp
+        : message.timestamp
+          ? new Date(message.timestamp).getTime()
+          : Date.now()
+    lastTimestamp = timestamp
+
+    if (message.role === 'assistant') {
+      hasAssistantMessage = true
+      const parts = buildMessageParts(message.content) || []
+      const visibleParts = parts.filter((part) => part.type !== 'thinking')
+      const visibleText = visibleContentFromParts(parts, extractContentText(message.content))
+
+      thinkingParts.push(
+        ...parts
+          .filter((part) => part.type === 'thinking')
+          .map((part) => ({ ...part, collapsed: true })),
+      )
+
+      if (visibleParts.length > 0) {
+        finalVisibleParts = visibleParts
+      }
+      if (visibleText) {
+        finalText = visibleText
+      }
+
+      ;(extractToolCalls(message.content) || []).forEach((toolCall) => {
+        const toolCallKey = toolCall.toolCallId || toolCall.id || `${toolCall.name}-${index}`
+        if (toolCallIndexById.has(toolCallKey)) return
+        toolCallIndexById.set(toolCallKey, toolCalls.length)
+        toolCalls.push({
+          ...toolCall,
+          toolCallId: toolCall.toolCallId || toolCall.id,
+          status: 'running',
+        })
+      })
+      return
+    }
+
+    if (message.role === 'toolResult') {
+      const toolCallKey = message.toolCallId || message.toolName || ''
+      const toolIndex = toolCallIndexById.get(toolCallKey)
+      if (toolIndex !== undefined) {
+        const existingToolCall = toolCalls[toolIndex]
+        if (!existingToolCall) return
+        toolCalls[toolIndex] = {
+          ...existingToolCall,
+          status: message.isError ? 'error' : 'done',
+        }
+      }
+    }
+  })
+
+  if (!hasAssistantMessage) return null
+
+  const finalizedToolCalls = toolCalls.map((toolCall) => (
+    toolCall.status === 'running'
+      ? { ...toolCall, status: 'done' as const }
+      : toolCall
+  ))
+
+  const parts = [...thinkingParts]
+  if (finalVisibleParts.length > 0) {
+    parts.push(...finalVisibleParts)
+  } else if (finalText) {
+    parts.push({ type: 'text', text: finalText })
+  }
+
+  const content = finalText || visibleContentFromParts(finalVisibleParts, '').trim() || '(Pi completed this turn without a final text response.)'
+
+  return {
+    id: `${sessionId}-turn-${turnIndex}`,
+    role: 'assistant',
+    content,
+    timestamp: lastTimestamp,
+    parts: parts.length > 0 ? parts : undefined,
+    toolCalls: finalizedToolCalls.length > 0 ? finalizedToolCalls : undefined,
+    kind: 'standard',
+  }
 }
 
 function sortWorkspaceFiles(files: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
@@ -459,6 +600,44 @@ function buildUploadItems(
     .slice(0, 6)
 }
 
+function buildRunContextItems(
+  runActivity: RunActivity | null,
+  fallback: ContextResourceItem[],
+): ContextResourceItem[] {
+  if (!runActivity) return fallback
+
+  const runItems = runActivity.files.map((file) => ({
+    id: `${runActivity.runId || 'run'}:${file.kind}:${file.path}`,
+    label: file.label,
+    path: file.path,
+    meta: file.kind === 'generated'
+      ? 'Generated in this run'
+      : file.kind === 'written'
+        ? 'Updated in this run'
+        : file.kind === 'read'
+          ? 'Read in this run'
+          : 'Referenced in this run',
+  }))
+
+  const seen = new Set<string>()
+  return [...runItems, ...fallback]
+    .filter((item) => item.path)
+    .filter((item) => {
+      if (!item.path) return false
+      const key = normalizePath(item.path)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, 8)
+}
+
+function getMessageSessionKey(sessionPath?: string | null, sessionId?: string | null): string | null {
+  if (sessionPath) return `path:${normalizePath(sessionPath)}`
+  if (sessionId) return `id:${sessionId}`
+  return null
+}
+
 function normalizeArtifact(entity: any): ArtifactEntity {
   return {
     ...entity,
@@ -526,6 +705,7 @@ export default function App() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null)
+  const [runActivity, setRunActivity] = useState<RunActivity | null>(null)
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>([])
   const [workspaceChildrenByDir, setWorkspaceChildrenByDir] = useState<Record<string, WorkspaceFileEntry[]>>({})
   const [artifactsBySession, setArtifactsBySession] = useState<Record<string, ArtifactEntity[]>>({})
@@ -537,6 +717,7 @@ export default function App() {
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProvider, setShowProvider] = useState(false)
+  const [showSkills, setShowSkills] = useState(false)
   const [defaultSessionDirectory, setDefaultSessionDirectory] = useState('')
   const [pinnedSessionPaths, setPinnedSessionPaths] = useState<string[]>([])
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
@@ -545,6 +726,10 @@ export default function App() {
   const [hasProvider, setHasProvider] = useState(false)
   const currentDirRef = useRef(currentDir)
   const activeSessionPathRef = useRef<string | null>(activeSessionPath)
+  const activeSessionIdRef = useRef<string | null>(activeSessionId)
+  const activeRunSessionKeyRef = useRef<string | null>(null)
+  const userSelectedSessionPathRef = useRef<string | null>(null)
+  const transientMessagesBySessionRef = useRef<Record<string, Message[]>>({})
   const latestSessionDetailsRef = useRef<Record<string, SessionDetail>>({})
   const workspaceRequestRef = useRef(0)
   const sessionRequestRef = useRef(0)
@@ -559,8 +744,9 @@ export default function App() {
   const effectiveCurrentDir = currentDir || runtimeWorkspaceDir
   const directoryOptions = Array.from(new Set([effectiveCurrentDir, ...sessions.map((session) => session.cwd)].filter(Boolean)))
   const activeSession =
-    sessions.find((session) => activeSessionPath && normalizePath(session.path) === normalizePath(activeSessionPath))
-    || sessions.find((session) => session.id === activeSessionId)
+    activeSessionPath
+      ? sessions.find((session) => normalizePath(session.path) === normalizePath(activeSessionPath)) || null
+      : sessions.find((session) => session.id === activeSessionId) || null
     || null
   const workspaceFilesRoot = workspaceFiles.length > 0 ? dirname(workspaceFiles[0].path) : ''
   const sessionWorkspaceDir = activeSessionPath && activeSession ? activeSession.cwd : ''
@@ -572,24 +758,61 @@ export default function App() {
   }, [activeArtifactKey, artifactsBySession])
   const activeRuntimeStatus = useMemo(() => {
     if (!runtimeStatus) return null
-    if (runtimeStatus.sessionId && activeSessionId && runtimeStatus.sessionId !== activeSessionId) return null
     if (
-      runtimeStatus.sessionPath
-      && activeSessionPath
-      && normalizePath(runtimeStatus.sessionPath) !== normalizePath(activeSessionPath)
-    ) return null
+      activeSessionPath
+    ) {
+      if (!runtimeStatus.sessionPath) return null
+      if (normalizePath(runtimeStatus.sessionPath) !== normalizePath(activeSessionPath)) return null
+    } else if (runtimeStatus.sessionId && activeSessionId && runtimeStatus.sessionId !== activeSessionId) {
+      return null
+    }
     return runtimeStatus
   }, [activeSessionId, activeSessionPath, runtimeStatus])
+  const activeRunActivity = useMemo(() => {
+    if (!runActivity) return null
+    if (
+      activeSessionPath
+    ) {
+      if (!runActivity.sessionPath) return null
+      if (normalizePath(runActivity.sessionPath) !== normalizePath(activeSessionPath)) return null
+    } else if (runActivity.sessionId && activeSessionId && runActivity.sessionId !== activeSessionId) {
+      return null
+    }
+    return runActivity
+  }, [activeSessionId, activeSessionPath, runActivity])
+  const isActiveSessionStreaming = Boolean(
+    isStreaming
+    && activeRuntimeStatus
+    && activeRuntimeStatus.status !== 'completed'
+    && activeRuntimeStatus.status !== 'failed',
+  )
 
   const onAssistantMessage = useCallback((message: Message) => {
     setMessages((previous) => {
-      const index = previous.findIndex((entry) => entry.id === message.id)
+      const targetKey =
+        getMessageSessionKey(message.sessionPath, message.sessionId)
+        || activeRunSessionKeyRef.current
+        || getMessageSessionKey(activeSessionPathRef.current, activeSessionIdRef.current)
+      const visibleKey = getMessageSessionKey(activeSessionPathRef.current, activeSessionIdRef.current)
+      const baseMessages = targetKey && visibleKey && targetKey !== visibleKey
+        ? transientMessagesBySessionRef.current[targetKey] || []
+        : previous
+      const index = baseMessages.findIndex((entry) => entry.id === message.id)
+      let next: Message[]
       if (index >= 0) {
-        const next = [...previous]
+        next = [...baseMessages]
         next[index] = message
-        return next
+      } else {
+        next = [...baseMessages, message]
       }
-      return [...previous, message]
+
+      if (targetKey) {
+        transientMessagesBySessionRef.current[targetKey] = next
+      }
+      if (targetKey && visibleKey && targetKey !== visibleKey) {
+        return previous
+      }
+      return next
     })
   }, [])
 
@@ -882,15 +1105,31 @@ export default function App() {
 
   const syncSessionDetail = useCallback(
     (detail: SessionDetail, options: SyncSessionOptions = {}) => {
-      const { activate = false, updateWorkspace = false } = options
+      const { activate = false, updateWorkspace = false, preferPersistedMessages = false } = options
       const nextMessages = toUiMessages(detail.sessionPath || detail.sessionId, detail.messages as StoredMessage[])
+      const detailKey = getMessageSessionKey(detail.sessionPath, detail.sessionId)
+      const selectedSessionPath = userSelectedSessionPathRef.current
+      const shouldActivateDetail =
+        activate
+        && (
+          !selectedSessionPath
+          || !detail.sessionPath
+          || normalizePath(selectedSessionPath) === normalizePath(detail.sessionPath)
+        )
       if (detail.sessionPath) {
         latestSessionDetailsRef.current[normalizePath(detail.sessionPath)] = detail
       }
-      if (activate) {
+      if (preferPersistedMessages && detailKey) {
+        delete transientMessagesBySessionRef.current[detailKey]
+        if (activeRunSessionKeyRef.current === detailKey) {
+          activeRunSessionKeyRef.current = null
+        }
+      }
+      if (shouldActivateDetail) {
         setActiveSessionId(detail.sessionId)
         setActiveSessionPath(detail.sessionPath)
         activeSessionPathRef.current = detail.sessionPath
+        activeSessionIdRef.current = detail.sessionId
         setThinkingLevel(detail.thinkingLevel || 'medium')
         if (detail.model) setCurrentModel(detail.model)
       }
@@ -899,8 +1138,12 @@ export default function App() {
         setRuntimeWorkspaceDir('')
         setWorkspaceChildrenByDir({})
       }
-      if (activate && !isStreamingRef.current) {
-        setMessages(nextMessages)
+      if (shouldActivateDetail) {
+        const transientMessages =
+          !preferPersistedMessages && detailKey && activeRunSessionKeyRef.current === detailKey
+            ? transientMessagesBySessionRef.current[detailKey]
+            : undefined
+        setMessages(transientMessages?.length ? transientMessages : nextMessages)
       }
 
       setSessions((previous) => {
@@ -1004,11 +1247,17 @@ export default function App() {
       if (matchingSession?.path) {
         setActiveSessionId(matchingSession.id)
         setActiveSessionPath(matchingSession.path)
+        activeSessionIdRef.current = matchingSession.id
+        activeSessionPathRef.current = matchingSession.path
+        userSelectedSessionPathRef.current = matchingSession.path
         return
       }
 
       setActiveSessionId(null)
       setActiveSessionPath(null)
+      activeSessionIdRef.current = null
+      activeSessionPathRef.current = null
+      userSelectedSessionPathRef.current = null
       setMessages([])
       setActiveArtifactId(null)
     },
@@ -1034,6 +1283,7 @@ export default function App() {
     onStreamStart,
     onStreamEnd,
     onRuntimeStatus: setRuntimeStatus,
+    onRunActivity: setRunActivity,
     onArtifactCreated: ({ path, sessionId, sessionPath }) => {
       const targetSessionKey = sessionPath || sessionId || activeSessionPath || activeSessionId
       if (!targetSessionKey) return
@@ -1055,18 +1305,21 @@ export default function App() {
     onSessionSynced: (detail) => {
       sessionRequestRef.current += 1
       skipNextSessionReloadRef.current = detail.sessionPath
+      const visibleActivePath = userSelectedSessionPathRef.current || activeSessionPath || activeSessionPathRef.current
       const shouldActivate =
-        !activeSessionPathRef.current
-        || normalizePath(activeSessionPathRef.current) === normalizePath(detail.sessionPath)
+        !visibleActivePath
+        || normalizePath(visibleActivePath) === normalizePath(detail.sessionPath)
       syncSessionDetail(detail, {
         activate: shouldActivate,
         updateWorkspace: false,
+        preferPersistedMessages: true,
       })
       void (async () => {
         await loadSessions()
         syncSessionDetail(detail, {
           activate: shouldActivate,
           updateWorkspace: false,
+          preferPersistedMessages: true,
         })
         await Promise.all([
           loadArtifacts(detail.sessionPath || detail.sessionId),
@@ -1150,7 +1403,8 @@ export default function App() {
 
   useEffect(() => {
     activeSessionPathRef.current = activeSessionPath
-  }, [activeSessionPath])
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId, activeSessionPath])
 
   useEffect(() => {
     if (!visibleWorkspaceDir) return
@@ -1180,6 +1434,8 @@ export default function App() {
       if (!text.trim() || isStreaming || !currentModel) return
 
       const startedAt = Date.now()
+      const runSessionKey = getMessageSessionKey(activeSessionPath, activeSessionId) || `pending:${startedAt}`
+      activeRunSessionKeyRef.current = runSessionKey
       onStreamStart()
       setRuntimeStatus({
         status: 'preparing',
@@ -1187,27 +1443,75 @@ export default function App() {
         lastAction: activeSessionPath ? 'Connecting to the selected Pi session' : 'Creating a new Pi session',
         startedAt,
         elapsedMs: 0,
+        lastEventAt: startedAt,
         isWaitingForUser: false,
         sessionId: activeSessionId || undefined,
         sessionPath: activeSessionPath || undefined,
       })
+      setRunActivity({
+        runId: undefined,
+        sessionId: activeSessionId || undefined,
+        sessionPath: activeSessionPath || undefined,
+        status: 'preparing',
+        statusLabel: 'Preparing',
+        lastAction: activeSessionPath ? 'Connecting to the selected Pi session' : 'Creating a new Pi session',
+        startedAt,
+        lastEventAt: startedAt,
+        recentSteps: [
+          {
+            id: `run-step-${startedAt}`,
+            label: 'Preparing',
+            detail: activeSessionPath ? 'Connecting to the selected Pi session' : 'Creating a new Pi session',
+            at: startedAt,
+            state: 'active',
+          },
+        ],
+        files: [],
+        resultPaths: [],
+      })
 
-      setMessages((previous) => [
-        ...previous,
-        {
+      setMessages((previous) => {
+        const userMessage: Message = {
           id: `msg-${Date.now()}`,
           role: 'user',
           content: text,
           timestamp: Date.now(),
-        },
-      ])
+          sessionId: activeSessionId || undefined,
+          sessionPath: activeSessionPath || undefined,
+        }
+        const next = [
+          ...previous,
+          userMessage,
+        ]
+        transientMessagesBySessionRef.current[runSessionKey] = next
+        return next
+      })
 
       const response = await sendMessage(text)
       if (response?.success && response.data) {
         const data = response.data as { sessionId: string; sessionPath: string; createdNewSession: boolean; runId: string }
+        const resolvedSessionKey = getMessageSessionKey(data.sessionPath, data.sessionId)
+        if (resolvedSessionKey && activeRunSessionKeyRef.current && activeRunSessionKeyRef.current !== resolvedSessionKey) {
+          const pendingMessages = transientMessagesBySessionRef.current[activeRunSessionKeyRef.current] || []
+          transientMessagesBySessionRef.current[resolvedSessionKey] = pendingMessages.map((message) => ({
+            ...message,
+            sessionId: message.sessionId || data.sessionId,
+            sessionPath: message.sessionPath || data.sessionPath,
+          }))
+          delete transientMessagesBySessionRef.current[activeRunSessionKeyRef.current]
+          activeRunSessionKeyRef.current = resolvedSessionKey
+          setMessages((previous) => previous.map((message) => ({
+            ...message,
+            sessionId: message.sessionId || data.sessionId,
+            sessionPath: message.sessionPath || data.sessionPath,
+          })))
+        }
         if (data.createdNewSession || !activeSessionPath) {
           setActiveSessionId(data.sessionId)
           setActiveSessionPath(data.sessionPath)
+          activeSessionIdRef.current = data.sessionId
+          activeSessionPathRef.current = data.sessionPath
+          userSelectedSessionPathRef.current = data.sessionPath
           await Promise.all([loadSessions(), loadArtifacts(data.sessionPath || data.sessionId)])
         }
       }
@@ -1381,8 +1685,8 @@ export default function App() {
   )
 
   const contextUploads = useMemo(
-    () => buildUploadItems(knownWorkspaceFiles, activeArtifacts, recentOpenedPaths),
-    [knownWorkspaceFiles, activeArtifacts, recentOpenedPaths],
+    () => buildRunContextItems(activeRunActivity, buildUploadItems(knownWorkspaceFiles, activeArtifacts, recentOpenedPaths)),
+    [activeArtifacts, activeRunActivity, knownWorkspaceFiles, recentOpenedPaths],
   )
 
   const connectorItems = useMemo<ContextResourceItem[]>(
@@ -1482,6 +1786,9 @@ export default function App() {
               const selected = sessions.find((session) => session.path === path)
               setActiveSessionId(selected?.id || null)
               setActiveSessionPath(selected?.path || null)
+              activeSessionIdRef.current = selected?.id || null
+              activeSessionPathRef.current = selected?.path || null
+              userSelectedSessionPathRef.current = selected?.path || null
               setWorkspaceChildrenByDir({})
               setPreviewFile(null)
             }}
@@ -1489,6 +1796,8 @@ export default function App() {
               setNewSessionError(null)
               setShowNewSessionDialog(true)
             }}
+            onOpenModels={() => setShowProvider(true)}
+            onOpenSkills={() => setShowSkills(true)}
             onOpenSettings={() => setShowSettings(true)}
             collapsed={leftPanelCollapsed}
             onToggleCollapse={() => setLeftPanelCollapsed((state) => !state)}
@@ -1499,7 +1808,8 @@ export default function App() {
             messages={messages}
             onSendMessage={handleSendMessage}
             onCommand={handleComposerCommand}
-            isStreaming={isStreaming}
+            isStreaming={isActiveSessionStreaming}
+            isInputDisabled={isStreaming}
             runtimeStatus={activeRuntimeStatus}
             onSetMessages={setMessages}
           />
@@ -1514,6 +1824,7 @@ export default function App() {
             workspaceChildrenByDir={workspaceChildrenByDir}
             recentResults={resultsForPanel}
             runtimeStatus={activeRuntimeStatus}
+            runActivity={activeRunActivity}
             previewFile={previewFile}
             contextUploads={contextUploads}
             contextConnectors={connectorItems}
@@ -1543,6 +1854,7 @@ export default function App() {
         />
       )}
       {showProvider && <ProviderManager onClose={() => { setShowProvider(false); void loadProviders() }} />}
+      {showSkills && <Skills onClose={() => setShowSkills(false)} />}
       <NewSessionDialog
         isOpen={showNewSessionDialog}
         currentDir={visibleWorkspaceDir}

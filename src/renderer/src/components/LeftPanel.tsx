@@ -8,6 +8,8 @@ interface LeftPanelProps {
   onPinnedSessionPathsChange?: (paths: string[]) => void
   onSessionSelect: (path: string) => void
   onSessionCreate: () => void
+  onOpenModels?: () => void
+  onOpenSkills?: () => void
   onOpenSettings?: () => void
   collapsed: boolean
   onToggleCollapse: () => void
@@ -43,6 +45,8 @@ export default function LeftPanel({
   onPinnedSessionPathsChange,
   onSessionSelect,
   onSessionCreate,
+  onOpenModels,
+  onOpenSkills,
   onOpenSettings,
   collapsed,
   onToggleCollapse,
@@ -246,6 +250,16 @@ export default function LeftPanel({
       </div>
 
       <div className="l-capability">
+        {onOpenModels && (
+          <button className="l-footer-item" onClick={onOpenModels} aria-label="Models">
+            Models
+          </button>
+        )}
+        {onOpenSkills && (
+          <button className="l-footer-item" onClick={onOpenSkills} aria-label="Skills">
+            Skills
+          </button>
+        )}
         {onOpenSettings && (
           <button className="l-footer-item" onClick={onOpenSettings} aria-label="Settings">
             Settings

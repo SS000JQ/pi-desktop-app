@@ -54,6 +54,8 @@ function renderLeftPanel(props: Partial<Parameters<typeof LeftPanel>[0]> = {}) {
       onPinnedSessionPathsChange={props.onPinnedSessionPathsChange || (() => {})}
       onSessionSelect={props.onSessionSelect || (() => {})}
       onSessionCreate={props.onSessionCreate || (() => {})}
+      onOpenModels={props.onOpenModels || (() => {})}
+      onOpenSkills={props.onOpenSkills || (() => {})}
       onOpenSettings={props.onOpenSettings || (() => {})}
       collapsed={false}
       onToggleCollapse={props.onToggleCollapse || (() => {})}

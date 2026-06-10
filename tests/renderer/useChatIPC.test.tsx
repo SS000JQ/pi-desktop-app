@@ -7,17 +7,21 @@ import type { AgentEvent, Message, RuntimeStatus } from '../../src/renderer/src/
 function ChatIPCHost({
   onStreamEnd = vi.fn(),
   onArtifactCreated = vi.fn(),
+  currentSessionId = 'session-1',
+  currentSessionPath = 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
 }: {
   onStreamEnd?: () => void
   onArtifactCreated?: (payload: { path: string; sessionId?: string; sessionPath?: string }) => void
+  currentSessionId?: string
+  currentSessionPath?: string
 } = {}) {
   const [messages, setMessages] = useState<Message[]>([])
   const [status, setStatus] = useState<RuntimeStatus | null>(null)
   const { sendMessage } = useChatIPC({
     currentDir: 'D:/PI/app',
     currentModel: 'openai/gpt-4o-mini',
-    currentSessionId: 'session-1',
-    currentSessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+    currentSessionId,
+    currentSessionPath,
     onAssistantMessage: (message) => {
       setMessages((previous) => {
         const index = previous.findIndex((entry) => entry.id === message.id)
@@ -49,6 +53,10 @@ function ChatIPCHost({
       <div data-testid="thinking-state">{thinking?.state || ''}</div>
       <div data-testid="text">{text || ''}</div>
       <div data-testid="status">{status?.lastAction || ''}</div>
+      <div data-testid="status-label">{status?.statusLabel || ''}</div>
+      <div data-testid="status-result">{status?.resultSummary || ''}</div>
+      <div data-testid="status-thinking">{status?.thinkingPreview || ''}</div>
+      <div data-testid="status-thinking-live">{status?.hasThinking ? 'yes' : 'no'}</div>
     </div>
   )
 }
@@ -118,6 +126,8 @@ describe('useChatIPC', () => {
     expect(screen.getByTestId('thinking-state').textContent).toBe('streaming')
     expect(screen.getByTestId('text').textContent).toBe('Final answer')
     expect(screen.getByTestId('content').textContent).toBe('Final answer')
+    expect(screen.getByTestId('status-thinking').textContent).toBe('checking files and comparing state')
+    expect(screen.getByTestId('status-thinking-live').textContent).toBe('yes')
 
     await act(async () => {
       agentCallback?.({
@@ -131,6 +141,8 @@ describe('useChatIPC', () => {
 
     expect(screen.getByTestId('thinking-state').textContent).toBe('complete')
     expect(screen.getByTestId('content').textContent).toBe('Final answer')
+    expect(screen.getByTestId('status-thinking').textContent).toBe('checking files and comparing state')
+    expect(screen.getByTestId('status-thinking-live').textContent).toBe('yes')
     vi.useRealTimers()
   })
 
@@ -376,6 +388,7 @@ describe('useChatIPC', () => {
     let agentCallback: ((event: AgentEvent) => void) | null = null
     let resolveSend: (value: unknown) => void = () => {}
     const artifactCreated = vi.fn()
+    const streamEnd = vi.fn()
     window.piDesktop = {
       chat: {
         send: vi.fn().mockReturnValue(new Promise((resolve) => { resolveSend = resolve })),
@@ -389,7 +402,7 @@ describe('useChatIPC', () => {
       }),
     } as Partial<Window['piDesktop']> as Window['piDesktop']
 
-    render(<ChatIPCHost onArtifactCreated={artifactCreated} />)
+    render(<ChatIPCHost onArtifactCreated={artifactCreated} onStreamEnd={streamEnd} />)
 
     await act(async () => {
       screen.getByRole('button', { name: 'send' }).click()
@@ -423,6 +436,202 @@ describe('useChatIPC', () => {
       sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
     })
     expect(screen.getByTestId('status').textContent).toBe('Result file created')
+    expect(screen.getByTestId('status-label').textContent).not.toBe('Completed')
+    expect(screen.getByTestId('status-result').textContent).toBe('Created result.md')
+    expect(streamEnd).not.toHaveBeenCalled()
     vi.useRealTimers()
+  })
+
+  it('clears the previous completion summary when a new run starts reporting live status', async () => {
+    vi.useFakeTimers()
+    let agentCallback: ((event: AgentEvent) => void) | null = null
+    window.piDesktop = {
+      chat: {
+        send: vi.fn()
+          .mockResolvedValueOnce({
+            success: true,
+            data: {
+              sessionId: 'session-1',
+              sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+              createdNewSession: false,
+              runId: 'run-summary-1',
+            },
+          })
+          .mockResolvedValueOnce({
+            success: true,
+            data: {
+              sessionId: 'session-1',
+              sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+              createdNewSession: false,
+              runId: 'run-summary-2',
+            },
+          }),
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      onAgentEvent: vi.fn((callback) => {
+        agentCallback = callback as (event: AgentEvent) => void
+        return () => {
+          agentCallback = null
+        }
+      }),
+    } as Partial<Window['piDesktop']> as Window['piDesktop']
+
+    render(<ChatIPCHost />)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'send' }).click()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'done',
+        runId: 'run-summary-1',
+        session: {
+          sessionId: 'session-1',
+          sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+          cwd: 'D:/PI/app',
+          title: 'Session',
+          model: 'openai/gpt-4o-mini',
+          thinkingLevel: 'medium',
+          tokenCount: 0,
+          messages: [],
+        },
+      })
+      vi.advanceTimersByTime(80)
+    })
+
+    expect(screen.getByTestId('status-result').textContent).toBe('Pi session synced')
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'send' }).click()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'status',
+        status: 'reading_file',
+        statusLabel: 'Reading files',
+        lastAction: 'Reading fresh context',
+        isWaitingForUser: false,
+        runId: 'run-summary-2',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      vi.advanceTimersByTime(80)
+    })
+
+    expect(screen.getByTestId('status').textContent).toBe('Reading fresh context')
+    expect(screen.getByTestId('status-result').textContent).toBe('')
+    vi.useRealTimers()
+  })
+
+  it('ignores pathless events that only match a duplicate session id while a session path is active', async () => {
+    let agentCallback: ((event: AgentEvent) => void) | null = null
+    window.piDesktop = {
+      chat: {
+        send: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            sessionId: 'duplicate-id',
+            sessionPath: 'C:/Users/test/.pi/agent/sessions/second/session.jsonl',
+            createdNewSession: false,
+            runId: 'run-current',
+          },
+        }),
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      onAgentEvent: vi.fn((callback) => {
+        agentCallback = callback as (event: AgentEvent) => void
+        return () => {
+          agentCallback = null
+        }
+      }),
+    } as Partial<Window['piDesktop']> as Window['piDesktop']
+
+    render(
+      <ChatIPCHost
+        currentSessionId="duplicate-id"
+        currentSessionPath="C:/Users/test/.pi/agent/sessions/second/session.jsonl"
+      />,
+    )
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'status',
+        status: 'generating',
+        statusLabel: 'Generating content',
+        lastAction: 'This belongs to another duplicate-id session',
+        isWaitingForUser: false,
+        sessionId: 'duplicate-id',
+      })
+    })
+
+    expect(screen.getByTestId('status').textContent).toBe('')
+  })
+
+  it('marks a completed run without visible assistant text as no final reply', async () => {
+    let agentCallback: ((event: AgentEvent) => void) | null = null
+    window.piDesktop = {
+      chat: {
+        send: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            sessionId: 'session-1',
+            sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+            createdNewSession: false,
+            runId: 'run-tool-only',
+          },
+        }),
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      onAgentEvent: vi.fn((callback) => {
+        agentCallback = callback as (event: AgentEvent) => void
+        return () => {
+          agentCallback = null
+        }
+      }),
+    } as Partial<Window['piDesktop']> as Window['piDesktop']
+
+    render(<ChatIPCHost />)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'send' }).click()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'done',
+        runId: 'run-tool-only',
+        session: {
+          sessionId: 'session-1',
+          sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+          cwd: 'D:/PI/app',
+          title: 'Session',
+          model: 'openai/gpt-4o-mini',
+          thinkingLevel: 'medium',
+          tokenCount: 0,
+          messages: [
+            {
+              role: 'assistant',
+              content: [
+                { type: 'toolCall', id: 'tool-1', name: 'read', arguments: { path: 'README.md' } },
+              ],
+            },
+            {
+              role: 'toolResult',
+              toolCallId: 'tool-1',
+              toolName: 'read',
+              content: 'done',
+            },
+          ],
+        },
+      })
+    })
+
+    expect(screen.getByTestId('status-label').textContent).toBe('No final reply')
+    expect(screen.getByTestId('status-result').textContent).toBe('Pi ended after tool activity without a final text response.')
   })
 })

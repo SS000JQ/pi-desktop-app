@@ -14,6 +14,7 @@ import type {
   BinaryPreviewContent,
   FilePreviewData,
   ResultItem,
+  RunActivity,
   RuntimeStatus,
   WorkspaceFileEntry,
 } from '../types/chat'
@@ -45,6 +46,7 @@ interface PreviewPanelProps {
   workspaceChildrenByDir?: Record<string, WorkspaceFileEntry[]>
   recentResults?: ResultItem[]
   runtimeStatus?: RuntimeStatus | null
+  runActivity?: RunActivity | null
   previewFile?: PreviewFile | null
   contextUploads?: ContextResourceItem[]
   contextConnectors?: ContextResourceItem[]
@@ -299,33 +301,64 @@ function SectionShell({
 
 function ProgressSection({
   runtimeStatus,
+  runActivity,
   currentArtifact,
 }: {
   runtimeStatus?: RuntimeStatus | null
+  runActivity?: RunActivity | null
   currentArtifact?: ResultItem | null
 }) {
   const isFailed = runtimeStatus?.status === 'failed' && runtimeStatus.errorSummary
-  const title = runtimeStatus?.statusLabel || 'Idle'
+  const title = runtimeStatus?.statusLabel || runActivity?.statusLabel || 'Idle'
+  const progressTitle =
+    runActivity?.resultPaths[0]?.split(/[/\\]/).pop() ||
+    currentArtifact?.title ||
+    'Current run'
   const detail =
     runtimeStatus?.errorSummary ||
     runtimeStatus?.resultSummary ||
+    runtimeStatus?.lastProgressMessage ||
     runtimeStatus?.lastAction ||
+    runActivity?.lastAction ||
     (currentArtifact ? currentArtifact.action : 'Waiting for the next task.')
+  const stepItems = runActivity?.recentSteps.slice(0, 3) || []
+  const visibleStepItems = stepItems.filter((step, index) => !(index === 0 && step.label === title))
+  const touchedFiles = runActivity?.files.slice(0, 4) || []
+  const activityTime = runtimeStatus?.lastEventAt || runActivity?.lastEventAt
 
   return (
     <div className={`pv-result-card ${isFailed ? 'failed' : ''}`}>
       <div className="pv-result-main">
-        <span className="pv-result-title">{currentArtifact?.title || 'Current run'}</span>
-        {runtimeStatus?.status && runtimeStatus.status !== 'idle' && (
-          <span className={`pv-result-badge ${isFailed ? 'failed' : 'updated'}`}>{title}</span>
-        )}
+        <span className="pv-result-title">{progressTitle}</span>
       </div>
       <div className="pv-result-meta">
         <span className="pv-result-action">{detail}</span>
         <span className="pv-result-time">
-          {runtimeStatus?.startedAt ? formatTimestamp(new Date(runtimeStatus.startedAt).toISOString()) : 'Now'}
+          {activityTime ? formatTimestamp(new Date(activityTime).toISOString()) : 'Now'}
         </span>
       </div>
+      {runtimeStatus?.activeToolName && (
+        <div className="pv-result-note">{`Tool: ${runtimeStatus.activeToolName}`}</div>
+      )}
+      {visibleStepItems.length > 0 && (
+        <div className="pv-result-steps">
+          {visibleStepItems.map((step) => (
+            <div key={step.id} className={`pv-result-step ${step.state}`}>
+              <span className="pv-result-step-label">{step.label}</span>
+              {step.detail && <span className="pv-result-step-detail">{step.detail}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {touchedFiles.length > 0 && (
+        <div className="pv-result-files">
+          {touchedFiles.map((file) => (
+            <div key={`${file.kind}:${file.path}`} className="pv-result-file" title={file.path}>
+              {file.label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -474,6 +507,7 @@ export default function PreviewPanel({
   workspaceChildrenByDir = {},
   recentResults = [],
   runtimeStatus,
+  runActivity,
   previewFile,
   contextUploads = [],
   contextConnectors = [],
@@ -1756,11 +1790,11 @@ export default function PreviewPanel({
           <div ref={workbenchBodyRef} className="pv-body pv-workbench-body">
             <SectionShell
               title="Progress"
-              badge={runtimeStatus?.statusLabel || 'Idle'}
+              badge={runtimeStatus?.statusLabel || runActivity?.statusLabel || 'Idle'}
               collapsed={sections.progress}
               onToggle={() => setSections((previous) => ({ ...previous, progress: !previous.progress }))}
             >
-              <ProgressSection runtimeStatus={runtimeStatus} currentArtifact={currentArtifact} />
+              <ProgressSection runtimeStatus={runtimeStatus} runActivity={runActivity} currentArtifact={currentArtifact} />
             </SectionShell>
 
             <SectionShell
