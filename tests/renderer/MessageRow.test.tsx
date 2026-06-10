@@ -15,6 +15,25 @@ describe('MessageRow', () => {
     expect(screen.getByText('Hi there')).toBeTruthy()
   })
 
+  it('renders assistant final content as markdown inside an answer card', () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          id: '2b',
+          role: 'assistant',
+          content: '## Result\n\n- item one\n\n```ts\nconst answer = 42\n```',
+          timestamp: 0,
+          toolCalls: [],
+        }}
+      />,
+    )
+
+    expect(container.querySelector('.answer-card')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Result' })).toBeTruthy()
+    expect(screen.getByText('item one')).toBeTruthy()
+    expect(screen.getByText('const answer = 42')).toBeTruthy()
+  })
+
   it('renders tool calls when present', () => {
     const message = {
       id: '3',
@@ -224,6 +243,47 @@ describe('MessageRow', () => {
     expect(text.indexOf('first thought')).toBeLessThan(text.indexOf('bash'))
     expect(text.indexOf('bash')).toBeLessThan(text.indexOf('second thought'))
     expect(text.indexOf('second thought')).toBeLessThan(text.indexOf('Final answer'))
+  })
+
+  it('renders text parts as markdown answer cards after realtime process cards', () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          id: '5g',
+          role: 'assistant',
+          content: '## Final\n\n- shipped',
+          timestamp: 0,
+          parts: [
+            {
+              type: 'thinking',
+              title: 'Thinking',
+              text: 'checking current state',
+              collapsed: true,
+              state: 'complete',
+              updatedAt: Date.now(),
+            },
+            {
+              type: 'toolCall',
+              text: '',
+              toolCall: { id: 'bash-1', name: 'bash', args: '{"command":"npm test"}', status: 'done' },
+            },
+            { type: 'text', text: '## Final\n\n- shipped' },
+          ],
+          toolCalls: [
+            { id: 'bash-1', name: 'bash', args: '{"command":"npm test"}', status: 'done' },
+          ],
+        }}
+      />,
+    )
+
+    const text = container.textContent || ''
+    expect(container.querySelector('.thinking-card')).toBeTruthy()
+    expect(container.querySelector('.tool-card')).toBeTruthy()
+    expect(container.querySelector('.answer-card')).toBeTruthy()
+    expect(text.indexOf('Thinking')).toBeLessThan(text.indexOf('bash'))
+    expect(text.indexOf('bash')).toBeLessThan(text.indexOf('Final'))
+    expect(screen.getByRole('heading', { name: 'Final' })).toBeTruthy()
+    expect(screen.getByText('shipped')).toBeTruthy()
   })
 
   it('keeps completed and running tools visible in the process timeline', () => {

@@ -22,7 +22,7 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
   )
 
   return (
-    <div className={`tc ${stateClass}`}>
+    <div className={`process-card tool-card tc ${stateClass}`}>
       <div>
         <span className="tcn">{toolCall.name}</span>{' '}
         <span className="tcs" title={hasLongArgs ? toolCall.args : undefined}>({argsPreview})</span>

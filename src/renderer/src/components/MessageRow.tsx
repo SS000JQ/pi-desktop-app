@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import ToolCallCard from './ToolCallCard'
 import type { Message, MessagePart, ToolCall } from '../types/chat'
 
@@ -56,7 +58,9 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
         ) : (
           <>
             {!hasToolCallParts ? renderProcessTimeline(toolCalls, message.anchors?.toolSummary) : null}
-            {message.content ? <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div> : null}
+            {message.content ? (
+              isUser ? <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div> : <AnswerCard text={message.content} />
+            ) : null}
           </>
         )}
 
@@ -106,7 +110,7 @@ function MessagePartBlock({
     const statusLabel = getThinkingStatusLabel(part)
     const preview = part.state === 'streaming' ? getThinkingPreview(part.text) : ''
     return (
-      <div className={`thinking-part ${isCollapsed ? 'is-collapsed' : 'is-expanded'}`}>
+      <div className={`process-card thinking-card thinking-part ${isCollapsed ? 'is-collapsed' : 'is-expanded'}`}>
         <div className="thinking-header">
           <span>{statusLabel}</span>
           <button type="button" className="thinking-toggle" onClick={onToggle}>
@@ -125,7 +129,7 @@ function MessagePartBlock({
 
   if (part.type === 'toolResult') {
     return (
-      <div className="tool-result-part">
+      <div className="process-card tool-result-part">
         <div className="part-title">{part.title || 'Tool result'}</div>
         <div style={{ whiteSpace: 'pre-wrap' }}>{part.text}</div>
       </div>
@@ -134,14 +138,14 @@ function MessagePartBlock({
 
   if (part.type === 'customSummary') {
     return (
-      <div className="custom-part">
+      <div className="process-card custom-part">
         {part.title && <div className="part-title">{part.title}</div>}
         <div style={{ whiteSpace: 'pre-wrap' }}>{part.text}</div>
       </div>
     )
   }
 
-  return <div style={{ whiteSpace: 'pre-wrap' }}>{part.text}</div>
+  return <AnswerCard text={part.text} />
 }
 
 function renderProcessTimeline(toolCalls: ToolCall[], anchorId?: string) {
@@ -175,6 +179,26 @@ function getThinkingPreview(text: string): string {
   const latest = lines[lines.length - 1] || text.trim()
   if (!latest) return ''
   return latest.length > 180 ? `${latest.slice(0, 177)}...` : latest
+}
+
+function AnswerCard({ text }: { text: string }) {
+  if (!text.trim()) return null
+  return (
+    <div className="answer-card">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children, ...props }) => (
+            <a href={href} target="_blank" rel="noreferrer" {...props}>
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
 }
 
 function scrollAnchor(anchorId?: string) {
