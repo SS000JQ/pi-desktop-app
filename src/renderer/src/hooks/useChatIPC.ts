@@ -261,12 +261,12 @@ export function useChatIPC({
     if (!text) return
     const now = Date.now()
     const nextParts = [...partsRef.current]
-    const existingIndex = nextParts.findIndex((part) => part.type === 'thinking')
-    if (existingIndex >= 0) {
-      const existing = nextParts[existingIndex]
-      nextParts[existingIndex] = {
-        ...existing,
-        text: `${existing.text}${text}`,
+    const lastIndex = nextParts.length - 1
+    const last = nextParts[lastIndex]
+    if (last?.type === 'thinking') {
+      nextParts[lastIndex] = {
+        ...last,
+        text: `${last.text}${text}`,
         collapsed: true,
         state,
         updatedAt: now,
@@ -282,6 +282,35 @@ export function useChatIPC({
       })
     }
     partsRef.current = nextParts
+  }, [])
+
+  const appendToolCallPart = useCallback((toolCall: ToolCall) => {
+    partsRef.current = [
+      ...partsRef.current,
+      {
+        type: 'toolCall',
+        text: '',
+        toolCall,
+      },
+    ]
+  }, [])
+
+  const updateToolCallPart = useCallback((toolCallId: string | undefined, toolName: string | undefined, status: ToolCall['status']) => {
+    const nextParts = [...partsRef.current]
+    const targetIndex = [...nextParts].reverse().findIndex((part) => {
+      if (part.type !== 'toolCall' || !part.toolCall) return false
+      if (toolCallId) return (part.toolCall.toolCallId || part.toolCall.id) === toolCallId
+      return part.toolCall.name === toolName && part.toolCall.status === 'running'
+    })
+    const resolvedIndex = targetIndex === -1 ? -1 : nextParts.length - 1 - targetIndex
+    if (resolvedIndex >= 0) {
+      const existing = nextParts[resolvedIndex]
+      nextParts[resolvedIndex] = {
+        ...existing,
+        toolCall: existing.toolCall ? { ...existing.toolCall, status } : existing.toolCall,
+      }
+      partsRef.current = nextParts
+    }
   }, [])
 
   const markThinkingComplete = useCallback(() => {
@@ -579,16 +608,15 @@ export function useChatIPC({
       scheduleTokenFlush()
     } else if (event.type === 'tool_started') {
       ensureAssistantRun(event.runId)
-      toolCallsRef.current = [
-        ...toolCallsRef.current,
-        {
-          id: event.toolCallId || `tool-${Date.now()}`,
-          toolCallId: event.toolCallId,
-          name: event.toolName || 'tool',
-          args: typeof event.args === 'string' ? event.args : JSON.stringify(event.args || {}),
-          status: 'running',
-        },
-      ]
+      const toolCall = {
+        id: event.toolCallId || `tool-${Date.now()}`,
+        toolCallId: event.toolCallId,
+        name: event.toolName || 'tool',
+        args: typeof event.args === 'string' ? event.args : JSON.stringify(event.args || {}),
+        status: 'running' as const,
+      }
+      toolCallsRef.current = [...toolCallsRef.current, toolCall]
+      appendToolCallPart(toolCall)
       const readPaths = extractFilePathsFromArgs(event.args).map((path) => ({
         path,
         label: path.split(/[/\\]/).pop() || path,
@@ -635,6 +663,7 @@ export function useChatIPC({
       }))
       scheduleTokenFlush()
     } else if (event.type === 'tool_finished' || event.type === 'tool_failed') {
+      const nextToolStatus = event.type === 'tool_failed' ? 'error' : 'done'
       toolCallsRef.current = toolCallsRef.current.map((toolCall, index, array) => {
         const targetIndex = [...array].reverse().findIndex((entry) => {
           if (event.toolCallId) return (entry.toolCallId || entry.id) === event.toolCallId
@@ -644,9 +673,10 @@ export function useChatIPC({
         if (index !== resolvedIndex) return toolCall
         return {
           ...toolCall,
-          status: event.type === 'tool_failed' ? 'error' : 'done',
+          status: nextToolStatus,
         }
       })
+      updateToolCallPart(event.toolCallId, event.toolName, nextToolStatus)
       setRuntimeStatus((previous) => {
         const startedAt = previous?.startedAt || Date.now()
         return {
@@ -857,7 +887,7 @@ export function useChatIPC({
       clearRunState()
       callbacksRef.current.onStreamEnd()
     }
-  }, [appendThinkingPart, appendThinkingPreview, appendTokenDelta, clearRunState, createOrUpdateRunActivity, ensureAssistantRun, flushAssistantMessage, markThinkingComplete, scheduleTokenFlush, setRunActivity, setRuntimeStatus, shouldThrottleLiveStatus])
+  }, [appendThinkingPart, appendThinkingPreview, appendTokenDelta, appendToolCallPart, clearRunState, createOrUpdateRunActivity, ensureAssistantRun, flushAssistantMessage, markThinkingComplete, scheduleTokenFlush, setRunActivity, setRuntimeStatus, shouldThrottleLiveStatus, updateToolCallPart])
 
   const replayPendingRunEvents = useCallback((runId: string) => {
     const matching = pendingRunEventsRef.current.filter((event) => event.runId === runId)

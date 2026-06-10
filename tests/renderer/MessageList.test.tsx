@@ -14,6 +14,39 @@ function makeMessage(id: string, content: string): Message {
 }
 
 describe('MessageList', () => {
+  it('does not show a generic thinking placeholder when the active assistant message has process details', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: 'active',
+            role: 'assistant',
+            content: '',
+            timestamp: Date.now(),
+            isStreaming: true,
+            parts: [
+              {
+                type: 'thinking',
+                title: 'Thinking',
+                text: 'reading config',
+                collapsed: true,
+                state: 'streaming',
+                updatedAt: Date.now(),
+              },
+            ],
+            toolCalls: [{ id: 'tool-1', name: 'read', args: '{"path":"config.json"}', status: 'running' }],
+          },
+        ]}
+        isStreaming
+        onRegenerate={() => {}}
+        onEditMessage={() => {}}
+      />,
+    )
+
+    expect(screen.getByText(/reading config/i)).toBeTruthy()
+    expect(screen.queryByText(/Pi is thinking/i)).toBeNull()
+  })
+
   it('does not force-scroll when the user is reviewing older output', () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView

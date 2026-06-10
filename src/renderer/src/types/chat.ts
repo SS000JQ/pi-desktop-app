@@ -146,12 +146,13 @@ export type AgentEvent =
     } & RuntimeStatus)
 
 export interface MessagePart {
-  type: 'text' | 'thinking' | 'toolResult' | 'customSummary'
+  type: 'text' | 'thinking' | 'toolCall' | 'toolResult' | 'customSummary'
   text: string
   title?: string
   collapsed?: boolean
   state?: 'streaming' | 'complete'
   updatedAt?: number
+  toolCall?: ToolCall
 }
 
 export interface Message {

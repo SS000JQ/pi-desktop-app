@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import ToolCallCard from './ToolCallCard'
 import type { Message, MessagePart, ToolCall } from '../types/chat'
 
@@ -11,13 +11,12 @@ interface MessageRowProps {
 export default function MessageRow({ message, onRegenerate, onEdit }: MessageRowProps) {
   const isUser = message.role === 'user'
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({})
-  const [showCompletedTools, setShowCompletedTools] = useState(false)
-
-  const completedToolSummary = useMemo(() => summarizeCompletedTools(message.toolCalls || []), [message.toolCalls])
-  const activeToolCalls = (message.toolCalls || []).filter((toolCall) => toolCall.status !== 'done')
-  const completedToolCalls = (message.toolCalls || []).filter((toolCall) => toolCall.status === 'done')
-  const shouldSummarizeCompletedTools = completedToolCalls.length > 1 || activeToolCalls.length > 0
   const parts = message.parts?.length ? message.parts : undefined
+  const toolCalls = message.toolCalls || []
+  const hasToolCallParts = Boolean(parts?.some((part) => part.type === 'toolCall'))
+  const displayParts = parts && !hasToolCallParts && toolCalls.length > 0
+    ? insertLegacyToolCallParts(parts, toolCalls)
+    : parts
 
   return (
     <div className={`msg ${isUser ? 'right' : 'left'}`}>
@@ -43,11 +42,11 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
         )}
       </div>
       <div className={`mb ${isUser ? 'right' : 'left'}`}>
-        {parts ? (
+        {displayParts ? (
           <div className="msg-parts">
-            {parts.map((part, index) => (
+            {displayParts.map((part, index) => (
               <MessagePartBlock
-                key={`${part.type}-${index}`}
+                key={`${part.type}-${part.toolCall?.id || index}`}
                 part={part}
                 expanded={Boolean(expandedThinking[index])}
                 onToggle={() => setExpandedThinking((previous) => ({ ...previous, [index]: !previous[index] }))}
@@ -55,27 +54,11 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
             ))}
           </div>
         ) : (
-          <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
+          <>
+            {!hasToolCallParts ? renderProcessTimeline(toolCalls, message.anchors?.toolSummary) : null}
+            {message.content ? <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div> : null}
+          </>
         )}
-
-        {completedToolSummary && shouldSummarizeCompletedTools && (
-          <div className="tool-summary" id={message.anchors?.toolSummary}>
-            <button type="button" className="tool-summary-toggle" onClick={() => setShowCompletedTools((state) => !state)}>
-              {completedToolSummary}
-            </button>
-            {showCompletedTools && completedToolCalls.map((toolCall) => (
-              <ToolCallCard key={toolCall.id} toolCall={toolCall} />
-            ))}
-          </div>
-        )}
-
-        {!shouldSummarizeCompletedTools && completedToolCalls.map((toolCall) => (
-          <ToolCallCard key={toolCall.id} toolCall={toolCall} />
-        ))}
-
-        {activeToolCalls.map((toolCall) => (
-          <ToolCallCard key={toolCall.id} toolCall={toolCall} />
-        ))}
 
         {!isUser && !message.isStreaming && message.content && message.anchors?.finalAnswer && (
           <div className="msg-final-actions" id={message.anchors?.finalAnswer}>
@@ -94,6 +77,21 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
   )
 }
 
+function insertLegacyToolCallParts(parts: MessagePart[], toolCalls: ToolCall[]): MessagePart[] {
+  const firstAnswerIndex = parts.findIndex((part) => part.type !== 'thinking')
+  const insertAt = firstAnswerIndex >= 0 ? firstAnswerIndex : parts.length
+  const toolParts = toolCalls.map((toolCall) => ({
+    type: 'toolCall' as const,
+    text: '',
+    toolCall,
+  }))
+  return [
+    ...parts.slice(0, insertAt),
+    ...toolParts,
+    ...parts.slice(insertAt),
+  ]
+}
+
 function MessagePartBlock({
   part,
   expanded,
@@ -106,6 +104,7 @@ function MessagePartBlock({
   if (part.type === 'thinking') {
     const isCollapsed = part.collapsed !== false && !expanded
     const statusLabel = getThinkingStatusLabel(part)
+    const preview = part.state === 'streaming' ? getThinkingPreview(part.text) : ''
     return (
       <div className={`thinking-part ${isCollapsed ? 'is-collapsed' : 'is-expanded'}`}>
         <div className="thinking-header">
@@ -114,9 +113,14 @@ function MessagePartBlock({
             {isCollapsed ? 'Show thinking' : 'Close thinking'}
           </button>
         </div>
+        {isCollapsed && preview ? <div className="thinking-preview">{preview}</div> : null}
         {!isCollapsed && <div className="thinking-text">{part.text}</div>}
       </div>
     )
+  }
+
+  if (part.type === 'toolCall') {
+    return part.toolCall ? <ToolCallCard toolCall={part.toolCall} /> : null
   }
 
   if (part.type === 'toolResult') {
@@ -140,6 +144,18 @@ function MessagePartBlock({
   return <div style={{ whiteSpace: 'pre-wrap' }}>{part.text}</div>
 }
 
+function renderProcessTimeline(toolCalls: ToolCall[], anchorId?: string) {
+  if (toolCalls.length === 0) return null
+  return (
+    <div className="process-timeline" id={anchorId}>
+      <div className="process-timeline-label">Process</div>
+      {toolCalls.map((toolCall) => (
+        <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+      ))}
+    </div>
+  )
+}
+
 function getThinkingStatusLabel(part: MessagePart): string {
   const title = part.title || 'Thinking'
   if (part.state === 'complete') return `${title} · complete`
@@ -151,14 +167,14 @@ function getThinkingStatusLabel(part: MessagePart): string {
   return title
 }
 
-function summarizeCompletedTools(toolCalls: ToolCall[]): string {
-  const completed = toolCalls.filter((toolCall) => toolCall.status === 'done')
-  if (completed.length === 0) return ''
-  const counts = new Map<string, number>()
-  completed.forEach((toolCall) => counts.set(toolCall.name, (counts.get(toolCall.name) || 0) + 1))
-  return Array.from(counts.entries())
-    .map(([name, count]) => `${name} ${count}`)
-    .join(' · ')
+function getThinkingPreview(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const latest = lines[lines.length - 1] || text.trim()
+  if (!latest) return ''
+  return latest.length > 180 ? `${latest.slice(0, 177)}...` : latest
 }
 
 function scrollAnchor(anchorId?: string) {

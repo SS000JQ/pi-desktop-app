@@ -16,6 +16,11 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0)
   const wasAtBottomRef = useRef(true)
   const previousSignatureRef = useRef('')
+  const activeStreamingMessage = [...messages].reverse().find((message) => message.role === 'assistant' && message.isStreaming)
+  const hasVisibleStreamingProcess = Boolean(
+    activeStreamingMessage
+      && ((activeStreamingMessage.parts?.length || 0) > 0 || (activeStreamingMessage.toolCalls?.length || 0) > 0),
+  )
 
   const isNearBottom = useCallback(() => {
     const scroller = scrollerRef.current
@@ -42,7 +47,10 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
   }, [])
 
   useEffect(() => {
-    const signature = `${messages.length}:${messages[messages.length - 1]?.id || ''}:${messages[messages.length - 1]?.content?.length || 0}:${isStreaming ? 'streaming' : 'idle'}`
+    const lastMessage = messages[messages.length - 1]
+    const partsLength = lastMessage?.parts?.reduce((total, part) => total + part.text.length, 0) || 0
+    const toolSignature = lastMessage?.toolCalls?.map((toolCall) => `${toolCall.id}:${toolCall.status}`).join('|') || ''
+    const signature = `${messages.length}:${lastMessage?.id || ''}:${lastMessage?.content?.length || 0}:${partsLength}:${toolSignature}:${isStreaming ? 'streaming' : 'idle'}`
     const changed = previousSignatureRef.current && previousSignatureRef.current !== signature
     previousSignatureRef.current = signature
 
@@ -78,7 +86,7 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
           onEdit={msg.role === 'user' ? () => onEditMessage?.(msg.id) : undefined}
         />
       ))}
-      {isStreaming && (
+      {isStreaming && !hasVisibleStreamingProcess && (
         <div className="msg-stream">
           <span className="stream-dot" />
           Pi is thinking...

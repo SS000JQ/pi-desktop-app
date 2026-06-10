@@ -40,7 +40,7 @@ describe('MessageRow', () => {
     expect(container.textContent?.toLowerCase()).toContain('running')
   })
 
-  it('renders thinking as a distinct collapsed block instead of plain answer text', () => {
+  it('renders thinking as a distinct preview block instead of plain answer text', () => {
     render(
       <MessageRow
         message={{
@@ -100,7 +100,133 @@ describe('MessageRow', () => {
     expect(screen.getByRole('button', { name: /close thinking/i })).toBeTruthy()
   })
 
-  it('summarizes completed tool calls while keeping the running tool visible', () => {
+  it('shows a live thinking preview while the details stay collapsed', () => {
+    render(
+      <MessageRow
+        message={{
+          id: '5c',
+          role: 'assistant',
+          content: '',
+          timestamp: 0,
+          isStreaming: true,
+          parts: [
+            {
+              type: 'thinking',
+              title: 'Thinking',
+              text: 'checking HyperFrames environment\nreading project config',
+              collapsed: true,
+              state: 'streaming',
+              updatedAt: Date.now(),
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/reading project config/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /show thinking/i })).toBeTruthy()
+  })
+
+  it('renders completed tools as visible process cards instead of hiding them behind a summary', () => {
+    render(
+      <MessageRow
+        message={{
+          id: '5d',
+          role: 'assistant',
+          content: 'Working...',
+          timestamp: 0,
+          toolCalls: [
+            { id: 'read-1', name: 'read', args: '{"path":"a.ts"}', status: 'done' },
+            { id: 'read-2', name: 'read', args: '{"path":"b.ts"}', status: 'done' },
+            { id: 'bash-1', name: 'bash', args: '{"command":"npm test"}', status: 'done' },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /read 2/i })).toBeNull()
+    expect(screen.getAllByText('read').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('bash')).toBeTruthy()
+    expect(screen.getAllByText(/done/i).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('places process cards before the final answer so tool use reads as realtime progress', () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          id: '5e',
+          role: 'assistant',
+          content: 'Final answer is ready',
+          timestamp: 0,
+          parts: [
+            {
+              type: 'thinking',
+              title: 'Thinking',
+              text: 'checking tools',
+              collapsed: true,
+              state: 'streaming',
+              updatedAt: Date.now(),
+            },
+            { type: 'text', text: 'Final answer is ready' },
+          ],
+          toolCalls: [
+            { id: 'bash-1', name: 'bash', args: '{"command":"python script.py"}', status: 'done' },
+          ],
+        }}
+      />,
+    )
+
+    const text = container.textContent || ''
+    expect(text.indexOf('Thinking')).toBeLessThan(text.indexOf('bash'))
+    expect(text.indexOf('bash')).toBeLessThan(text.indexOf('Final answer is ready'))
+  })
+
+  it('keeps thinking, tool calls, and answer text in the original event order', () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          id: '5f',
+          role: 'assistant',
+          content: 'Final answer',
+          timestamp: 0,
+          parts: [
+            {
+              type: 'thinking',
+              title: 'Thinking',
+              text: 'first thought',
+              collapsed: true,
+              state: 'streaming',
+              updatedAt: Date.now(),
+            },
+            {
+              type: 'toolCall',
+              text: '',
+              toolCall: { id: 'bash-1', name: 'bash', args: '{"command":"python script.py"}', status: 'done' },
+            },
+            {
+              type: 'thinking',
+              title: 'Thinking',
+              text: 'second thought',
+              collapsed: true,
+              state: 'streaming',
+              updatedAt: Date.now(),
+            },
+            { type: 'text', text: 'Final answer' },
+          ],
+          toolCalls: [
+            { id: 'bash-1', name: 'bash', args: '{"command":"python script.py"}', status: 'done' },
+          ],
+        }}
+      />,
+    )
+
+    const text = container.textContent || ''
+    expect(text.indexOf('first thought')).toBeLessThan(text.indexOf('bash'))
+    expect(text.indexOf('bash')).toBeLessThan(text.indexOf('second thought'))
+    expect(text.indexOf('second thought')).toBeLessThan(text.indexOf('Final answer'))
+  })
+
+  it('keeps completed and running tools visible in the process timeline', () => {
     render(
       <MessageRow
         message={{
@@ -117,7 +243,7 @@ describe('MessageRow', () => {
       />,
     )
 
-    expect(screen.getByText(/read 2/i)).toBeTruthy()
+    expect(screen.getAllByText('read').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText(/bash/i)).toBeTruthy()
     expect(screen.getByText(/running/i)).toBeTruthy()
   })

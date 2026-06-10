@@ -580,6 +580,15 @@ body {
   background: rgba(255,255,255,0.16);
   border-radius: 999px;
 }
+.thinking-preview {
+  padding: 0 9px 9px;
+  color: rgba(255,255,255,0.5);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tool-result-part,
 .custom-part {
   border-left: 2px solid rgba(255,255,255,0.06);
@@ -603,6 +612,17 @@ body {
   font: inherit;
   font-size: 12px;
   padding: 4px 9px;
+}
+.process-timeline {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.process-timeline-label {
+  color: rgba(255,255,255,0.18);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .msg-final-actions {
   display: flex;
@@ -630,11 +650,16 @@ body {
 .mb-actions button:hover { color: rgba(0,122,255,0.55); }
 
 .tc {
-  margin-top: 8px; padding: 6px 10px 6px 12px;
-  border-left: 2px solid rgba(255,255,255,0.06);
+  padding: 7px 10px 7px 12px;
+  border: 1px solid rgba(255,255,255,0.055);
+  border-left: 2px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.018);
   font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.25);
 }
 .tc.done { border-left-color: var(--success); }
+.tc.error { border-left-color: rgba(255,94,94,0.7); background: rgba(255,94,94,0.035); }
+.tc.running { border-left-color: var(--accent); background: rgba(0,122,255,0.035); }
 .tcn { color: rgba(255,255,255,0.4); }
 .tcs { color: rgba(255,255,255,0.15); }
 .tool-args-details {

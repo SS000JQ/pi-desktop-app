@@ -214,7 +214,7 @@ function buildMessageParts(content: StoredMessage['content']): Message['parts'] 
   if (!Array.isArray(content)) return undefined
 
   const parts = content
-    .map((part): NonNullable<Message['parts']>[number] | null => {
+    .map((part, index): NonNullable<Message['parts']>[number] | null => {
       if (part.type === 'text' && part.text) {
         return { type: 'text', text: part.text }
       }
@@ -224,6 +224,20 @@ function buildMessageParts(content: StoredMessage['content']): Message['parts'] 
           title: 'Thinking',
           text: part.thinking || part.text || '',
           collapsed: true,
+        }
+      }
+      if (part.type === 'toolCall') {
+        const toolCallId = part.id || `tool-${index}`
+        return {
+          type: 'toolCall',
+          text: '',
+          toolCall: {
+            id: toolCallId,
+            toolCallId,
+            name: part.name || 'tool',
+            args: JSON.stringify(part.arguments || {}),
+            status: 'running',
+          },
         }
       }
       if (part.type === 'image') {
@@ -258,6 +272,7 @@ function extractToolCalls(content: StoredMessage['content']): Message['toolCalls
     .filter((part) => part.type === 'toolCall')
     .map((part, index) => ({
       id: part.id || `tool-${index}`,
+      toolCallId: part.id || `tool-${index}`,
       name: part.name || 'tool',
       args: JSON.stringify(part.arguments || {}),
       status: 'done' as const,
@@ -421,12 +436,11 @@ function toUiMessages(sessionId: string, storedMessages: StoredMessage[]): Messa
 }
 
 function toAggregatedAssistantTurn(sessionId: string, turnMessages: StoredMessage[], turnIndex: number): Message | null {
-  const thinkingParts: NonNullable<Message['parts']> = []
-  let finalVisibleParts: NonNullable<Message['parts']> = []
-  let finalText = ''
+  const orderedParts: NonNullable<Message['parts']> = []
   let lastTimestamp = Date.now()
   const toolCalls: ToolCall[] = []
   const toolCallIndexById = new Map<string, number>()
+  const toolPartIndexById = new Map<string, number>()
   let hasAssistantMessage = false
 
   turnMessages.forEach((message, index) => {
@@ -441,31 +455,27 @@ function toAggregatedAssistantTurn(sessionId: string, turnMessages: StoredMessag
     if (message.role === 'assistant') {
       hasAssistantMessage = true
       const parts = buildMessageParts(message.content) || []
-      const visibleParts = parts.filter((part) => part.type !== 'thinking')
-      const visibleText = visibleContentFromParts(parts, extractContentText(message.content))
-
-      thinkingParts.push(
-        ...parts
-          .filter((part) => part.type === 'thinking')
-          .map((part) => ({ ...part, collapsed: true })),
-      )
-
-      if (visibleParts.length > 0) {
-        finalVisibleParts = visibleParts
-      }
-      if (visibleText) {
-        finalText = visibleText
-      }
-
-      ;(extractToolCalls(message.content) || []).forEach((toolCall) => {
-        const toolCallKey = toolCall.toolCallId || toolCall.id || `${toolCall.name}-${index}`
-        if (toolCallIndexById.has(toolCallKey)) return
-        toolCallIndexById.set(toolCallKey, toolCalls.length)
-        toolCalls.push({
-          ...toolCall,
-          toolCallId: toolCall.toolCallId || toolCall.id,
-          status: 'running',
-        })
+      parts.forEach((part) => {
+        if (part.type === 'thinking') {
+          orderedParts.push({ ...part, collapsed: true })
+          return
+        }
+        if (part.type === 'toolCall' && part.toolCall) {
+          const toolCall = {
+            ...part.toolCall,
+            toolCallId: part.toolCall.toolCallId || part.toolCall.id,
+            status: 'running' as const,
+          }
+          const toolCallKey = toolCall.toolCallId || toolCall.id || `${toolCall.name}-${index}`
+          if (!toolCallIndexById.has(toolCallKey)) {
+            toolCallIndexById.set(toolCallKey, toolCalls.length)
+            toolCalls.push(toolCall)
+            toolPartIndexById.set(toolCallKey, orderedParts.length)
+            orderedParts.push({ ...part, toolCall })
+          }
+          return
+        }
+        orderedParts.push(part)
       })
       return
     }
@@ -476,9 +486,18 @@ function toAggregatedAssistantTurn(sessionId: string, turnMessages: StoredMessag
       if (toolIndex !== undefined) {
         const existingToolCall = toolCalls[toolIndex]
         if (!existingToolCall) return
-        toolCalls[toolIndex] = {
+        const nextStatus: ToolCall['status'] = message.isError ? 'error' : 'done'
+        const updatedToolCall: ToolCall = {
           ...existingToolCall,
-          status: message.isError ? 'error' : 'done',
+          status: nextStatus,
+        }
+        toolCalls[toolIndex] = updatedToolCall
+        const partIndex = toolPartIndexById.get(toolCallKey)
+        if (partIndex !== undefined && orderedParts[partIndex]?.type === 'toolCall') {
+          orderedParts[partIndex] = {
+            ...orderedParts[partIndex],
+            toolCall: updatedToolCall,
+          }
         }
       }
     }
@@ -486,27 +505,29 @@ function toAggregatedAssistantTurn(sessionId: string, turnMessages: StoredMessag
 
   if (!hasAssistantMessage) return null
 
-  const finalizedToolCalls = toolCalls.map((toolCall) => (
-    toolCall.status === 'running'
+  const finalizedToolCalls = toolCalls.map((toolCall, index) => {
+    const finalized = toolCall.status === 'running'
       ? { ...toolCall, status: 'done' as const }
       : toolCall
-  ))
+    const toolCallKey = finalized.toolCallId || finalized.id || `${finalized.name}-${index}`
+    const partIndex = toolPartIndexById.get(toolCallKey)
+    if (partIndex !== undefined && orderedParts[partIndex]?.type === 'toolCall') {
+      orderedParts[partIndex] = {
+        ...orderedParts[partIndex],
+        toolCall: finalized,
+      }
+    }
+    return finalized
+  })
 
-  const parts = [...thinkingParts]
-  if (finalVisibleParts.length > 0) {
-    parts.push(...finalVisibleParts)
-  } else if (finalText) {
-    parts.push({ type: 'text', text: finalText })
-  }
-
-  const content = finalText || visibleContentFromParts(finalVisibleParts, '').trim() || '(Pi completed this turn without a final text response.)'
+  const content = visibleContentFromParts(orderedParts, '').trim() || '(Pi completed this turn without a final text response.)'
 
   return {
     id: `${sessionId}-turn-${turnIndex}`,
     role: 'assistant',
     content,
     timestamp: lastTimestamp,
-    parts: parts.length > 0 ? parts : undefined,
+    parts: orderedParts.length > 0 ? orderedParts : undefined,
     toolCalls: finalizedToolCalls.length > 0 ? finalizedToolCalls : undefined,
     kind: 'standard',
   }

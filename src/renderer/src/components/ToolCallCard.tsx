@@ -5,7 +5,11 @@ interface ToolCallCardProps {
 }
 
 export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
-  const doneClass = toolCall.status === 'done' ? 'done' : ''
+  const stateClass = toolCall.status === 'running'
+    ? 'running'
+    : toolCall.status === 'error'
+      ? 'error'
+      : 'done'
   const argsPreview = compactArgs(toolCall.args)
   const hasLongArgs = argsPreview !== toolCall.args
 
@@ -18,7 +22,7 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
   )
 
   return (
-    <div className={`tc ${doneClass}`}>
+    <div className={`tc ${stateClass}`}>
       <div>
         <span className="tcn">{toolCall.name}</span>{' '}
         <span className="tcs" title={hasLongArgs ? toolCall.args : undefined}>({argsPreview})</span>

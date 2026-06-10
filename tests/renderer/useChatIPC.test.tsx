@@ -44,6 +44,13 @@ function ChatIPCHost({
   const assistant = messages.find((message) => message.role === 'assistant')
   const thinking = assistant?.parts?.find((part) => part.type === 'thinking')
   const text = assistant?.parts?.filter((part) => part.type === 'text').map((part) => part.text).join('')
+  const toolSummary = assistant?.toolCalls?.map((tool) => `${tool.name}:${tool.status}`).join('|') || ''
+  const partOrder = assistant?.parts?.map((part) => {
+    if (part.type === 'thinking') return `thinking:${part.text}`
+    if (part.type === 'toolCall') return `tool:${part.toolCall?.name || ''}:${part.toolCall?.status || ''}`
+    if (part.type === 'text') return `text:${part.text}`
+    return part.type
+  }).join('>') || ''
 
   return (
     <div>
@@ -57,6 +64,8 @@ function ChatIPCHost({
       <div data-testid="status-result">{status?.resultSummary || ''}</div>
       <div data-testid="status-thinking">{status?.thinkingPreview || ''}</div>
       <div data-testid="status-thinking-live">{status?.hasThinking ? 'yes' : 'no'}</div>
+      <div data-testid="tools">{toolSummary}</div>
+      <div data-testid="part-order">{partOrder}</div>
     </div>
   )
 }
@@ -191,6 +200,149 @@ describe('useChatIPC', () => {
     expect(screen.getByTestId('thinking').textContent).toBe('hidden reasoning')
     expect(screen.getByTestId('text').textContent).toBe('Visible answer')
     expect(screen.getByTestId('content').textContent).toBe('Visible answer')
+    vi.useRealTimers()
+  })
+
+  it('streams tool calls before the terminal done event', async () => {
+    vi.useFakeTimers()
+    let agentCallback: ((event: AgentEvent) => void) | null = null
+    window.piDesktop = {
+      chat: {
+        send: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            sessionId: 'session-1',
+            sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+            createdNewSession: false,
+            runId: 'run-tools-live',
+          },
+        }),
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      onAgentEvent: vi.fn((callback) => {
+        agentCallback = callback as (event: AgentEvent) => void
+        return () => {
+          agentCallback = null
+        }
+      }),
+    } as Partial<Window['piDesktop']> as Window['piDesktop']
+
+    render(<ChatIPCHost />)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'send' }).click()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'tool_started',
+        toolName: 'bash',
+        toolCallId: 'tool-bash-1',
+        args: { command: 'python script.py' },
+        runId: 'run-tools-live',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      vi.advanceTimersByTime(80)
+    })
+
+    expect(screen.getByTestId('tools').textContent).toBe('bash:running')
+    expect(screen.getByTestId('status').textContent).toBe('Running bash')
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'tool_finished',
+        toolName: 'bash',
+        toolCallId: 'tool-bash-1',
+        runId: 'run-tools-live',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      vi.advanceTimersByTime(80)
+    })
+
+    expect(screen.getByTestId('tools').textContent).toBe('bash:done')
+    expect(screen.getByTestId('status-label').textContent).not.toBe('Completed')
+    vi.useRealTimers()
+  })
+
+  it('keeps live thinking, tool calls, and text in event order', async () => {
+    vi.useFakeTimers()
+    let agentCallback: ((event: AgentEvent) => void) | null = null
+    window.piDesktop = {
+      chat: {
+        send: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            sessionId: 'session-1',
+            sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+            createdNewSession: false,
+            runId: 'run-interleaved',
+          },
+        }),
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      onAgentEvent: vi.fn((callback) => {
+        agentCallback = callback as (event: AgentEvent) => void
+        return () => {
+          agentCallback = null
+        }
+      }),
+    } as Partial<Window['piDesktop']> as Window['piDesktop']
+
+    render(<ChatIPCHost />)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'send' }).click()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      agentCallback?.({
+        type: 'thinking_delta',
+        text: 'first thought',
+        runId: 'run-interleaved',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      agentCallback?.({
+        type: 'tool_started',
+        toolName: 'bash',
+        toolCallId: 'tool-bash-1',
+        args: { command: 'python script.py' },
+        runId: 'run-interleaved',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      agentCallback?.({
+        type: 'tool_finished',
+        toolName: 'bash',
+        toolCallId: 'tool-bash-1',
+        runId: 'run-interleaved',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      agentCallback?.({
+        type: 'thinking_delta',
+        text: 'second thought',
+        runId: 'run-interleaved',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      agentCallback?.({
+        type: 'token',
+        text: 'Final answer',
+        runId: 'run-interleaved',
+        sessionId: 'session-1',
+        sessionPath: 'C:/Users/test/.pi/agent/sessions/project/session-1.jsonl',
+      })
+      vi.advanceTimersByTime(80)
+    })
+
+    expect(screen.getByTestId('part-order').textContent).toBe(
+      'thinking:first thought>tool:bash:done>thinking:second thought>text:Final answer',
+    )
     vi.useRealTimers()
   })
 
