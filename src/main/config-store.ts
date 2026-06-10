@@ -1,11 +1,13 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
 import { join } from 'path'
 
-type ConfigValue = string | number | boolean | null
+type ConfigValue = string | number | boolean | null | string[] | Record<string, unknown>
 type ConfigMap = Record<string, ConfigValue>
 
-const CONFIG_DIR = join(app.getPath('userData'), 'pi-desktop')
+const USER_DATA_DIR = app?.getPath ? app.getPath('userData') : join(homedir(), '.pi-desktop-test')
+const CONFIG_DIR = join(USER_DATA_DIR, 'pi-desktop')
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
 
 function ensureConfigDir(): void {

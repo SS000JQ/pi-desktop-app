@@ -143,6 +143,14 @@ export interface SkillSearchResult {
   description?: string
 }
 
+export type PiSkillScope = 'pi_global' | 'shared_global' | 'project' | 'settings' | 'package' | 'other'
+
+export interface SkillSettingsResult {
+  additionalSkillPaths: string[]
+  disabledSkillPaths: string[]
+  suggestedSkillPaths: string[]
+}
+
 export interface ProviderUpsertInput {
   providerId: string
   displayName: string
@@ -308,7 +316,9 @@ export interface PiDesktopApi {
         source: string
         filePath: string
         baseDir: string
-        scope: 'global' | 'project' | 'settings' | 'package' | 'other'
+        scope: PiSkillScope
+        sourceLabel: string
+        disabled: boolean
         disableModelInvocation: boolean
         status: 'active' | 'inactive' | 'error'
         diagnostics?: string[]
@@ -331,6 +341,14 @@ export interface PiDesktopApi {
         source: string
       }>
       diagnostics: string[]
+      summary: {
+        cwd: string | null
+        agentDir: string | null
+        totalSkills: number
+        countsByScope: Record<PiSkillScope, number>
+      }
+      additionalSkillPaths: string[]
+      disabledSkillPaths: string[]
     }>>
     getSlashCommands: (cwd?: string, sessionPath?: string) => Promise<IpcResponse<Array<{
       id: string
@@ -359,8 +377,11 @@ export interface PiDesktopApi {
     followUp: (payload: { sessionPath: string; message: string; images?: unknown[] }) => Promise<IpcResponse>
   }
   skills: {
+    getSettings: () => Promise<IpcResponse<SkillSettingsResult>>
     search: (payload: { query: string; limit?: number }) => Promise<IpcResponse<SkillSearchResult[]>>
     install: (payload: { packageName: string; scope: 'global' | 'project'; cwd?: string }) => Promise<IpcResponse>
+    setAdditionalPaths: (payload: { paths: string[] }) => Promise<IpcResponse<string[]>>
+    setDisabled: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse<string[]>>
     setModelInvocation: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse>
   }
   onAgentEvent: (callback: (event: unknown | RuntimeStatusPayload) => void) => () => void

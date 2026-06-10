@@ -1,4 +1,8 @@
-import { readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
+import { dirname, join, normalize } from 'path'
+import { getConfigValue, setConfigValue } from './config-store'
+import { getCliAgentPaths } from './providers'
 
 export interface SkillSearchResult {
   packageName: string
@@ -12,6 +16,33 @@ export interface SearchSkillsOptions {
   query: string
   limit?: number
   fetchImpl?: typeof fetch
+}
+
+export interface SkillSettings {
+  additionalSkillPaths: string[]
+  disabledSkillPaths: string[]
+  suggestedSkillPaths: string[]
+}
+
+interface SkillSettingsOptions {
+  settingsPath?: string
+  getConfigValue?: (key: string) => unknown
+}
+
+interface SetAdditionalSkillPathsOptions {
+  settingsPath?: string
+  pathExists?: (path: string) => boolean
+  isValidSkillPath?: (path: string) => boolean
+}
+
+interface SetDisabledSkillOptions {
+  getConfigValue?: (key: string) => unknown
+  setConfigValue?: (key: string, value: unknown) => void
+  allowedSkillPaths?: string[]
+}
+
+interface SetSkillModelInvocationOptions {
+  allowedSkillPaths?: string[]
 }
 
 function formatInstalls(value: unknown): string | undefined {
@@ -69,7 +100,115 @@ export async function searchSkills({
   })
 }
 
-export function setSkillModelInvocation(filePath: string, disabled: boolean): void {
+function normalizeSkillPath(filePath: string): string {
+  return normalize(filePath).replace(/\\/g, '/').toLowerCase()
+}
+
+function normalizeSettingPath(filePath: string): string {
+  return normalize(filePath)
+}
+
+function readJsonFile(filePath: string): Record<string, unknown> {
+  try {
+    if (!existsSync(filePath)) return {}
+    const parsed = JSON.parse(readFileSync(filePath, 'utf-8'))
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeJsonFile(filePath: string, data: Record<string, unknown>): void {
+  mkdirSync(dirname(filePath), { recursive: true })
+  writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : []
+}
+
+function defaultSuggestedSkillPaths(): string[] {
+  return [
+    join(homedir(), '.codex', 'skills'),
+    join(homedir(), '.claude', 'skills'),
+  ]
+}
+
+function assertDiscoveredSkill(filePath: string, allowedSkillPaths?: string[]): void {
+  if (!allowedSkillPaths) return
+  const requested = normalizeSkillPath(filePath)
+  const allowed = new Set(allowedSkillPaths.map(normalizeSkillPath))
+  if (!allowed.has(requested)) {
+    throw new Error('Refusing to update this file because it is not a discovered skill.')
+  }
+}
+
+function defaultIsValidSkillPath(filePath: string): boolean {
+  try {
+    const stat = statSync(filePath)
+    return stat.isDirectory() || (stat.isFile() && /(?:^|[\\/])SKILL\.md$/i.test(filePath))
+  } catch {
+    return false
+  }
+}
+
+export function getSkillSettings(options: SkillSettingsOptions = {}): SkillSettings {
+  const settingsPath = options.settingsPath || getCliAgentPaths().settingsPath
+  const settings = readJsonFile(settingsPath)
+  const configGetter = options.getConfigValue || getConfigValue
+
+  return {
+    additionalSkillPaths: readStringArray(settings.skills).map(normalizeSettingPath),
+    disabledSkillPaths: readStringArray(configGetter('disabledSkillPaths')).map(normalizeSettingPath),
+    suggestedSkillPaths: defaultSuggestedSkillPaths().map(normalizeSettingPath),
+  }
+}
+
+export function setAdditionalSkillPaths(paths: string[], options: SetAdditionalSkillPathsOptions = {}): string[] {
+  const settingsPath = options.settingsPath || getCliAgentPaths().settingsPath
+  const pathExists = options.pathExists || existsSync
+  const isValidSkillPath = options.isValidSkillPath || defaultIsValidSkillPath
+  const normalized = Array.from(new Set(paths.map((entry) => normalizeSettingPath(entry.trim())).filter(Boolean)))
+
+  for (const skillPath of normalized) {
+    if (!pathExists(skillPath) || !isValidSkillPath(skillPath)) {
+      throw new Error(`Additional skill path is not a valid directory or SKILL.md file: ${skillPath}`)
+    }
+  }
+
+  const settings = readJsonFile(settingsPath)
+  settings.skills = normalized
+  writeJsonFile(settingsPath, settings)
+  return normalized
+}
+
+export function setDisabledSkill(filePath: string, disabled: boolean, options: SetDisabledSkillOptions = {}): string[] {
+  assertDiscoveredSkill(filePath, options.allowedSkillPaths)
+  const configGetter = options.getConfigValue || getConfigValue
+  const configSetter = options.setConfigValue || setConfigValue
+  const current = readStringArray(configGetter('disabledSkillPaths'))
+  const requestedKey = normalizeSkillPath(filePath)
+  const next = current.filter((entry) => normalizeSkillPath(entry) !== requestedKey)
+
+  if (disabled) {
+    next.push(filePath)
+  }
+
+  const unique = Array.from(new Set(next))
+  configSetter('disabledSkillPaths', unique)
+  return unique
+}
+
+export function setSkillModelInvocation(
+  filePath: string,
+  disabled: boolean,
+  options: SetSkillModelInvocationOptions = {},
+): void {
+  assertDiscoveredSkill(filePath, options.allowedSkillPaths)
   const content = readFileSync(filePath, 'utf-8')
   const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n[\s\S]*)?$/)
 

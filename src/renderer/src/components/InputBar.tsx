@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import ContextChips from './ContextChips'
 import DropZone from './DropZone'
 import type { SlashCommand } from '../types/chat'
@@ -175,6 +175,30 @@ function executionFor(command: SlashCommand): 'desktop' | 'runtime' | 'prompt' |
   return 'prompt'
 }
 
+const DEFAULT_EXPANDED_COMMAND_GROUPS = new Set(['Desktop', 'Pi Runtime'])
+
+function groupForCommand(command: SlashCommand): string {
+  if (command.group) return command.group
+  switch (command.kind) {
+    case 'desktop':
+      return 'Desktop'
+    case 'pi_runtime':
+      return 'Pi Runtime'
+    case 'skill':
+      return 'Skills'
+    case 'prompt':
+      return 'Prompts'
+    case 'extension':
+      return 'Extensions'
+    case 'context':
+      return 'Context'
+    case 'unsupported':
+      return 'Unsupported'
+    default:
+      return command.kind
+  }
+}
+
 export default function InputBar({ onSendMessage, isStreaming, onCommand, slashCommands = FALLBACK_SLASH_COMMANDS }: InputBarProps) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<{ name: string }[]>([])
@@ -183,6 +207,7 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
   const [selectedCmdIdx, setSelectedCmdIdx] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [commandNotice, setCommandNotice] = useState<string | null>(null)
+  const [expandedCommandGroups, setExpandedCommandGroups] = useState<Record<string, boolean>>({})
   const inputRef = useRef<HTMLInputElement>(null)
 
   const effectiveSlashCommands = slashCommands.length > 0 ? slashCommands : FALLBACK_SLASH_COMMANDS
@@ -238,14 +263,14 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
   }
 
   const applySelectedCommand = () => {
-    const selected = filteredCommands[selectedCmdIdx]
+    const selected = visibleCommands[selectedCmdIdx]
     if (selected) {
       chooseCommand(selected)
     }
   }
 
-  const groupedCommands = filteredCommands.reduce<Array<{ group: string; commands: SlashCommand[] }>>((groups, command) => {
-    const group = command.group || command.kind
+  const groupedCommands = useMemo(() => filteredCommands.reduce<Array<{ group: string; commands: SlashCommand[] }>>((groups, command) => {
+    const group = groupForCommand(command)
     const existing = groups.find((entry) => entry.group === group)
     if (existing) {
       existing.commands.push(command)
@@ -253,9 +278,27 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
       groups.push({ group, commands: [command] })
     }
     return groups
-  }, [])
+  }, []), [filteredCommands])
 
-  const commandIndex = (target: SlashCommand) => filteredCommands.findIndex((command) => command.command === target.command)
+  const isGroupExpanded = (group: string) => {
+    if (commandFilter) return true
+    if (Object.prototype.hasOwnProperty.call(expandedCommandGroups, group)) {
+      return expandedCommandGroups[group]
+    }
+    return DEFAULT_EXPANDED_COMMAND_GROUPS.has(group)
+  }
+
+  const visibleCommands = groupedCommands.flatMap((group) => (isGroupExpanded(group.group) ? group.commands : []))
+
+  const commandIndex = (target: SlashCommand) => visibleCommands.findIndex((command) => command.command === target.command)
+
+  const toggleCommandGroup = (group: string) => {
+    setExpandedCommandGroups((previous) => ({
+      ...previous,
+      [group]: !isGroupExpanded(group),
+    }))
+    setSelectedCmdIdx(0)
+  }
 
   const renderCommand = (command: SlashCommand) => {
     const index = commandIndex(command)
@@ -278,10 +321,10 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (showCommands && filteredCommands.length > 0) {
+    if (showCommands && visibleCommands.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
-        setSelectedCmdIdx((previous) => Math.min(previous + 1, filteredCommands.length - 1))
+        setSelectedCmdIdx((previous) => Math.min(previous + 1, visibleCommands.length - 1))
         return
       }
       if (event.key === 'ArrowUp') {
@@ -316,6 +359,10 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
       setShowCommands(false)
     }
   }, [text])
+
+  useEffect(() => {
+    setSelectedCmdIdx(0)
+  }, [commandFilter, slashCommands])
 
   useEffect(() => {
     const inputEl = inputRef.current
@@ -387,12 +434,29 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
 
       {showCommands && filteredCommands.length > 0 && (
         <div className="cmd-list">
-          {groupedCommands.map((group) => (
-            <div key={group.group}>
-              <div className="cmd-group">{group.group}</div>
-              {group.commands.map(renderCommand)}
-            </div>
-          ))}
+          <div className="cmd-list-scroll">
+            {groupedCommands.map((group) => {
+              const expanded = isGroupExpanded(group.group)
+              return (
+                <div key={group.group} className="cmd-section">
+                  <button
+                    type="button"
+                    className="cmd-group"
+                    onClick={() => toggleCommandGroup(group.group)}
+                    aria-expanded={expanded}
+                    aria-label={`${group.group} commands`}
+                  >
+                    <span>{expanded ? 'v' : '>'} {group.group}</span>
+                    <span className="cmd-group-count">{group.commands.length}</span>
+                  </button>
+                  {expanded ? group.commands.map(renderCommand) : null}
+                </div>
+              )
+            })}
+          </div>
+          {commandFilter && visibleCommands.length === 0 ? (
+            <div className="cmd-empty">No matching expanded commands.</div>
+          ) : null}
         </div>
       )}
       {commandNotice && (

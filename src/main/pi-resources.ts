@@ -2,6 +2,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { getCliAgentPaths } from './providers'
 import { loadPiCodingAgentModule } from './pi-sdk'
+import { getSkillSettings } from './skills-manager'
 import type {
   DefaultResourceLoader,
   ResourceLoader,
@@ -12,7 +13,7 @@ export type SlashCommandKind = 'desktop' | 'pi_runtime' | 'skill' | 'prompt' | '
 export type SlashCommandExecution = 'desktop' | 'runtime' | 'prompt' | 'disabled'
 export type SlashCommandGroup = 'Desktop' | 'Pi Runtime' | 'Skills' | 'Prompts' | 'Extensions' | 'Context' | 'Unsupported'
 export type PiResourceStatus = 'active' | 'inactive' | 'error'
-export type PiResourceScope = 'global' | 'project' | 'settings' | 'package' | 'other'
+export type PiResourceScope = 'pi_global' | 'shared_global' | 'project' | 'settings' | 'package' | 'other'
 
 export interface PiSkillResource {
   name: string
@@ -21,6 +22,8 @@ export interface PiSkillResource {
   filePath: string
   baseDir: string
   scope: PiResourceScope
+  sourceLabel: string
+  disabled: boolean
   disableModelInvocation: boolean
   status: PiResourceStatus
   diagnostics?: string[]
@@ -52,6 +55,14 @@ export interface PiResourcesResult {
   extensions: PiExtensionResource[]
   extensionCommands: PiExtensionCommandResource[]
   diagnostics: string[]
+  summary: {
+    cwd: string | null
+    agentDir: string | null
+    totalSkills: number
+    countsByScope: Record<PiResourceScope, number>
+  }
+  additionalSkillPaths: string[]
+  disabledSkillPaths: string[]
 }
 
 export interface SlashCommand {
@@ -73,6 +84,8 @@ type ResourceLoaderLike = Pick<DefaultResourceLoader, 'reload' | 'getSkills' | '
 interface BuildPiResourcesOptions {
   cwd?: string | null
   agentDir?: string
+  additionalSkillPaths?: string[]
+  disabledSkillPaths?: string[]
   createLoader?: () => ResourceLoaderLike
 }
 
@@ -237,23 +250,66 @@ function parentDirectory(filePath: string): string {
   return filePath.replace(/[\\/][^\\/]*$/, '')
 }
 
-function scopeFromInfo(sourceInfo: unknown, filePath: string): PiResourceScope {
+const EMPTY_SCOPE_COUNTS: Record<PiResourceScope, number> = {
+  pi_global: 0,
+  shared_global: 0,
+  project: 0,
+  settings: 0,
+  package: 0,
+  other: 0,
+}
+
+function normalizePathKey(filePath: string): string {
+  return filePath.replace(/\\/g, '/').toLowerCase()
+}
+
+function sourceLabelForScope(scope: PiResourceScope): string {
+  switch (scope) {
+    case 'pi_global':
+      return 'Pi Global'
+    case 'shared_global':
+      return 'Shared Global'
+    case 'project':
+      return 'Project'
+    case 'settings':
+      return 'Settings'
+    case 'package':
+      return 'Package'
+    default:
+      return 'Other'
+  }
+}
+
+function scopeFromInfo(sourceInfo: unknown, filePath: string, cwd?: string | null): PiResourceScope {
   const sourceText = [
     typeof filePath === 'string' ? filePath : '',
     sourceInfo && typeof sourceInfo === 'object' ? JSON.stringify(sourceInfo) : '',
   ].join(' ').toLowerCase()
+  const normalizedFilePath = normalizePathKey(filePath)
+  const normalizedCwd = cwd ? normalizePathKey(cwd).replace(/\/$/, '') : ''
 
-  if (sourceText.includes('"user"') || sourceText.includes('"global"') || sourceText.includes('/.pi/agent/') || sourceText.includes('\\.pi\\agent\\')) {
-    return 'global'
-  }
-  if (sourceText.includes('"project"') || sourceText.includes('/.pi/skills') || sourceText.includes('\\.pi\\skills')) {
-    return 'project'
-  }
   if (sourceText.includes('"package"') || sourceText.includes('node_modules')) {
     return 'package'
   }
   if (sourceText.includes('"settings"')) {
     return 'settings'
+  }
+  if (
+    sourceText.includes('"project"')
+    || normalizedFilePath.includes('/.pi/skills/')
+    || (normalizedCwd && normalizedFilePath.startsWith(`${normalizedCwd}/.agents/skills/`))
+  ) {
+    return 'project'
+  }
+  if (normalizedFilePath.includes('/.agents/skills/')) {
+    return 'shared_global'
+  }
+  if (
+    sourceText.includes('"user"')
+    || sourceText.includes('"global"')
+    || normalizedFilePath.includes('/.pi/agent/skills/')
+  ) {
+    return 'pi_global'
   }
   return 'other'
 }
@@ -266,6 +322,11 @@ function normalizeCommandName(name: unknown): string | null {
 
 export async function buildPiResources(options: BuildPiResourcesOptions = {}): Promise<PiResourcesResult> {
   const diagnostics: string[] = []
+  const skillSettings = getSkillSettings()
+  const additionalSkillPaths = options.additionalSkillPaths || skillSettings.additionalSkillPaths
+  const disabledSkillPaths = options.disabledSkillPaths || skillSettings.disabledSkillPaths
+  const disabledPathSet = new Set(disabledSkillPaths.map(normalizePathKey))
+  const agentDir = options.agentDir || getCliAgentPaths().agentDir
   try {
     const loader = options.createLoader ? options.createLoader() : await createDefaultResourceLoader(options)
     await loader.reload()
@@ -283,24 +344,35 @@ export async function buildPiResources(options: BuildPiResourcesOptions = {}): P
 
     const extensionCommands = getExtensionCommands(extensionResult)
 
-    return {
-      skills: (skillResult.skills || []).map((skill: any) => {
+    const skills = (skillResult.skills || [])
+      .map((skill: any): PiSkillResource => {
         const filePath = String(skill.filePath || sourcePathFromInfo(skill.sourceInfo))
         const baseDir = String(skill.baseDir || parentDirectory(filePath))
+        const scope = scopeFromInfo(skill.sourceInfo, filePath, options.cwd)
         return {
           name: String(skill.name || ''),
           description: String(skill.description || ''),
           source: filePath,
           filePath,
           baseDir,
-          scope: scopeFromInfo(skill.sourceInfo, filePath),
+          scope,
+          sourceLabel: sourceLabelForScope(scope),
+          disabled: disabledPathSet.has(normalizePathKey(filePath)),
           disableModelInvocation: Boolean(skill.disableModelInvocation),
           status: 'active',
           diagnostics: Array.isArray(skill.diagnostics)
             ? skill.diagnostics.map(diagnosticToString).filter(Boolean)
             : undefined,
         }
-      }),
+      })
+      .filter((skill) => !skill.disabled)
+    const countsByScope = { ...EMPTY_SCOPE_COUNTS }
+    for (const skill of skills) {
+      countsByScope[skill.scope] += 1
+    }
+
+    return {
+      skills,
       prompts: (promptResult.prompts || []).map((prompt: any) => ({
         name: String(prompt.name || ''),
         description: String(prompt.description || ''),
@@ -314,6 +386,14 @@ export async function buildPiResources(options: BuildPiResourcesOptions = {}): P
       })),
       extensionCommands,
       diagnostics,
+      summary: {
+        cwd: options.cwd || null,
+        agentDir,
+        totalSkills: skills.length,
+        countsByScope,
+      },
+      additionalSkillPaths,
+      disabledSkillPaths,
     }
   } catch (error) {
     return {
@@ -322,6 +402,14 @@ export async function buildPiResources(options: BuildPiResourcesOptions = {}): P
       extensions: [],
       extensionCommands: [],
       diagnostics: [error instanceof Error ? error.message : 'Failed to load Pi resources'],
+      summary: {
+        cwd: options.cwd || null,
+        agentDir,
+        totalSkills: 0,
+        countsByScope: { ...EMPTY_SCOPE_COUNTS },
+      },
+      additionalSkillPaths,
+      disabledSkillPaths,
     }
   }
 }
@@ -329,10 +417,18 @@ export async function buildPiResources(options: BuildPiResourcesOptions = {}): P
 export async function createPiResourceLoader(cwd?: string | null, agentDirOverride?: string): Promise<ResourceLoader> {
   const { DefaultResourceLoader, getAgentDir } = await loadPiCodingAgentModule()
   const agentDir = agentDirOverride || getAgentDir?.() || getCliAgentPaths().agentDir
+  const disabledPathSet = new Set(getSkillSettings().disabledSkillPaths.map(normalizePathKey))
   return new DefaultResourceLoader({
     cwd: cwd || join(homedir(), 'Pi-Desktop-Session'),
     agentDir,
-  })
+    skillsOverride: (current: { skills?: any[]; diagnostics?: unknown[] }) => ({
+      skills: (current.skills || []).filter((skill) => {
+        const filePath = String(skill.filePath || sourcePathFromInfo(skill.sourceInfo))
+        return !disabledPathSet.has(normalizePathKey(filePath))
+      }),
+      diagnostics: current.diagnostics || [],
+    }),
+  } as any)
 }
 
 async function createDefaultResourceLoader(options: BuildPiResourcesOptions): Promise<ResourceLoaderLike> {
@@ -372,7 +468,7 @@ export function buildSlashCommands(resources: PiResourcesResult): SlashCommand[]
   const commands = [
     ...DESKTOP_COMMANDS,
     ...PI_RUNTIME_COMMANDS,
-    ...resources.skills.map((skill): SlashCommand => ({
+    ...resources.skills.filter((skill) => !skill.disabled).map((skill): SlashCommand => ({
       id: `skill:${skill.name}`,
       command: `/skill:${skill.name}`,
       label: skill.name,

@@ -31,6 +31,9 @@ export const IPC_CHANNELS = {
   SKILLS_SEARCH: 'skills:search',
   SKILLS_INSTALL: 'skills:install',
   SKILLS_SET_MODEL_INVOCATION: 'skills:setModelInvocation',
+  SKILLS_GET_SETTINGS: 'skills:getSettings',
+  SKILLS_SET_ADDITIONAL_PATHS: 'skills:setAdditionalPaths',
+  SKILLS_SET_DISABLED: 'skills:setDisabled',
 } as const
 
 export const APP_NAME = 'Pi Desktop'

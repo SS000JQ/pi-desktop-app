@@ -53,8 +53,11 @@ const api: PiDesktopApi = {
     followUp: (payload) => ipcRenderer.invoke(IPC_CHANNELS.PI_RUNTIME_FOLLOW_UP, payload),
   },
   skills: {
+    getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_SETTINGS),
     search: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SEARCH, payload),
     install: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_INSTALL, payload),
+    setAdditionalPaths: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_ADDITIONAL_PATHS, payload),
+    setDisabled: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_DISABLED, payload),
     setModelInvocation: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_MODEL_INVOCATION, payload),
   },
   profiles: {

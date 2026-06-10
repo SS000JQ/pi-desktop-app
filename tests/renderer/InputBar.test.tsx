@@ -56,9 +56,56 @@ describe('InputBar', () => {
     const input = screen.getByPlaceholderText(/Ask Pi/)
     fireEvent.change(input, { target: { value: '/' } })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Skills commands' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Prompts commands' }))
+
     expect(screen.getByText('/skill:pdf')).toBeTruthy()
     expect(screen.getByText('/review')).toBeTruthy()
     expect(screen.getByText('[scope]')).toBeTruthy()
+  })
+
+  it('collapses resource slash command groups until the user expands them', () => {
+    render(
+      <InputBar
+        onSendMessage={() => {}}
+        isStreaming={false}
+        slashCommands={[
+          {
+            id: 'desktop:new',
+            command: '/new',
+            label: 'New',
+            description: 'Create session',
+            kind: 'desktop',
+            execution: 'desktop',
+            source: 'Pi Desktop',
+            group: 'Desktop',
+          },
+          {
+            id: 'skill:pdf',
+            command: '/skill:pdf',
+            label: 'pdf',
+            description: 'Read PDFs',
+            kind: 'skill',
+            execution: 'prompt',
+            source: 'skill',
+          },
+        ]}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText(/Ask Pi/)
+    fireEvent.change(input, { target: { value: '/' } })
+
+    expect(screen.getByText('/new')).toBeTruthy()
+    expect(screen.queryByText('/skill:pdf')).toBeNull()
+
+    const skillsGroup = screen.getByRole('button', { name: 'Skills commands' })
+    expect(skillsGroup.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(skillsGroup)
+
+    expect(skillsGroup.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('/skill:pdf')).toBeTruthy()
   })
 
   it('keeps desktop fallback commands available while dynamic commands are loading', () => {

@@ -361,13 +361,17 @@ export interface SlashCommand {
   disabledReason?: string
 }
 
+export type PiSkillScope = 'pi_global' | 'shared_global' | 'project' | 'settings' | 'package' | 'other'
+
 export interface PiSkillResource {
   name: string
   description: string
   source: string
   filePath?: string
   baseDir?: string
-  scope?: 'global' | 'project' | 'settings' | 'package' | 'other'
+  scope?: PiSkillScope
+  sourceLabel?: string
+  disabled?: boolean
   disableModelInvocation?: boolean
   status: 'active' | 'inactive' | 'error'
   diagnostics?: string[]
@@ -397,4 +401,12 @@ export interface PiResourcesResult {
     source: string
   }>
   diagnostics: string[]
+  summary?: {
+    cwd: string | null
+    agentDir: string | null
+    totalSkills: number
+    countsByScope: Record<PiSkillScope, number>
+  }
+  additionalSkillPaths?: string[]
+  disabledSkillPaths?: string[]
 }

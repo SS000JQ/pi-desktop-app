@@ -48,7 +48,14 @@ import {
   saveActiveSessionId,
 } from './desktop-state'
 import { getPiResources, getSlashCommands } from './pi-resources'
-import { installSkill, searchSkills, setSkillModelInvocation } from './skills-manager'
+import {
+  getSkillSettings,
+  installSkill,
+  searchSkills,
+  setAdditionalSkillPaths,
+  setDisabledSkill,
+  setSkillModelInvocation,
+} from './skills-manager'
 import {
   artifactHistory,
   getArtifact,
@@ -954,9 +961,43 @@ ipcMain.handle(IPC_CHANNELS.SKILLS_INSTALL, async (_event, payload) => {
   }
 })
 
+ipcMain.handle(IPC_CHANNELS.SKILLS_GET_SETTINGS, async () => {
+  try {
+    return { success: true, data: getSkillSettings() }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to load skill settings' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.SKILLS_SET_ADDITIONAL_PATHS, async (_event, payload: { paths: string[] }) => {
+  try {
+    return { success: true, data: setAdditionalSkillPaths(payload.paths || []) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update additional skill paths' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.SKILLS_SET_DISABLED, async (_event, payload: { filePath: string; disabled: boolean }) => {
+  try {
+    const resources = await getPiResources(resolveWorkingDirectory())
+    const allowedSkillPaths = [
+      ...resources.skills.map((skill) => skill.filePath),
+      ...getSkillSettings().disabledSkillPaths,
+    ]
+    return {
+      success: true,
+      data: setDisabledSkill(payload.filePath, payload.disabled, { allowedSkillPaths }),
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update disabled skill list' }
+  }
+})
+
 ipcMain.handle(IPC_CHANNELS.SKILLS_SET_MODEL_INVOCATION, async (_event, payload: { filePath: string; disabled: boolean }) => {
   try {
-    setSkillModelInvocation(payload.filePath, payload.disabled)
+    const resources = await getPiResources(resolveWorkingDirectory())
+    const allowedSkillPaths = resources.skills.map((skill) => skill.filePath)
+    setSkillModelInvocation(payload.filePath, payload.disabled, { allowedSkillPaths })
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update skill settings' }
