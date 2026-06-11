@@ -10,6 +10,7 @@ import Settings from './screens/Settings'
 import ProviderManager from './screens/ProviderManager'
 import Skills from './screens/Skills'
 import Tools from './screens/Tools'
+import { applyThemePreset, type ThemePresetId } from './lib/themes'
 import type {
   ArtifactEntity,
   ConnectorSummaryEntry,
@@ -744,6 +745,7 @@ export default function App() {
   const [showSkills, setShowSkills] = useState(false)
   const [showTools, setShowTools] = useState(false)
   const [defaultSessionDirectory, setDefaultSessionDirectory] = useState('')
+  const [themePreset, setThemePreset] = useState<ThemePresetId>(() => applyThemePreset('classic'))
   const [pinnedSessionPaths, setPinnedSessionPaths] = useState<string[]>([])
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
@@ -1369,11 +1371,12 @@ export default function App() {
 
   useEffect(() => {
     async function initialize() {
-      const [providersLoaded, workingDirRes, defaultSessionDirRes, pinnedSessionPathsRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
+      const [providersLoaded, workingDirRes, defaultSessionDirRes, pinnedSessionPathsRes, themeRes, wizardRes, activeSessionRes, sessionsLoaded] = await Promise.all([
         loadProviders(),
         window.piDesktop.config.get('workingDirectory'),
         window.piDesktop.config.get('defaultSessionDirectory'),
         window.piDesktop.config.get('pinnedSessionPaths'),
+        window.piDesktop.config.get('theme'),
         window.piDesktop.config.get('wizardCompleted'),
         window.piDesktop.session.getActive(),
         loadSessions(),
@@ -1393,11 +1396,13 @@ export default function App() {
         pinnedSessionPathsRes.success && Array.isArray(pinnedSessionPathsRes.data)
           ? pinnedSessionPathsRes.data.filter((path): path is string => typeof path === 'string')
           : []
+      const resolvedTheme = themeRes.success ? applyThemePreset(themeRes.data) : applyThemePreset('classic')
 
       setCurrentDir(workingDirectory)
       setRuntimeWorkspaceDir('')
       setDefaultSessionDirectory(resolvedDefaultSessionDirectory)
       setPinnedSessionPaths(resolvedPinnedSessionPaths)
+      setThemePreset(resolvedTheme)
       setHasProvider(hasRunnableProvider(providersLoaded))
 
       const preferredSessionKey = activeSessionRes.success && typeof activeSessionRes.data === 'string' ? activeSessionRes.data : null
@@ -1988,6 +1993,10 @@ export default function App() {
         <Settings
           onClose={() => setShowSettings(false)}
           onDefaultSessionDirectoryChange={setDefaultSessionDirectory}
+          themePreset={themePreset}
+          onThemeChange={(nextTheme) => {
+            setThemePreset(applyThemePreset(nextTheme))
+          }}
         />
       )}
       {showProvider && <ProviderManager onClose={() => { setShowProvider(false); void loadProviders() }} />}

@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import EnvironmentStatusList from '../components/EnvironmentStatusList'
+import { THEME_PRESETS, applyThemePreset, normalizeThemePreset, type ThemePresetId } from '../lib/themes'
 import type { EnvironmentCheckResult } from '../types/chat'
 
 interface SettingsProps {
   onClose: () => void
   onDefaultSessionDirectoryChange?: (path: string) => void
+  themePreset?: ThemePresetId
+  onThemeChange?: (theme: ThemePresetId) => void
 }
 
-export default function Settings({ onClose, onDefaultSessionDirectoryChange }: SettingsProps) {
+export default function Settings({ onClose, onDefaultSessionDirectoryChange, themePreset, onThemeChange }: SettingsProps) {
   const [defaultDir, setDefaultDir] = useState('')
-  const [theme, setTheme] = useState('dark')
+  const [theme, setTheme] = useState<ThemePresetId>(themePreset || 'classic')
   const [saveMessage, setSaveMessage] = useState('')
   const [environmentStatus, setEnvironmentStatus] = useState<EnvironmentCheckResult | null>(null)
   const [environmentLoading, setEnvironmentLoading] = useState(false)
@@ -22,11 +25,16 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange }: S
     })
     window.piDesktop.config.get('theme').then((response) => {
       if (response.success && typeof response.data === 'string') {
-        setTheme(response.data)
+        setTheme(applyThemePreset(response.data))
       }
     })
     void loadEnvironmentStatus()
   }, [])
+
+  useEffect(() => {
+    if (!themePreset) return
+    setTheme(themePreset)
+  }, [themePreset])
 
   async function loadEnvironmentStatus() {
     setEnvironmentLoading(true)
@@ -57,10 +65,12 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange }: S
     setSaveMessage('')
   }
 
-  async function toggleTheme() {
-    const next = theme === 'dark' ? 'light' : 'dark'
+  async function selectTheme(value: ThemePresetId) {
+    const next = normalizeThemePreset(value)
     setTheme(next)
+    applyThemePreset(next)
     await window.piDesktop.config.set('theme', next)
+    onThemeChange?.(next)
   }
 
   return (
@@ -99,16 +109,35 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange }: S
             )}
           </div>
 
-          <div className="flex justify-between items-center">
+          <div>
             <div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>Theme</div>
+              <div style={{ fontSize: 12, color: 'var(--text)' }}>Theme</div>
               <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>
-                Toggle between dark and light mode.
+                Choose a visual preset. Classic keeps the current Pi Desktop look.
               </div>
             </div>
-            <button onClick={toggleTheme} className={`toggle ${theme === 'dark' ? 'on' : ''}`} type="button" aria-label="Toggle dark mode">
-              <span className="toggle-knob" />
-            </button>
+            <div className="theme-preset-grid" role="radiogroup" aria-label="Theme preset">
+              {THEME_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={theme === preset.id}
+                  className={`theme-preset-card ${theme === preset.id ? 'active' : ''}`}
+                  onClick={() => { void selectTheme(preset.id) }}
+                >
+                  <span className="theme-preset-main">
+                    <span className="theme-preset-name">{preset.name}</span>
+                    <span className="theme-preset-desc">{preset.description}</span>
+                  </span>
+                  <span className="theme-swatch-row" aria-hidden="true">
+                    {preset.swatches.map((color) => (
+                      <span key={color} className="theme-swatch" style={{ background: color }} />
+                    ))}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <EnvironmentStatusList

@@ -205,14 +205,14 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
     <div className="modal-overlay" onClick={onClose}>
       <div
         style={{
-          background: '#1a1919',
-          border: '1px solid rgba(255,255,255,0.04)',
+          background: 'var(--bg-app)',
+          border: '1px solid var(--bd)',
           borderRadius: 4,
           width: 640,
           maxHeight: '80vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          boxShadow: '0 18px 46px rgba(0,0,0,0.28)',
         }}
         onClick={(event) => event.stopPropagation()}
       >
@@ -222,21 +222,21 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '10px 14px',
-            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            borderBottom: '1px solid var(--bd)',
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>Pi Resources</span>
+          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>Pi Resources</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={handleReload}
               disabled={isLoading}
               style={{
-                border: '1px solid rgba(255,255,255,0.06)',
-                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--card-border)',
+                background: 'var(--panel-bg)',
                 borderRadius: 4,
                 fontFamily: 'inherit',
                 fontSize: 12,
-                color: 'rgba(255,255,255,0.32)',
+                color: 'var(--text2)',
                 cursor: isLoading ? 'default' : 'pointer',
                 padding: '3px 8px',
               }}
@@ -250,7 +250,7 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
                 background: 'none',
                 fontFamily: 'inherit',
                 fontSize: 13,
-                color: 'rgba(255,255,255,0.2)',
+                color: 'var(--text2)',
                 cursor: 'pointer',
               }}
             >
@@ -258,13 +258,13 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
             </button>
           </div>
         </div>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11, color: 'rgba(255,255,255,0.22)', lineHeight: 1.6 }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
           This panel reports the resources discovered through Pi's resource loader, so it should match what the runtime can load.
-          <div style={{ marginTop: 6, color: 'rgba(255,255,255,0.16)', wordBreak: 'break-all' }}>
+          <div style={{ marginTop: 6, color: 'var(--text3)', wordBreak: 'break-all' }}>
             Workspace: {currentDir || '(runtime default)'}
           </div>
         </div>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bd)' }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               value={searchQuery}
@@ -278,10 +278,10 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
               placeholder="Search skills"
               style={{
                 flex: 1,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
+                background: 'var(--panel-bg)',
+                border: '1px solid var(--card-border)',
                 borderRadius: 4,
-                color: 'rgba(255,255,255,0.58)',
+                color: 'var(--text)',
                 fontFamily: 'inherit',
                 fontSize: 12,
                 padding: '6px 8px',
@@ -291,10 +291,10 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
               onClick={() => void handleSearch()}
               disabled={isSearching || !searchQuery.trim()}
               style={{
-                border: '1px solid rgba(255,255,255,0.06)',
-                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--card-border)',
+                background: 'var(--panel-bg)',
                 borderRadius: 4,
-                color: 'rgba(255,255,255,0.38)',
+                color: 'var(--text2)',
                 fontFamily: 'inherit',
                 fontSize: 12,
                 padding: '6px 10px',
@@ -310,9 +310,9 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
               style={{
                 marginTop: 8,
                 fontSize: 11,
-                color: 'rgba(255,255,255,0.72)',
-                border: '1px solid rgba(48,209,88,0.22)',
-                background: 'rgba(48,209,88,0.08)',
+                color: 'var(--text)',
+                border: '1px solid color-mix(in srgb, var(--success) 45%, transparent)',
+                background: 'color-mix(in srgb, var(--success) 14%, var(--bg-chat) 86%)',
                 borderRadius: 6,
                 padding: '7px 9px',
               }}
@@ -323,9 +323,9 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
           {searchResults.length > 0 && (
             <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
               {searchResults.map((result) => (
-                <div key={result.packageName} style={{ border: '1px solid rgba(255,255,255,0.05)', borderRadius: 4, padding: 8 }}>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{result.packageName}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', marginTop: 3 }}>
+                <div key={result.packageName} style={{ border: '1px solid var(--card-border)', borderRadius: 4, padding: 8, background: 'var(--panel-bg)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text)' }}>{result.packageName}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3 }}>
                     {[result.description, result.installs].filter(Boolean).join(' - ') || 'Skill package'}
                   </div>
                 </div>
@@ -335,16 +335,27 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {isLoading && (
-            <div style={{ padding: '10px 14px', fontSize: 12, color: 'rgba(255,255,255,0.28)' }}>
+            <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text2)' }}>
               Loading Pi resources...
             </div>
           )}
           {error && (
-            <div style={{ margin: '8px 14px', padding: 10, border: '1px solid rgba(255,69,58,0.18)', borderRadius: 4, fontSize: 12, color: 'rgba(255,160,150,0.78)', lineHeight: 1.5 }}>
+            <div
+              style={{
+                margin: '8px 14px',
+                padding: 10,
+                border: '1px solid color-mix(in srgb, #dc2626 28%, var(--bd))',
+                background: 'color-mix(in srgb, #dc2626 10%, var(--panel-bg))',
+                borderRadius: 8,
+                fontSize: 12,
+                color: 'color-mix(in srgb, #dc2626 72%, var(--text))',
+                lineHeight: 1.5,
+              }}
+            >
               {error}
             </div>
           )}
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11, color: 'rgba(255,255,255,0.22)', lineHeight: 1.6 }}>
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
             <div>{resources.summary?.totalSkills ?? resources.skills.length} skills discovered</div>
             <div style={{ wordBreak: 'break-all' }}>Agent dir: {resources.summary?.agentDir || '(unknown)'}</div>
             <ScopeSummary counts={resources.summary?.countsByScope} />
@@ -362,7 +373,7 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
           <ResourceSection title="Skills" empty="No skills discovered.">
             {groupSkillsBySource(resources.skills).map((group) => (
               <div key={group.label}>
-                <div style={{ padding: '8px 14px 2px', fontSize: 11, color: 'rgba(255,255,255,0.32)' }}>
+                <div style={{ padding: '8px 14px 2px', fontSize: 11, color: 'var(--text2)' }}>
                   {group.label}
                 </div>
                 {group.skills.map((skill) => (
@@ -573,9 +584,10 @@ function ScopeSummary({ counts }: { counts?: NonNullable<PiResourcesResult['summ
         <span
           key={label}
           style={{
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: '1px solid var(--card-border)',
             borderRadius: 999,
-            color: 'rgba(255,255,255,0.36)',
+            color: 'var(--text2)',
+            background: 'color-mix(in srgb, var(--bg-chat) 84%, var(--accent) 5%)',
             padding: '2px 7px',
           }}
         >
@@ -600,37 +612,37 @@ function AdditionalSkillPaths({
   const existing = new Set(additionalPaths)
   const suggestions = suggestedPaths.filter((path) => !existing.has(path))
   return (
-    <section style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-      <div style={{ padding: '8px 14px 4px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.18)' }}>
+    <section style={{ borderBottom: '1px solid var(--bd)' }}>
+      <div style={{ padding: '8px 14px 4px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text2)' }}>
         Additional skill paths
       </div>
       {suggestions.length > 0 ? (
-        <div style={{ padding: '2px 14px 6px', fontSize: 11, color: 'rgba(255,255,255,0.32)' }}>
+        <div style={{ padding: '2px 14px 6px', fontSize: 11, color: 'var(--text2)' }}>
           External directories detected but not enabled
         </div>
       ) : null}
       {additionalPaths.length === 0 ? (
-        <div style={{ padding: '2px 14px 6px', fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>
+        <div style={{ padding: '2px 14px 6px', fontSize: 11, color: 'var(--text2)' }}>
           Add external agent skill directories manually. They are written to Pi global settings.
         </div>
       ) : (
         additionalPaths.map((path) => (
           <div key={path} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '5px 14px', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.26)', wordBreak: 'break-all' }}>{path}</span>
+            <span style={{ fontSize: 11, color: 'var(--text2)', wordBreak: 'break-all' }}>{path}</span>
             <SmallActionButton onClick={() => onRemove(path)}>Remove</SmallActionButton>
           </div>
         ))
       )}
       {suggestions.map((path) => (
         <div key={path} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '5px 14px', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', wordBreak: 'break-all' }}>{path}</span>
+          <span style={{ fontSize: 11, color: 'var(--text2)', wordBreak: 'break-all' }}>{path}</span>
           <button
             onClick={() => onAdd(path)}
             style={{
-              border: '1px solid rgba(255,255,255,0.06)',
-              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--card-border)',
+              background: 'var(--panel-bg)',
               borderRadius: 4,
-              color: 'rgba(255,255,255,0.32)',
+              color: 'var(--text2)',
               fontFamily: 'inherit',
               fontSize: 11,
               padding: '4px 7px',
@@ -655,13 +667,13 @@ function DisabledSkillPaths({
 }) {
   if (disabledPaths.length === 0) return null
   return (
-    <section style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-      <div style={{ padding: '8px 14px 4px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.18)' }}>
+    <section style={{ borderBottom: '1px solid var(--bd)' }}>
+      <div style={{ padding: '8px 14px 4px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text2)' }}>
         Disabled skills
       </div>
       {disabledPaths.map((path) => (
         <div key={path} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '5px 14px', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', wordBreak: 'break-all' }}>{path}</span>
+          <span style={{ fontSize: 11, color: 'var(--text2)', wordBreak: 'break-all' }}>{path}</span>
           <SmallActionButton onClick={() => onEnable(path)}>Enable skill</SmallActionButton>
         </div>
       ))}
@@ -679,12 +691,12 @@ function ResourceSection({ title, empty, children }: { title: string; empty: str
   const items = Array.isArray(children) ? children.filter(Boolean) : children
   const isEmpty = Array.isArray(items) ? items.length === 0 : !items
   return (
-    <section style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-      <div style={{ padding: '8px 14px 4px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.18)' }}>
+    <section style={{ borderBottom: '1px solid var(--bd)' }}>
+      <div style={{ padding: '8px 14px 4px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text2)' }}>
         {title}
       </div>
       {isEmpty ? (
-        <div style={{ padding: '8px 14px 12px', fontSize: 12, color: 'rgba(255,255,255,0.2)' }}>
+        <div style={{ padding: '8px 14px 12px', fontSize: 12, color: 'var(--text2)' }}>
           {empty}
         </div>
       ) : (
@@ -735,7 +747,7 @@ function ResourceRow({
         gap: 10,
         padding: '9px 14px',
         alignItems: 'flex-start',
-        borderBottom: '1px solid rgba(255,255,255,0.03)',
+        borderBottom: '1px solid var(--bd)',
         cursor: isExpandable ? 'pointer' : 'default',
       }}
     >
@@ -745,34 +757,39 @@ function ResourceRow({
           width: 8,
           height: 8,
           borderRadius: '50%',
-          background: status === 'active' ? 'rgba(48,209,88,0.7)' : status === 'error' ? 'rgba(255,69,58,0.7)' : 'rgba(255,204,0,0.7)',
+          background:
+            status === 'active'
+              ? 'color-mix(in srgb, var(--success) 72%, transparent)'
+              : status === 'error'
+                ? 'rgba(255,69,58,0.72)'
+                : 'rgba(255,204,0,0.72)',
           flexShrink: 0,
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{label}</div>
+          <div style={{ fontSize: 12, color: 'var(--text)' }}>{label}</div>
           {isExpandable ? (
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.22)' }}>
+            <span style={{ fontSize: 10, color: 'var(--text2)' }}>
               {isExpanded ? 'Hide details' : 'Show details'}
             </span>
           ) : null}
           {scope ? (
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.24)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 999, padding: '1px 6px' }}>
+            <span style={{ fontSize: 10, color: 'var(--text2)', border: '1px solid var(--card-border)', borderRadius: 999, padding: '1px 6px' }}>
               {scope}
             </span>
           ) : null}
         </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.26)', marginTop: 4, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4, lineHeight: 1.5 }}>
           {displayValue}
         </div>
         {isExpanded || !isExpandable ? (
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.12)', marginTop: 4, wordBreak: 'break-all' }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, wordBreak: 'break-all' }}>
             {source}
           </div>
         ) : null}
         {(isExpanded || !isExpandable) && diagnostics && diagnostics.length > 0 ? (
-          <div style={{ fontSize: 10, color: 'rgba(255,204,0,0.5)', marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: 'color-mix(in srgb, #d97706 68%, var(--text))', marginTop: 4 }}>
             {diagnostics.join(' - ')}
           </div>
         ) : null}
@@ -809,10 +826,10 @@ function SmallActionButton({ children, onClick }: { children: ReactNode; onClick
         onClick()
       }}
       style={{
-        border: '1px solid rgba(255,255,255,0.06)',
-        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid var(--card-border)',
+        background: 'var(--panel-bg)',
         borderRadius: 4,
-        color: 'rgba(255,255,255,0.32)',
+        color: 'var(--text2)',
         fontFamily: 'inherit',
         fontSize: 11,
         padding: '4px 7px',

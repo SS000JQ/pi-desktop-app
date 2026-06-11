@@ -35,7 +35,7 @@ describe('Settings', () => {
     pickDirectoryMock.mockReset()
     configGetMock.mockImplementation(async (key: string) => {
       if (key === 'defaultSessionDirectory') return { success: true, data: storedDefaultSessionDirectory }
-      if (key === 'theme') return { success: true, data: 'dark' }
+      if (key === 'theme') return { success: true, data: 'classic' }
       return { success: true, data: null }
     })
     configSetMock.mockImplementation(async (key: string, value: unknown) => {
@@ -82,6 +82,12 @@ describe('Settings', () => {
 
     expect(await screen.findByLabelText('Default file address')).toBeTruthy()
     expect(screen.getByText('Theme')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /Classic/i })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /Pi Native/i })).toBeTruthy()
+    expect(screen.getByText(/VoltAgent-inspired/i)).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /Warp Flow/i })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /Mint Docs/i })).toBeTruthy()
+    expect(screen.getByText(/Together\.ai-inspired/i)).toBeTruthy()
     expect(await screen.findByText('Environment')).toBeTruthy()
     expect(screen.getByText('Pi Core')).toBeTruthy()
     expect(screen.getByText('Git')).toBeTruthy()
@@ -92,6 +98,20 @@ describe('Settings', () => {
     expect(screen.queryByText('Create Backup')).toBeNull()
     expect(screen.queryByText('Shortcuts')).toBeNull()
     expect(screen.queryByText('About')).toBeNull()
+  })
+
+  it('saves and applies a selected theme preset', async () => {
+    const onThemeChange = vi.fn()
+    render(<Settings onClose={() => {}} onThemeChange={onThemeChange} />)
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Mint Docs/i }))
+
+    await waitFor(() => {
+      expect(configSetMock).toHaveBeenCalledWith('theme', 'mint-docs')
+    })
+    expect(onThemeChange).toHaveBeenCalledWith('mint-docs')
+    expect(document.documentElement.dataset.theme).toBe('mint-docs')
+    expect(document.documentElement.style.colorScheme).toBe('light')
   })
 
   it('saves the default session directory used by the default new-session option', async () => {

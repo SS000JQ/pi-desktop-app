@@ -12,6 +12,12 @@ Pi Desktop is a desktop GUI for the Pi Agent Toolkit. It helps you start and con
 
 The packaged desktop app includes the Pi runtime libraries it needs. You do not need to install an external Pi CLI just to launch the app.
 
+## Downloads
+
+- End users: download the latest `.exe` or setup package from [GitHub Releases](https://github.com/SS000JQ/pi-desktop-app/releases).
+- Source users: clone this repository and install dependencies with `npm install`.
+- npm note: Pi Desktop is currently distributed as source plus GitHub release binaries, not as a published npm desktop package.
+
 ## First-Run Setup
 
 Pi Desktop checks these items on first launch and in Settings:
@@ -48,9 +54,11 @@ Local app data is stored under Electron's user data directory for Pi Desktop, no
 
 ## Development From Source
 
-Source development requires Node.js, npm, and Git.
+Source development requires Node.js 20+, npm, and Git.
 
 ```powershell
+git clone https://github.com/SS000JQ/pi-desktop-app.git
+cd pi-desktop-app
 npm install
 npm run dev
 ```

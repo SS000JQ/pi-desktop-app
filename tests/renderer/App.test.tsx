@@ -186,6 +186,8 @@ describe('App', () => {
   beforeEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    delete document.documentElement.dataset.theme
+    document.documentElement.style.colorScheme = ''
   })
 
   it('loads real sessions, working directory, and selected provider model on startup', async () => {
@@ -202,6 +204,27 @@ describe('App', () => {
     expect(await screen.findByText('Real Pi Session')).toBeTruthy()
     expect(screen.getAllByText('D:/PI/app').length).toBeGreaterThan(0)
     expect(screen.getAllByText('OpenAI / GPT-4o Mini').length).toBeGreaterThan(0)
+  })
+
+  it('applies the configured theme preset and light color scheme on startup', async () => {
+    window.piDesktop = createPiDesktopMock({
+      config: {
+        get: vi.fn(async (key: string) => {
+          if (key === 'workingDirectory') return { success: true, data: 'D:/PI/app' }
+          if (key === 'wizardCompleted') return { success: true, data: 'true' }
+          if (key === 'theme') return { success: true, data: 'mint-docs' }
+          return { success: true, data: null }
+        }),
+        set: vi.fn().mockResolvedValue({ success: true }),
+      },
+    })
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(document.documentElement.dataset.theme).toBe('mint-docs')
+      expect(document.documentElement.style.colorScheme).toBe('light')
+    })
   })
 
   it('does not fall back to the developer workspace path when no working directory is configured', async () => {

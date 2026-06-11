@@ -174,24 +174,10 @@ export default function LeftPanel({
 
   if (collapsed) {
     return (
-      <div
-        className="relative"
-        style={{ width: 32, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.04)', background: '#1a1919' }}
-      >
+      <div className="relative left-collapsed-shell">
         <button
           onClick={onToggleCollapse}
-          style={{
-            writingMode: 'vertical-lr',
-            letterSpacing: '2px',
-            fontSize: 10,
-            color: 'rgba(255,255,255,0.15)',
-            cursor: 'pointer',
-            background: 'none',
-            border: 'none',
-            fontFamily: "'JetBrains Mono', monospace",
-            width: '100%',
-            padding: '12px 0',
-          }}
+          className="left-collapsed-button"
         >
           SESSIONS
         </button>

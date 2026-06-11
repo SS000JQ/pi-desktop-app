@@ -23,21 +23,13 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
   return (
     <div className={`msg ${isUser ? 'right' : 'left'}`}>
       <div className="ml">
-        <span style={isUser ? { color: 'rgba(255,255,255,0.15)' } : { color: 'rgba(48,209,88,0.5)' }}>
+        <span className={isUser ? 'msg-role user' : 'msg-role assistant'}>
           {isUser ? 'You' : 'Pi'}
         </span>
         {isUser && onEdit && (
           <button
             onClick={onEdit}
-            className="mb-actions"
-            style={{
-              fontSize: '9px',
-              color: 'rgba(255,255,255,0.12)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              gap: '2px',
-            }}
+            className="msg-inline-edit"
           >
             edit
           </button>

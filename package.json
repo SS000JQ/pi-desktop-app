@@ -1,9 +1,28 @@
 {
   "name": "pi-desktop",
-  "version": "0.1.1",
-  "description": "Desktop GUI for Pi Agent Toolkit",
+  "version": "0.2.0",
+  "description": "Open-source desktop GUI for the Pi Agent Toolkit",
   "author": "Pi Desktop contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SS000JQ/pi-desktop-app.git"
+  },
+  "homepage": "https://github.com/SS000JQ/pi-desktop-app#readme",
+  "bugs": {
+    "url": "https://github.com/SS000JQ/pi-desktop-app/issues"
+  },
+  "keywords": [
+    "pi",
+    "desktop",
+    "electron",
+    "ai",
+    "agent",
+    "coding"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
