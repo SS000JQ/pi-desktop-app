@@ -2925,6 +2925,17 @@ body {
   line-height: 1.6;
 }
 
+.pv-open-error {
+  margin: 8px 18px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,94,94,0.18);
+  border-radius: 8px;
+  background: rgba(255,94,94,0.07);
+  color: rgba(255,205,205,0.86);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .pv-html-wrap {
   padding: 16px;
 }

@@ -34,7 +34,7 @@ Recommended for most users:
 
 This downloads the latest setup installer to your Downloads folder. You can also download it directly:
 
-[Download Pi-Desktop-Setup-0.2.1.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.1/Pi-Desktop-Setup-0.2.1.exe)
+[Download Pi-Desktop-Setup-0.2.2.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.2/Pi-Desktop-Setup-0.2.2.exe)
 
 ### Portable Build
 
@@ -46,12 +46,12 @@ Use this if you want to run Pi Desktop without a system-wide install:
 
 Direct download:
 
-[Download Pi-Desktop-Portable-0.2.1.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.1/Pi-Desktop-Portable-0.2.1.exe)
+[Download Pi-Desktop-Portable-0.2.2.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.2/Pi-Desktop-Portable-0.2.2.exe)
 
 ### Download A Specific Version
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1))) -Version v0.2.1
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1))) -Version v0.2.2
 ```
 
 ### From Source
@@ -146,11 +146,11 @@ Configure an AI provider, API key, and model in Settings. Pi needs at least one 
 
 ### PDF Preview Does Not Work
 
-Use the latest release build. Version `0.2.1` packages the PDF.js worker, fonts, CMaps, and WASM resources so PDF preview works in the installed desktop app, not only in source development.
+Use the latest release build. Version `0.2.2` packages the PDF.js worker, fonts, CMaps, and WASM resources so PDF preview works in the installed desktop app, not only in source development.
 
 ### Links Do Not Open
 
-Use the latest release build. Version `0.2.1` routes external links through the desktop shell with safer URL handling.
+Use the latest release build. Version `0.2.2` routes external links through the desktop shell with safer URL handling and improves bare domain links in Markdown previews.
 
 ### Generated Files Are Not Where You Expected
 
@@ -194,14 +194,14 @@ Release artifacts are written to `release/`.
 
 ## Release Quality
 
-The `0.2.1` release was built after validating:
+The `0.2.2` release was built after validating:
 
 - Release asset packaging with `npm run verify:release`.
 - TypeScript checks with `npm run typecheck`.
 - Automated tests with `npm test`.
 - Windows installer and portable builds with `npm run dist:win`.
 
-The release includes hardening for packaged PDF preview, external link handling, diagnostics export, file IPC boundaries, and large workspace/file guardrails.
+The release includes hardening for packaged PDF preview, packaged PPTX preview routing, external link handling, diagnostics export, file IPC boundaries, and large workspace/file guardrails.
 
 ## Project Status
 

@@ -767,6 +767,37 @@ describe('PreviewPanel', () => {
     expect(screen.getByText(/Hello HTML/)).toBeTruthy()
   })
 
+  it('opens bare domain markdown links as https urls', () => {
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      shell: {
+        openExternal: vi.fn(async () => ({ success: true })),
+      },
+    } as Window['piDesktop']
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/Awesome_DESIGN.md',
+          name: 'Awesome_DESIGN.md',
+          ext: '.md',
+          type: 'text',
+          content: '[VoltAgent/awesome-design-md](github.com/VoltAgent/awesome-design-md)',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: 'VoltAgent/awesome-design-md' }))
+
+    expect(window.piDesktop.shell.openExternal).toHaveBeenCalledWith('https://github.com/VoltAgent/awesome-design-md')
+  })
+
   it('renders a continuous pptx viewer with loading, controls, and page count', async () => {
     render(
       <PreviewPanel
@@ -793,6 +824,9 @@ describe('PreviewPanel', () => {
 
     expect(screen.getByTitle('slides.pptx viewer').closest('.pv-pptx-preview-body')).toBeTruthy()
     expect(screen.getByTitle('slides.pptx viewer').closest('.pv-pptx-shell')).toBeTruthy()
+    const viewerSrc = screen.getByTitle('slides.pptx viewer').getAttribute('src') || ''
+    expect(viewerSrc).toContain('/pptx-viewer.html')
+    expect(viewerSrc).not.toContain('/assets/pptx-viewer')
 
     emitPptxViewerEvent({ type: 'ready' })
 

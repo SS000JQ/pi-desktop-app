@@ -26,7 +26,7 @@ export type PreviewFile = FilePreviewData & {
 }
 
 const PPTX_VIEWER_CHANNEL = 'pi-pptx-preview'
-const pptxViewerPageUrl = new URL('../../pptx-viewer.html', import.meta.url).toString()
+const pptxViewerPageUrl = new URL('pptx-viewer.html', window.location.href).toString()
 const DOCX_MIN_VERTICAL_PADDING = 72
 const DOCX_MIN_HORIZONTAL_PADDING = 96
 
@@ -60,6 +60,7 @@ interface PreviewPanelProps {
   onOpenExternal?: (path: string) => void
   onOpenFolder?: (path: string) => void
   onCopyPath?: (path: string) => void
+  openError?: string | null
 }
 
 interface PdfPageViewportLike {
@@ -218,8 +219,13 @@ function isAbsoluteResourceUrl(value: string): boolean {
   return /^(?:[a-z]+:|#|\/\/)/i.test(value)
 }
 
+function looksLikeExternalHost(value: string): boolean {
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:[/:?#]|$)/i.test(value)
+}
+
 function resolvePreviewResourceUrl(value: string | undefined, filePath: string): string | undefined {
   if (!value || isAbsoluteResourceUrl(value)) return value
+  if (looksLikeExternalHost(value)) return `https://${value}`
 
   try {
     return new URL(value, getDirectoryFileUrl(filePath)).toString()
@@ -553,6 +559,7 @@ export default function PreviewPanel({
   onOpenExternal,
   onOpenFolder,
   onCopyPath,
+  openError = null,
 }: PreviewPanelProps) {
   const [previewMode, setPreviewMode] = useState<'preview' | 'source'>('preview')
   const [sections, setSections] = useState({
@@ -1805,6 +1812,8 @@ export default function PreviewPanel({
             </button>
           </div>
         </div>
+
+        {openError && <div className="pv-open-error">{openError}</div>}
 
         {previewFile ? (
           <div

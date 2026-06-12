@@ -45,6 +45,12 @@ function defaultListAsarEntries(asarPath) {
   return output.split(/\r?\n/).filter(Boolean)
 }
 
+function defaultReadAsarEntry(asarPath, entryPath) {
+  const archiveEntryPath = entryPath.replace(/^[\\/]+/, '').replace(/\//g, '\\')
+  const asar = require('@electron/asar')
+  return asar.extractFile(asarPath, archiveEntryPath).toString('utf-8')
+}
+
 function readPackageVersion(packageJsonPath) {
   try {
     return JSON.parse(readFileSync(packageJsonPath, 'utf-8')).version || null
@@ -86,6 +92,7 @@ function verifyReleaseArtifacts(options = {}) {
   const releaseDir = options.releaseDir || join(process.cwd(), 'release')
   const packageJsonPath = options.packageJsonPath || join(process.cwd(), 'package.json')
   const listAsarEntries = options.listAsarEntries || defaultListAsarEntries
+  const readAsarEntry = options.readAsarEntry || defaultReadAsarEntry
   const errors = []
   const warnings = []
 
@@ -105,6 +112,25 @@ function verifyReleaseArtifacts(options = {}) {
     for (const pattern of REQUIRED_ASAR_PATTERNS) {
       if (!entries.some((entry) => entryMatches(entry, pattern))) {
         errors.push(`Missing app.asar entry matching ${patternLabel(pattern)}`)
+      }
+    }
+
+    const stalePptxViewerHtml = entries.find((entry) => /^\/out\/renderer\/assets\/pptx-viewer-.+\.html$/.test(entry))
+    if (stalePptxViewerHtml) {
+      errors.push(`Packaged renderer contains stale generated pptx viewer HTML: ${stalePptxViewerHtml}`)
+    }
+
+    if (entries.includes('/out/renderer/pptx-viewer.html')) {
+      try {
+        const pptxViewerHtml = readAsarEntry(asarPath, '/out/renderer/pptx-viewer.html')
+        if (/\.\/src\/pptx-viewer\.ts/.test(pptxViewerHtml)) {
+          errors.push('Packaged pptx-viewer.html references the source TypeScript entry instead of built assets')
+        }
+        if (!/\.\/assets\/pptx-viewer-.+\.js/.test(pptxViewerHtml)) {
+          errors.push('Packaged pptx-viewer.html does not reference the built pptx viewer asset')
+        }
+      } catch (error) {
+        errors.push(`Unable to inspect packaged pptx-viewer.html: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
   }

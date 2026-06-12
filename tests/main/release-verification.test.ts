@@ -10,10 +10,18 @@ const { verifyReleaseArtifacts } = require('../../scripts/verify-release.js') as
     releaseDir: string
     packageJsonPath: string
     listAsarEntries: (asarPath: string) => string[]
+    readAsarEntry?: (asarPath: string, entryPath: string) => string
   }) => { ok: boolean; errors: string[]; warnings: string[] }
 }
 
-function createReleaseFixture(entries: string[], options: { includeExtraPdfResources?: boolean; friendlyInstallerName?: boolean } = {}) {
+function createReleaseFixture(
+  entries: string[],
+  options: {
+    includeExtraPdfResources?: boolean
+    friendlyInstallerName?: boolean
+    asarEntryContents?: Record<string, string>
+  } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), 'pi-release-'))
   const releaseDir = join(root, 'release')
   const resourcesDir = join(releaseDir, 'win-unpacked', 'resources')
@@ -44,6 +52,13 @@ function createReleaseFixture(entries: string[], options: { includeExtraPdfResou
     releaseDir,
     packageJsonPath: join(root, 'package.json'),
     listAsarEntries: () => entries,
+    readAsarEntry: (_asarPath: string, entryPath: string) => {
+      const normalized = `/${entryPath.replace(/^[\\/]+/, '').replace(/\\/g, '/')}`
+      return options.asarEntryContents?.[normalized]
+        ?? (normalized === '/out/renderer/pptx-viewer.html'
+          ? '<script type="module" crossorigin src="./assets/pptx-viewer-good.js"></script>'
+          : '')
+    },
   }
 }
 
@@ -133,5 +148,31 @@ describe('verifyReleaseArtifacts', () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain('latest.yml must point to the setup installer, got: Pi-Desktop-Portable-9.9.9.exe')
+  })
+
+  it('fails when the packaged app contains a stale generated pptx viewer html asset', () => {
+    const fixture = createReleaseFixture(
+      [
+        ...requiredEntries,
+        '/out/renderer/assets/pptx-viewer-stale.html',
+      ],
+      {
+        includeExtraPdfResources: true,
+        asarEntryContents: {
+          '/out/renderer/pptx-viewer.html':
+            '<script type="module" crossorigin src="./assets/pptx-viewer-good.js"></script>',
+          '/out/renderer/assets/pptx-viewer-stale.html':
+            '<script type="module" src="./src/pptx-viewer.ts"></script>',
+        },
+      },
+    )
+    tempRoots.push(fixture.root)
+
+    const result = verifyReleaseArtifacts(fixture)
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      'Packaged renderer contains stale generated pptx viewer HTML: /out/renderer/assets/pptx-viewer-stale.html',
+    )
   })
 })

@@ -6,6 +6,11 @@ import { pathToFileURL } from 'url'
 
 export type FileType = 'office' | 'code' | 'markdown' | 'html' | 'image' | 'unknown'
 
+export interface FileOpenShell {
+  openPath: (path: string) => Promise<string>
+  openExternal: (url: string) => Promise<void>
+}
+
 export function detectFileType(ext: string): FileType {
   const e = ext.toLowerCase()
   if (['.pptx', '.docx', '.xlsx', '.ppt', '.doc', '.xls'].includes(e)) return 'office'
@@ -114,7 +119,13 @@ export function hasSource(ext: string): boolean {
   return ['.md', '.html', '.htm'].includes(e)
 }
 
-export async function openInExternalEditor(filePath: string): Promise<void> {
+async function assertOpenPathSucceeded(result: string): Promise<void> {
+  if (result && result.trim().length > 0) {
+    throw new Error(result)
+  }
+}
+
+export async function openInExternalEditor(filePath: string, shellApi: FileOpenShell = shell): Promise<void> {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`)
   }
@@ -129,7 +140,7 @@ export async function openInExternalEditor(filePath: string): Promise<void> {
 
   switch (type) {
     case 'office':
-      await shell.openPath(filePath)
+      await assertOpenPathSucceeded(await shellApi.openPath(filePath))
       break
     case 'code':
     case 'markdown':
@@ -141,13 +152,13 @@ export async function openInExternalEditor(filePath: string): Promise<void> {
           })
         })
       } catch {
-        await shell.openPath(filePath)
+        await assertOpenPathSucceeded(await shellApi.openPath(filePath))
       }
       break
     case 'html':
-      await shell.openExternal(pathToFileURL(filePath).toString())
+      await shellApi.openExternal(pathToFileURL(filePath).toString())
       break
     default:
-      await shell.openPath(filePath)
+      await assertOpenPathSucceeded(await shellApi.openPath(filePath))
   }
 }

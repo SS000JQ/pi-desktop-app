@@ -728,6 +728,7 @@ export default function App() {
   const [thinkingLevel, setThinkingLevel] = useState('medium')
   const [isInitialized, setIsInitialized] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
+  const [previewOpenError, setPreviewOpenError] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null)
   const [runActivity, setRunActivity] = useState<RunActivity | null>(null)
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>([])
@@ -1000,6 +1001,7 @@ export default function App() {
   }, [activeArtifactKey, artifactsBySession])
 
   const handleOpenPreviewFile = useCallback(async (path: string) => {
+    setPreviewOpenError(null)
     const requestId = previewRequestRef.current + 1
     previewRequestRef.current = requestId
     const response = await window.piDesktop.files.read(path)
@@ -1035,6 +1037,14 @@ export default function App() {
     setRightPanelCollapsed(false)
     setRecentOpenedPaths((previous) => [path, ...previous.filter((entry) => entry !== path)].slice(0, 10))
   }, [activeSessionId, activeSessionPath, loadArtifacts])
+
+  const handleOpenExternalPreviewFile = useCallback(async (path: string) => {
+    setPreviewOpenError(null)
+    const response = await window.piDesktop.files.open(path)
+    if (!response.success) {
+      setPreviewOpenError(response.error || 'Windows could not open this file with an external app.')
+    }
+  }, [])
 
   const handleBrowseWorkspaceDirectory = useCallback(
     async (path: string) => {
@@ -1932,6 +1942,7 @@ export default function App() {
               userSelectedSessionPathRef.current = selected?.path || null
               setWorkspaceChildrenByDir({})
               setPreviewFile(null)
+              setPreviewOpenError(null)
             }}
             onSessionCreate={() => {
               setNewSessionError(null)
@@ -1968,19 +1979,23 @@ export default function App() {
             runtimeStatus={activeRuntimeStatus}
             runActivity={activeRunActivity}
             previewFile={previewFile}
+            openError={previewOpenError}
             contextUploads={contextUploads}
             contextConnectors={connectorItems}
             contextSkills={skillItems}
             onSelectResult={handleSelectArtifact}
             onSelectFile={(path) => { void handleOpenPreviewFile(path) }}
             onToggleWorkspaceDirectory={(path) => { void handleBrowseWorkspaceDirectory(path) }}
-            onClosePreview={() => setPreviewFile(null)}
-            onOpenExternal={(path) => { void window.piDesktop.files.open(path) }}
+            onClosePreview={() => {
+              setPreviewFile(null)
+              setPreviewOpenError(null)
+            }}
+            onOpenExternal={(path) => { void handleOpenExternalPreviewFile(path) }}
             onOpenFolder={(path) => {
               const directory = path.includes('/') || path.includes('\\')
                 ? path.replace(/[/\\][^/\\]+$/, '')
                 : path
-              void window.piDesktop.files.open(directory)
+              void handleOpenExternalPreviewFile(directory)
             }}
             onCopyPath={(path) => { void navigator.clipboard?.writeText(path) }}
           />
