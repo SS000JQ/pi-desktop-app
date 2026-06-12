@@ -20,13 +20,56 @@ Pi is powerful, but terminal-first tools can feel intimidating for new users. Pi
 
 If you are comfortable with terminals, Pi Desktop can still save time by making session state, files, previews, and settings easier to scan. If you are not comfortable with terminals, it gives you a much gentler starting point.
 
-## Download
+## Install Options
 
-Windows builds are published on GitHub Releases:
+Pi Desktop is currently distributed as Windows release binaries and source code. Choose the path that matches how you like to install software.
 
-- **Recommended:** [Pi-Desktop-Setup-0.2.1.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.1/Pi-Desktop-Setup-0.2.1.exe)
-- **Portable:** [Pi-Desktop-Portable-0.2.1.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.1/Pi-Desktop-Portable-0.2.1.exe)
-- **All releases:** [GitHub Releases](https://github.com/SS000JQ/pi-desktop-app/releases)
+### Windows Installer
+
+Recommended for most users:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1)))
+```
+
+This downloads the latest setup installer to your Downloads folder. You can also download it directly:
+
+[Download Pi-Desktop-Setup-0.2.1.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.1/Pi-Desktop-Setup-0.2.1.exe)
+
+### Portable Build
+
+Use this if you want to run Pi Desktop without a system-wide install:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1))) -Channel portable
+```
+
+Direct download:
+
+[Download Pi-Desktop-Portable-0.2.1.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.1/Pi-Desktop-Portable-0.2.1.exe)
+
+### Download A Specific Version
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1))) -Version v0.2.1
+```
+
+### From Source
+
+For developers who want to run or modify the app locally:
+
+```powershell
+git clone https://github.com/SS000JQ/pi-desktop-app.git
+cd pi-desktop-app
+npm install
+npm run dev
+```
+
+### Package Managers
+
+Pi Desktop is not yet published through winget, Scoop, Chocolatey, npm, pnpm, or Bun. GitHub Releases are the official distribution channel for now. Package-manager manifests can be added later once the Windows release flow is stable.
+
+All release files are available on [GitHub Releases](https://github.com/SS000JQ/pi-desktop-app/releases).
 
 Use the setup installer if you want a normal Windows installation. Use the portable build if you prefer to run the app without installing it system-wide.
 
