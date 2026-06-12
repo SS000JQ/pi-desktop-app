@@ -634,6 +634,27 @@ export default function PreviewPanel({
   }, [onResize, previewFile])
 
   useEffect(() => {
+    let cancelled = false
+
+    const getPdfAssetBaseUrl = window.piDesktop?.desktop?.getPdfAssetBaseUrl
+    if (!getPdfAssetBaseUrl) return
+
+    void getPdfAssetBaseUrl()
+      .then(async (result) => {
+        if (cancelled || !result.success) return
+        const { configurePdfPreviewAssetBaseUrl } = await import('../lib/pdf-preview')
+        if (!cancelled) {
+          configurePdfPreviewAssetBaseUrl(result.data)
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     setPreviewMode('preview')
   }, [previewFile?.path])
 
@@ -1299,16 +1320,22 @@ export default function PreviewPanel({
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
-            a: ({ href, children, ...props }: any) => (
-              <a
-                {...props}
-                href={resolvePreviewResourceUrl(href, previewFile.path)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {children}
-              </a>
-            ),
+            a: ({ href, children, ...props }: any) => {
+              const resolvedHref = href ? resolvePreviewResourceUrl(href, previewFile.path) : undefined
+              return (
+                <a
+                  {...props}
+                  href={resolvedHref}
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    if (resolvedHref) void window.piDesktop.shell.openExternal(resolvedHref)
+                  }}
+                >
+                  {children}
+                </a>
+              )
+            },
             img: ({ src, alt, ...props }: any) => (
               <img
                 {...props}

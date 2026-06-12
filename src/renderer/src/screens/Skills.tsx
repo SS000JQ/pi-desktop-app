@@ -328,6 +328,9 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
                   <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3 }}>
                     {[result.description, result.installs].filter(Boolean).join(' - ') || 'Skill package'}
                   </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                    Install from search is coming later. Add a local skill directory below for now.
+                  </div>
                 </div>
               ))}
             </div>

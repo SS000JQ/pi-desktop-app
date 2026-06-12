@@ -16,6 +16,8 @@ export const IPC_CHANNELS = {
   ARTIFACTS_PIN: 'artifacts:pin',
   ARTIFACTS_PRIMARY: 'artifacts:primary',
   DESKTOP_ENVIRONMENT: 'desktop:getEnvironmentStatus',
+  DESKTOP_PDF_ASSET_BASE_URL: 'desktop:getPdfAssetBaseUrl',
+  DESKTOP_RELEASE_DIAGNOSTICS: 'desktop:getReleaseDiagnostics',
   DESKTOP_PI_RESOURCES: 'desktop:getPiResources',
   DESKTOP_SLASH_COMMANDS: 'desktop:getSlashCommands',
   PI_RUNTIME_GET_STATE: 'piRuntime:getState',
@@ -34,6 +36,7 @@ export const IPC_CHANNELS = {
   SKILLS_GET_SETTINGS: 'skills:getSettings',
   SKILLS_SET_ADDITIONAL_PATHS: 'skills:setAdditionalPaths',
   SKILLS_SET_DISABLED: 'skills:setDisabled',
+  SHELL_OPEN_EXTERNAL: 'shell:openExternal',
 } as const
 
 export const APP_NAME = 'Pi Desktop'

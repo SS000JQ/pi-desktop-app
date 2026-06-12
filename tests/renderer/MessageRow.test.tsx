@@ -1,8 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import MessageRow from '../../src/renderer/src/components/MessageRow'
 
 describe('MessageRow', () => {
+  beforeEach(() => {
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      shell: {
+        openExternal: vi.fn(async () => ({ success: true })),
+      },
+    } as Partial<Window['piDesktop']> as Window['piDesktop']
+  })
+
   it('renders user message correctly', () => {
     render(<MessageRow message={{ id: '1', role: 'user', content: 'Hello', timestamp: 0 }} />)
     expect(screen.getByText('You')).toBeTruthy()
@@ -32,6 +41,14 @@ describe('MessageRow', () => {
     expect(screen.getByRole('heading', { name: 'Result' })).toBeTruthy()
     expect(screen.getByText('item one')).toBeTruthy()
     expect(screen.getByText('const answer = 42')).toBeTruthy()
+  })
+
+  it('opens markdown links through the desktop shell api', () => {
+    render(<MessageRow message={{ id: '2c', role: 'assistant', content: '[Docs](https://example.com/docs)', timestamp: 0, toolCalls: [] }} />)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Docs' }))
+
+    expect(window.piDesktop.shell.openExternal).toHaveBeenCalledWith('https://example.com/docs')
   })
 
   it('renders tool calls when present', () => {

@@ -1,7 +1,16 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { BinaryPreviewContent } from '../types/chat'
 
+let configuredPdfAssetBaseUrl: string | null = null
+
+export function configurePdfPreviewAssetBaseUrl(baseUrl: string | null | undefined): void {
+  configuredPdfAssetBaseUrl = baseUrl?.trim() || null
+}
+
 export function resolvePdfPreviewAssetUrl(assetPath: string): string {
+  if (configuredPdfAssetBaseUrl) {
+    return new URL(assetPath, configuredPdfAssetBaseUrl.endsWith('/') ? configuredPdfAssetBaseUrl : `${configuredPdfAssetBaseUrl}/`).toString()
+  }
   return new URL(`./pdfjs/${assetPath}`, window.location.href).toString()
 }
 

@@ -37,6 +37,8 @@ const api: PiDesktopApi = {
   desktop: {
     getStateSummary: () => ipcRenderer.invoke('desktop:getStateSummary'),
     getEnvironmentStatus: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_ENVIRONMENT),
+    getPdfAssetBaseUrl: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_PDF_ASSET_BASE_URL),
+    getReleaseDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_RELEASE_DIAGNOSTICS),
     getPiResources: (cwd, sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_PI_RESOURCES, { cwd, sessionPath }),
     getSlashCommands: (cwd, sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_SLASH_COMMANDS, { cwd, sessionPath }),
   },
@@ -59,6 +61,9 @@ const api: PiDesktopApi = {
     setAdditionalPaths: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_ADDITIONAL_PATHS, payload),
     setDisabled: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_DISABLED, payload),
     setModelInvocation: (payload) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_MODEL_INVOCATION, payload),
+  },
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url),
   },
   profiles: {
     list: () => ipcRenderer.invoke('profiles:list'),

@@ -180,6 +180,7 @@ describe('Skills', () => {
     fireEvent.click(screen.getByText('Search'))
 
     expect(await screen.findByText('owner/repo@pdf')).toBeTruthy()
+    expect(screen.getByText(/Install from search is coming later/i)).toBeTruthy()
     expect(screen.queryByText('路')).toBeNull()
   })
 

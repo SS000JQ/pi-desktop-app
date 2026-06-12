@@ -181,7 +181,15 @@ function AnswerCard({ text }: { text: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ href, children, ...props }) => (
-            <a href={href} target="_blank" rel="noreferrer" {...props}>
+            <a
+              href={href}
+              rel="noreferrer"
+              onClick={(event) => {
+                event.preventDefault()
+                if (href) void window.piDesktop.shell.openExternal(href)
+              }}
+              {...props}
+            >
               {children}
             </a>
           ),

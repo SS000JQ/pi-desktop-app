@@ -45,4 +45,20 @@ describe('PiBridge artifact detection', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('skips common generated directories during artifact scans', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pi-bridge-skip-artifacts-'))
+    try {
+      const bridge = new PiBridge() as any
+      const generated = join(root, '.next')
+      mkdirSync(generated)
+      writeFileSync(join(generated, 'generated.md'), '# Generated\n', 'utf-8')
+
+      const files = bridge.listArtifactCandidateFiles(root) as string[]
+
+      expect(files).not.toContain(join(generated, 'generated.md'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

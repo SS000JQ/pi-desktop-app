@@ -1,12 +1,13 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeImage, dialog } from 'electron'
 import { join, extname } from 'path'
-import { readFileSync, readdirSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
+import { pathToFileURL } from 'url'
+import { readFileSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { homedir } from 'os'
 import { openInExternalEditor } from './file-bridge'
 import { readPreviewFile } from './file-preview'
-import { resolveOptionalExistingDirectory, resolveRuntimeDirectory } from './path-utils'
+import { isPathInsideAllowedRoots, resolveOptionalExistingDirectory, resolveRuntimeDirectory } from './path-utils'
 import {
   IPC_CHANNELS,
   APP_NAME,
@@ -48,6 +49,9 @@ import {
   saveActiveSessionId,
 } from './desktop-state'
 import { getPiResources, getSlashCommands } from './pi-resources'
+import { isAllowedExternalUrl, openExternalUrl } from './external-links'
+import { buildReleaseDiagnostics, formatReleaseDiagnostics } from './diagnostics'
+import { listWorkspaceDirectory } from './workspace-files'
 import {
   getSkillSettings,
   installSkill,
@@ -71,6 +75,7 @@ import {
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 const fileWatchers = new Map<string, import('fs').FSWatcher>()
+const userPickedDirectories = new Set<string>()
 
 type RuntimeStatusPayload = {
   type: 'status'
@@ -236,6 +241,20 @@ function resolveRuntimeWorkingDirectory(path?: string): string {
   return resolveRuntimeDirectory(path, resolveWorkingDirectory() || resolveDefaultSessionDirectory())
 }
 
+function getAllowedFileRoots(): string[] {
+  return [
+    resolveWorkingDirectory(),
+    resolveDefaultSessionDirectory(),
+    ...Array.from(userPickedDirectories),
+  ].filter((root): root is string => Boolean(root))
+}
+
+function assertAllowedFilePath(path: string): void {
+  if (!isPathInsideAllowedRoots(path, getAllowedFileRoots())) {
+    throw new Error('File access is limited to your workspace, default folder, or folders you selected.')
+  }
+}
+
 ipcMain.handle('providers:catalog', async () => {
   return { success: true, data: getProviderCatalog() }
 })
@@ -280,6 +299,31 @@ ipcMain.handle(IPC_CHANNELS.DESKTOP_ENVIRONMENT, async () => {
       workspacePath,
     }),
   }
+})
+
+ipcMain.handle(IPC_CHANNELS.DESKTOP_PDF_ASSET_BASE_URL, async () => {
+  const resourcePdfJsPath = join(process.resourcesPath, 'pdfjs')
+  if (existsSync(resourcePdfJsPath)) {
+    return { success: true, data: `${pathToFileURL(resourcePdfJsPath).toString()}/` }
+  }
+  return { success: true, data: null }
+})
+
+ipcMain.handle(IPC_CHANNELS.DESKTOP_RELEASE_DIAGNOSTICS, async () => {
+  const defaultSessionDirectory = resolveDefaultSessionDirectory()
+  const diagnostics = buildReleaseDiagnostics({
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron || 'unknown',
+    platform: process.platform,
+    arch: process.arch,
+    packaged: app.isPackaged,
+    userDataPath: app.getPath('userData'),
+    resourcesPath: process.resourcesPath,
+    currentWorkspace: resolveWorkingDirectory(),
+    defaultSessionDirectory,
+    providers: loadProviders(),
+  })
+  return { success: true, data: formatReleaseDiagnostics(diagnostics) }
 })
 
 ipcMain.handle('profiles:list', async () => {
@@ -1034,25 +1078,15 @@ ipcMain.handle('artifacts:view', async (_event, payload: { sessionId: string; se
 
 ipcMain.handle('files:list', async (_event, dirPath: string) => {
   try {
-    const entries = readdirSync(dirPath)
-    const files = entries
-      .map((name) => {
-        const fullPath = join(dirPath, name)
-        try {
-          const st = statSync(fullPath)
-          return {
-            name,
-            path: fullPath,
-            isDir: st.isDirectory(),
-            size: st.size,
-            modifiedAt: st.mtime.toISOString(),
-          }
-        } catch {
-          return null
-        }
-      })
-      .filter(Boolean)
-    return { success: true, data: files }
+    assertAllowedFilePath(dirPath)
+    const listing = listWorkspaceDirectory(dirPath)
+    return {
+      success: true,
+      data: listing.entries,
+      truncated: listing.truncated,
+      totalEntries: listing.totalEntries,
+      maxEntries: listing.maxEntries,
+    }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }
@@ -1060,6 +1094,7 @@ ipcMain.handle('files:list', async (_event, dirPath: string) => {
 
 ipcMain.handle('files:read', async (_event, filePath: string) => {
   try {
+    assertAllowedFilePath(filePath)
     return { success: true, data: await readPreviewFile(filePath) }
   } catch (err) {
     return { success: false, error: (err as Error).message }
@@ -1068,6 +1103,7 @@ ipcMain.handle('files:read', async (_event, filePath: string) => {
 
 ipcMain.handle('files:save', async (_event, filePath: string, content: string) => {
   try {
+    assertAllowedFilePath(filePath)
     writeFileSync(filePath, content, 'utf-8')
     return { success: true }
   } catch (err) {
@@ -1077,6 +1113,7 @@ ipcMain.handle('files:save', async (_event, filePath: string, content: string) =
 
 ipcMain.handle('files:open', async (_event, filePath: string) => {
   try {
+    assertAllowedFilePath(filePath)
     await openInExternalEditor(filePath)
     return { success: true }
   } catch (err) {
@@ -1099,11 +1136,13 @@ ipcMain.handle('files:pickDirectory', async (_event, startPath?: string) => {
     return { success: true, data: null }
   }
 
+  userPickedDirectories.add(result.filePaths[0])
   return { success: true, data: result.filePaths[0] }
 })
 
 ipcMain.handle('files:watch', async (_event, filePath: string) => {
   try {
+    assertAllowedFilePath(filePath)
     if (!existsSync(filePath)) return { success: false, error: 'File not found' }
     if (fileWatchers.has(filePath)) return { success: true }
 
@@ -1128,10 +1167,24 @@ ipcMain.handle('files:unwatch', async (_event, filePath: string) => {
   return { success: true }
 })
 
+ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
+  return openExternalUrl(url)
+})
+
 app.on('web-contents-created', (_, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    void openExternalUrl(url)
     return { action: 'deny' }
+  })
+
+  contents.on('will-navigate', (event, url) => {
+    const currentUrl = contents.getURL()
+    if (url === currentUrl || url.startsWith('file://')) return
+
+    event.preventDefault()
+    if (isAllowedExternalUrl(url)) {
+      void openExternalUrl(url)
+    }
   })
 })
 

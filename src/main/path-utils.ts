@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, statSync } from 'fs'
 import { homedir } from 'os'
-import { join } from 'path'
+import { isAbsolute, join, relative, resolve } from 'path'
 
 function isDirectory(path: string): boolean {
   try {
@@ -54,4 +54,19 @@ export function resolveRuntimeDirectory(path: string | null | undefined, fallbac
 
   const fallbackCandidate = repairUserHomePath(fallback)
   return ensureDirectory(fallbackCandidate) || homedir()
+}
+
+export function isPathInsideAllowedRoots(path: string, allowedRoots: Array<string | null | undefined>): boolean {
+  const trimmedPath = path.trim()
+  if (!trimmedPath || !isAbsolute(trimmedPath)) return false
+
+  const resolvedPath = resolve(trimmedPath)
+  return allowedRoots.some((root) => {
+    const trimmedRoot = root?.trim()
+    if (!trimmedRoot || !isAbsolute(trimmedRoot)) return false
+
+    const resolvedRoot = resolve(trimmedRoot)
+    const relation = relative(resolvedRoot, resolvedPath)
+    return relation === '' || (!relation.startsWith('..') && !isAbsolute(relation))
+  })
 }

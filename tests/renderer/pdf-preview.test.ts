@@ -14,6 +14,7 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
 
 import {
   buildPdfDocumentParams,
+  configurePdfPreviewAssetBaseUrl,
   getPdfDocumentLoadingTask,
   resolvePdfPreviewAssetUrl,
 } from '../../src/renderer/src/lib/pdf-preview'
@@ -22,11 +23,23 @@ describe('pdf-preview runtime helpers', () => {
   beforeEach(() => {
     pdfGetDocumentMock.mockReset()
     pdfWorkerOptions.workerSrc = ''
+    configurePdfPreviewAssetBaseUrl(null)
   })
 
   it('resolves renderer-local pdf assets from the current window location', () => {
     expect(resolvePdfPreviewAssetUrl('pdf.worker.mjs')).toMatch(/\/pdfjs\/pdf\.worker\.mjs$/)
     expect(resolvePdfPreviewAssetUrl('cmaps/')).toMatch(/\/pdfjs\/cmaps\/$/)
+  })
+
+  it('prefers a configured desktop pdf asset base url', () => {
+    configurePdfPreviewAssetBaseUrl('file:///C:/Program%20Files/Pi%20Desktop/resources/pdfjs')
+
+    expect(resolvePdfPreviewAssetUrl('pdf.worker.mjs')).toBe(
+      'file:///C:/Program%20Files/Pi%20Desktop/resources/pdfjs/pdf.worker.mjs',
+    )
+    expect(resolvePdfPreviewAssetUrl('cmaps/')).toBe(
+      'file:///C:/Program%20Files/Pi%20Desktop/resources/pdfjs/cmaps/',
+    )
   })
 
   it('builds pdf.js document params with worker-compatible resource paths', () => {

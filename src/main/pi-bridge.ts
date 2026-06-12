@@ -354,7 +354,21 @@ export class PiBridge {
 
   private listArtifactCandidateFiles(cwd: string): string[] {
     const files: string[] = []
-    const ignoredDirectories = new Set(['.git', 'node_modules', 'out', 'dist', 'build', '.run-logs'])
+    const ignoredDirectories = new Set([
+      '.git',
+      '.next',
+      '.nuxt',
+      '.cache',
+      '.turbo',
+      '.vite',
+      'coverage',
+      'node_modules',
+      'out',
+      'dist',
+      'build',
+      'release',
+      '.run-logs',
+    ])
     const visit = (dir: string, depth: number): void => {
       if (depth > ARTIFACT_SCAN_MAX_DEPTH || files.length >= ARTIFACT_SCAN_MAX_FILES) return
       let entries: string[]

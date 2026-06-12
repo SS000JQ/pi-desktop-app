@@ -14,6 +14,7 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange, the
   const [defaultDir, setDefaultDir] = useState('')
   const [theme, setTheme] = useState<ThemePresetId>(themePreset || 'classic')
   const [saveMessage, setSaveMessage] = useState('')
+  const [diagnosticsMessage, setDiagnosticsMessage] = useState('')
   const [environmentStatus, setEnvironmentStatus] = useState<EnvironmentCheckResult | null>(null)
   const [environmentLoading, setEnvironmentLoading] = useState(false)
 
@@ -71,6 +72,18 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange, the
     applyThemePreset(next)
     await window.piDesktop.config.set('theme', next)
     onThemeChange?.(next)
+  }
+
+  async function copyDiagnostics() {
+    setDiagnosticsMessage('')
+    const response = await window.piDesktop.desktop.getReleaseDiagnostics()
+    if (!response.success || typeof response.data !== 'string') {
+      setDiagnosticsMessage(response.error || 'Diagnostics could not be prepared.')
+      return
+    }
+
+    await navigator.clipboard?.writeText(response.data)
+    setDiagnosticsMessage('Diagnostics copied.')
   }
 
   return (
@@ -146,6 +159,17 @@ export default function Settings({ onClose, onDefaultSessionDirectoryChange, the
             compact
             onRefresh={loadEnvironmentStatus}
           />
+
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--text)' }}>Support diagnostics</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, lineHeight: 1.5 }}>
+              Copy release details and asset checks for GitHub issues. Secrets are not included.
+            </div>
+            <div className="flex" style={{ gap: 8, marginTop: 10 }}>
+              <button type="button" className="bs" onClick={copyDiagnostics}>Copy diagnostics</button>
+              {diagnosticsMessage && <span style={{ fontSize: 11, color: 'var(--text2)' }}>{diagnosticsMessage}</span>}
+            </div>
+          </div>
         </div>
       </div>
     </div>

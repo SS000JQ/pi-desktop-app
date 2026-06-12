@@ -309,6 +309,8 @@ export interface PiDesktopApi {
       }>
     }>>
     getEnvironmentStatus: () => Promise<IpcResponse<EnvironmentCheckResult>>
+    getPdfAssetBaseUrl: () => Promise<IpcResponse<string | null>>
+    getReleaseDiagnostics: () => Promise<IpcResponse<string>>
     getPiResources: (cwd?: string, sessionPath?: string) => Promise<IpcResponse<{
       skills: Array<{
         name: string
@@ -383,6 +385,9 @@ export interface PiDesktopApi {
     setAdditionalPaths: (payload: { paths: string[] }) => Promise<IpcResponse<string[]>>
     setDisabled: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse<string[]>>
     setModelInvocation: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse>
+  }
+  shell: {
+    openExternal: (url: string) => Promise<IpcResponse>
   }
   onAgentEvent: (callback: (event: unknown | RuntimeStatusPayload) => void) => () => void
   profiles: {

@@ -20,6 +20,10 @@ async function copyText(text: string): Promise<void> {
   }
 }
 
+function openExternalUrl(url: string): void {
+  void window.piDesktop.shell.openExternal(url)
+}
+
 export default function EnvironmentStatusList({ result, loading = false, compact = false, onRefresh }: EnvironmentStatusListProps) {
   return (
     <div className={compact ? 'env-card compact' : 'env-card'}>
@@ -52,13 +56,13 @@ export default function EnvironmentStatusList({ result, loading = false, compact
                   {item.actionLabel || 'Copy'}
                 </button>
                 {item.detail?.startsWith('http') && (
-                  <button type="button" className="bd" onClick={() => window.open(item.detail, '_blank', 'noopener,noreferrer')}>
+                  <button type="button" className="bd" onClick={() => openExternalUrl(item.detail || '')}>
                     Open Git
                   </button>
                 )}
               </div>
             ) : item.actionKind === 'open_url' && item.actionValue ? (
-              <button type="button" className="bd" onClick={() => window.open(item.actionValue, '_blank', 'noopener,noreferrer')}>
+              <button type="button" className="bd" onClick={() => openExternalUrl(item.actionValue || '')}>
                 {item.actionLabel || 'Open'}
               </button>
             ) : null}
