@@ -1,8 +1,14 @@
+import { execFile } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
-import { dirname, join, normalize } from 'path'
+import { execPath } from 'process'
+import { delimiter, dirname, join, normalize } from 'path'
+import { promisify } from 'util'
 import { getConfigValue, setConfigValue } from './config-store'
 import { getCliAgentPaths } from './providers'
+
+const execFileAsync = promisify(execFile)
+const ANSI_RE = /\x1B\[[0-9;]*m/g
 
 export interface SkillSearchResult {
   packageName: string
@@ -16,6 +22,32 @@ export interface SearchSkillsOptions {
   query: string
   limit?: number
   fetchImpl?: typeof fetch
+  runNpxImpl?: RunNpxImpl
+}
+
+export interface RunNpxOptions {
+  timeout?: number
+  cwd?: string
+  env?: NodeJS.ProcessEnv
+}
+
+export interface RunNpxResult {
+  stdout: string
+  stderr: string
+}
+
+export type RunNpxImpl = (args: string[], options: RunNpxOptions) => Promise<RunNpxResult>
+
+export interface InstallSkillOptions {
+  packageName: string
+  scope: 'global' | 'project'
+  cwd?: string
+  runNpxImpl?: RunNpxImpl
+}
+
+interface NpxCommand {
+  command: string
+  argsPrefix: string[]
 }
 
 export interface SkillSettings {
@@ -65,38 +97,134 @@ export async function searchSkills({
   query,
   limit = 20,
   fetchImpl = fetch,
+  runNpxImpl,
 }: SearchSkillsOptions): Promise<SkillSearchResult[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
 
   const url = `https://skills.sh/api/search?q=${encodeURIComponent(trimmed)}&limit=${limit}`
-  const response = await fetchImpl(url)
-  if (!response.ok) {
-    throw new Error(`skills.sh search failed: ${response.status}`)
+  try {
+    const response = await fetchImpl(url)
+    if (!response.ok) {
+      throw new Error(`skills.sh search failed: ${response.status}`)
+    }
+
+    const payload = await response.json() as Record<string, unknown>
+    const skills = Array.isArray(payload.skills)
+      ? payload.skills
+      : Array.isArray(payload.results)
+        ? payload.results
+        : []
+
+    return skills.map((entry) => {
+      const skill = entry as Record<string, unknown>
+      const id = typeof skill.id === 'string' ? skill.id : ''
+      const name = typeof skill.name === 'string' ? skill.name : id
+      return {
+        packageName: normalizePackageName(skill),
+        name,
+        installs: formatInstalls(skill.installs),
+        url: typeof skill.url === 'string' && skill.url.trim()
+          ? skill.url
+          : id
+            ? `https://skills.sh/${id}`
+            : undefined,
+        description: typeof skill.description === 'string' ? skill.description : undefined,
+      }
+    })
+  } catch {
+    const runner = runNpxImpl || runNpx
+    const output = await runner(['skills', 'find', trimmed], {
+      timeout: 20_000,
+      env: { ...process.env, FORCE_COLOR: '0' },
+    })
+    return parseSkillsFindOutput(`${output.stdout}${output.stderr}`, limit)
+  }
+}
+
+function cleanCliOutput(value: string): string {
+  return value.replace(ANSI_RE, '').trim()
+}
+
+function parseSkillsFindOutput(raw: string, limit: number): SkillSearchResult[] {
+  const lines = cleanCliOutput(raw).split(/\r?\n/)
+  const results: SkillSearchResult[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim()
+    const match = line.match(/^([\w.\-]+\/[\w.\-@:]+)\s+([\d.,]+[KMB]?\s+installs?)$/i)
+    if (!match) continue
+    const packageName = match[1]
+    const name = packageName.includes('@') ? packageName.split('@').pop() || packageName : packageName
+    const nextLine = lines[index + 1]?.trim()
+    results.push({
+      packageName,
+      name,
+      installs: match[2],
+      url: nextLine?.startsWith('https://') ? nextLine : undefined,
+    })
+    if (results.length >= limit) break
+  }
+  return results
+}
+
+function envPathValue(env: NodeJS.ProcessEnv = process.env): string {
+  return env.Path || env.PATH || ''
+}
+
+function findExecutableOnPath(names: string[], env: NodeJS.ProcessEnv = process.env): string | null {
+  const pathDirs = envPathValue(env).split(delimiter).filter(Boolean)
+  for (const dir of pathDirs) {
+    for (const name of names) {
+      const candidate = join(dir, name)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return null
+}
+
+function findNpxCli(env: NodeJS.ProcessEnv = process.env): { nodeCommand: string; npxCli: string } | null {
+  const nodeCommand = env.npm_node_execpath || findExecutableOnPath(['node.exe', 'node'], env) || execPath
+  const npmExecPath = env.npm_execpath
+  const npmBinDir = npmExecPath ? dirname(npmExecPath) : ''
+  const nodeDir = dirname(nodeCommand)
+  const candidates = [
+    npmBinDir ? join(npmBinDir, 'npx-cli.js') : '',
+    join(nodeDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+    join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return { nodeCommand, npxCli: candidate }
+  }
+  return null
+}
+
+function findNpxCommand(env: NodeJS.ProcessEnv = process.env): NpxCommand {
+  const npxCli = findNpxCli(env)
+  if (npxCli) {
+    return { command: npxCli.nodeCommand, argsPrefix: [npxCli.npxCli] }
   }
 
-  const payload = await response.json() as Record<string, unknown>
-  const skills = Array.isArray(payload.skills)
-    ? payload.skills
-    : Array.isArray(payload.results)
-      ? payload.results
-      : []
+  const npxExecutable = findExecutableOnPath(
+    process.platform === 'win32' ? ['npx.cmd', 'npx.exe', 'npx'] : ['npx'],
+    env,
+  )
+  if (npxExecutable) {
+    return { command: npxExecutable, argsPrefix: [] }
+  }
 
-  return skills.map((entry) => {
-    const skill = entry as Record<string, unknown>
-    const id = typeof skill.id === 'string' ? skill.id : ''
-    const name = typeof skill.name === 'string' ? skill.name : id
-    return {
-      packageName: normalizePackageName(skill),
-      name,
-      installs: formatInstalls(skill.installs),
-      url: typeof skill.url === 'string' && skill.url.trim()
-        ? skill.url
-        : id
-          ? `https://skills.sh/${id}`
-          : undefined,
-      description: typeof skill.description === 'string' ? skill.description : undefined,
-    }
+  return {
+    command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    argsPrefix: [],
+  }
+}
+
+export async function runNpx(args: string[], options: RunNpxOptions = {}): Promise<RunNpxResult> {
+  const env = options.env || process.env
+  const npx = findNpxCommand(env)
+  return execFileAsync(npx.command, [...npx.argsPrefix, ...args], {
+    timeout: options.timeout,
+    cwd: options.cwd,
+    env,
   })
 }
 
@@ -232,6 +360,30 @@ export function setSkillModelInvocation(
   writeFileSync(filePath, `---\n${lines.join('\n')}\n---${body}`, 'utf-8')
 }
 
-export async function installSkill(_payload?: unknown): Promise<void> {
-  throw new Error('Skill installation requires an explicit confirmation flow and is not implemented yet.')
+export async function installSkill(payload?: InstallSkillOptions): Promise<{ output: string }> {
+  const options: Partial<InstallSkillOptions> = payload || {}
+  const packageName = options.packageName?.trim()
+  if (!packageName) throw new Error('Skill package is required.')
+
+  const scope = options.scope === 'project' ? 'project' : 'global'
+  if (scope === 'project' && !options.cwd?.trim()) {
+    throw new Error('A workspace is required to install a project skill.')
+  }
+
+  const args = ['skills', 'add', packageName, '-y', '--agent', 'pi']
+  if (scope === 'global') args.push('-g')
+
+  const runner = options.runNpxImpl || runNpx
+  const result = await runner(args, {
+    timeout: 60_000,
+    cwd: scope === 'project' ? options.cwd : undefined,
+    env: { ...process.env, FORCE_COLOR: '0' },
+  })
+
+  const output = cleanCliOutput(`${result.stdout}${result.stderr}`)
+  if (!/Installation complete|Installed \d+ skill/i.test(output)) {
+    throw new Error(output.slice(-500) || 'Skill installation failed.')
+  }
+
+  return { output }
 }

@@ -33,6 +33,9 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Array<{ packageName: string; name: string; installs?: string; url?: string; description?: string }>>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [installScope, setInstallScope] = useState<'global' | 'project'>('global')
+  const [installingPackage, setInstallingPackage] = useState<string | null>(null)
+  const [installedPackages, setInstalledPackages] = useState<Set<string>>(() => new Set())
   const [managerNotice, setManagerNotice] = useState<string | null>(null)
   const [expandedSkillPaths, setExpandedSkillPaths] = useState<Set<string>>(() => new Set())
 
@@ -188,6 +191,30 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
     setIsSearching(false)
   }
 
+  const handleInstallSkill = async (packageName: string) => {
+    if (!window.piDesktop.skills?.install) return
+    setInstallingPackage(packageName)
+    setManagerNotice(null)
+
+    const response = await window.piDesktop.skills.install({
+      packageName,
+      scope: installScope,
+      cwd: currentDir || undefined,
+    })
+    if (!response.success) {
+      setManagerNotice(response.error || `Failed to install ${packageName}.`)
+      setInstallingPackage(null)
+      return
+    }
+
+    setInstalledPackages((previous) => new Set(previous).add(packageName))
+    const runtimeNotice = await reloadRuntimeResources(sessionPath)
+    const nextResources = await loadPiResources(currentDir, sessionPath).catch(() => null)
+    if (nextResources) setResources(nextResources)
+    setManagerNotice(`Installed ${packageName}.${runtimeNotice}`)
+    setInstallingPackage(null)
+  }
+
   const toggleSkillExpanded = (skill: PiSkillResource) => {
     const key = skill.filePath || skill.name
     setExpandedSkillPaths((previous) => {
@@ -204,12 +231,13 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
+        className="skills-modal"
         style={{
           background: 'var(--bg-app)',
           border: '1px solid var(--bd)',
           borderRadius: 4,
-          width: 640,
-          maxHeight: '80vh',
+          width: 'min(860px, calc(100vw - 32px))',
+          maxHeight: '90vh',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 18px 46px rgba(0,0,0,0.28)',
@@ -264,8 +292,8 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
             Workspace: {currentDir || '(runtime default)'}
           </div>
         </div>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bd)' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div className="skills-search-panel">
+          <div className="skills-search-row">
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
@@ -276,67 +304,83 @@ export default function Skills({ onClose, currentDir, sessionPath }: SkillsProps
                 }
               }}
               placeholder="Search skills"
-              style={{
-                flex: 1,
-                background: 'var(--panel-bg)',
-                border: '1px solid var(--card-border)',
-                borderRadius: 4,
-                color: 'var(--text)',
-                fontFamily: 'inherit',
-                fontSize: 12,
-                padding: '6px 8px',
-              }}
+              className="skills-search-input"
             />
             <button
               onClick={() => void handleSearch()}
               disabled={isSearching || !searchQuery.trim()}
-              style={{
-                border: '1px solid var(--card-border)',
-                background: 'var(--panel-bg)',
-                borderRadius: 4,
-                color: 'var(--text2)',
-                fontFamily: 'inherit',
-                fontSize: 12,
-                padding: '6px 10px',
-                cursor: isSearching ? 'default' : 'pointer',
-              }}
+              className="skills-search-button"
             >
               {isSearching ? 'Searching...' : 'Search'}
             </button>
           </div>
+          <div className="skills-scope-row">
+            <span className="skills-scope-label">Install to</span>
+            <div role="group" aria-label="Skill install scope" className="skills-scope-toggle">
+              <button
+                type="button"
+                aria-pressed={installScope === 'global'}
+                onClick={() => setInstallScope('global')}
+              >
+                Global
+              </button>
+              <button
+                type="button"
+                aria-pressed={installScope === 'project'}
+                onClick={() => setInstallScope('project')}
+                disabled={!currentDir}
+              >
+                Project
+              </button>
+            </div>
+            <span className="skills-install-path">
+              {installScope === 'global' ? '~/.pi/agent/skills/' : `${currentDir || '(choose workspace)'}/.pi/agent/skills/`}
+            </span>
+          </div>
           {managerNotice && (
-            <div
-              role="status"
-              style={{
-                marginTop: 8,
-                fontSize: 11,
-                color: 'var(--text)',
-                border: '1px solid color-mix(in srgb, var(--success) 45%, transparent)',
-                background: 'color-mix(in srgb, var(--success) 14%, var(--bg-chat) 86%)',
-                borderRadius: 6,
-                padding: '7px 9px',
-              }}
-            >
+            <div role="status" className="skills-manager-notice">
               {managerNotice}
             </div>
           )}
           {searchResults.length > 0 && (
-            <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+            <div className="skills-results">
               {searchResults.map((result) => (
-                <div key={result.packageName} style={{ border: '1px solid var(--card-border)', borderRadius: 4, padding: 8, background: 'var(--panel-bg)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--text)' }}>{result.packageName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3 }}>
-                    {[result.description, result.installs].filter(Boolean).join(' - ') || 'Skill package'}
+                <div key={result.packageName} className="skills-result-card">
+                  <div className="skills-result-body">
+                    <div className="skills-result-name">{result.packageName}</div>
+                    <div className="skills-result-meta">
+                      {[result.description, result.installs].filter(Boolean).join(' - ') || 'Skill package'}
+                    </div>
+                    {result.url && (
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="skills-result-link"
+                      >
+                        skills.sh
+                      </a>
+                    )}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
-                    Install from search is coming later. Add a local skill directory below for now.
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleInstallSkill(result.packageName)}
+                    disabled={installedPackages.has(result.packageName) || installingPackage !== null}
+                    className="skills-install-button"
+                    data-state={installedPackages.has(result.packageName) ? 'installed' : installingPackage === result.packageName ? 'installing' : 'idle'}
+                  >
+                    {installedPackages.has(result.packageName)
+                      ? 'Installed'
+                      : installingPackage === result.packageName
+                        ? 'Installing...'
+                        : 'Install'}
+                  </button>
                 </div>
               ))}
             </div>
           )}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <div className="skills-resources-scroll">
           {isLoading && (
             <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text2)' }}>
               Loading Pi resources...

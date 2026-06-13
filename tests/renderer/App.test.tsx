@@ -2428,6 +2428,117 @@ describe('App', () => {
     expect(window.piDesktop.config.set).not.toHaveBeenCalledWith('workingDirectory', runtimeCwd)
   })
 
+  it('shows workspace list errors instead of silently rendering an empty workspace', async () => {
+    window.piDesktop = createPiDesktopMock({
+      files: {
+        ...createPiDesktopMock().files,
+        list: vi.fn().mockResolvedValue({
+          success: false,
+          error: 'File access is limited to your workspace, default folder, or folders you selected.',
+        }),
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    expect(await screen.findByText('File access is limited to your workspace, default folder, or folders you selected.')).toBeTruthy()
+    expect(screen.queryByText('No files found in the current workspace yet.')).toBeNull()
+  })
+
+  it('expands folders from the active session workspace when no default workspace is configured', async () => {
+    const sessionPath = 'C:/Users/test/.pi/agent/sessions/runtime/session-runtime.jsonl'
+    const runtimeCwd = 'D:/PI/runtime-workspace'
+    const folderPath = `${runtimeCwd}/docs`
+    const now = new Date().toISOString()
+    const listMock = vi.fn(async (dir: string) => ({
+      success: true,
+      data: dir === runtimeCwd
+        ? [
+            {
+              name: 'docs',
+              path: folderPath,
+              isDir: true,
+              size: 0,
+              modifiedAt: now,
+            },
+          ]
+        : dir === folderPath
+          ? [
+              {
+                name: 'guide.md',
+                path: `${folderPath}/guide.md`,
+                isDir: false,
+                size: 42,
+                modifiedAt: now,
+              },
+            ]
+          : [],
+    }))
+
+    window.piDesktop = createPiDesktopMock({
+      config: {
+        get: vi.fn(async (key: string) => {
+          if (key === 'workingDirectory') return { success: true, data: null }
+          if (key === 'wizardCompleted') return { success: true, data: 'true' }
+          return { success: true, data: null }
+        }),
+        set: vi.fn().mockResolvedValue({ success: true }),
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'session-runtime',
+              path: sessionPath,
+              cwd: runtimeCwd,
+              title: 'Runtime Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 0,
+              source: 'pi',
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
+        }),
+        getActive: vi.fn().mockResolvedValue({ success: true, data: 'session-runtime' }),
+        switch: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            sessionId: 'session-runtime',
+            sessionPath,
+            cwd: runtimeCwd,
+            title: 'Runtime Session',
+            model: 'openai/gpt-4o-mini',
+            thinkingLevel: 'medium',
+            messages: [],
+            tokenCount: 0,
+          },
+        }),
+      },
+      files: {
+        ...createPiDesktopMock().files,
+        list: listMock,
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Runtime Session')).toBeTruthy()
+    const workspaceSection = screen.getByText('Workspace').closest('.c-sec') as HTMLElement
+    expect(within(workspaceSection).getByText('docs')).toBeTruthy()
+
+    fireEvent.click(within(workspaceSection).getByRole('button', { name: 'docs' }))
+
+    await waitFor(() => {
+      expect(listMock).toHaveBeenCalledWith(folderPath)
+    })
+    expect(await within(workspaceSection).findByText('guide.md')).toBeTruthy()
+  })
+
   it('keeps implicit session progress visible after chat.send returns the new session path', async () => {
     window.piDesktop = createPiDesktopMock({
       config: {

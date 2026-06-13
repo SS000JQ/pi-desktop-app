@@ -381,7 +381,7 @@ export interface PiDesktopApi {
   skills: {
     getSettings: () => Promise<IpcResponse<SkillSettingsResult>>
     search: (payload: { query: string; limit?: number }) => Promise<IpcResponse<SkillSearchResult[]>>
-    install: (payload: { packageName: string; scope: 'global' | 'project'; cwd?: string }) => Promise<IpcResponse>
+    install: (payload: { packageName: string; scope: 'global' | 'project'; cwd?: string }) => Promise<IpcResponse<{ output: string }>>
     setAdditionalPaths: (payload: { paths: string[] }) => Promise<IpcResponse<string[]>>
     setDisabled: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse<string[]>>
     setModelInvocation: (payload: { filePath: string; disabled: boolean }) => Promise<IpcResponse>

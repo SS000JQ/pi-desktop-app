@@ -733,6 +733,7 @@ export default function App() {
   const [runActivity, setRunActivity] = useState<RunActivity | null>(null)
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>([])
   const [workspaceChildrenByDir, setWorkspaceChildrenByDir] = useState<Record<string, WorkspaceFileEntry[]>>({})
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null)
   const [artifactsBySession, setArtifactsBySession] = useState<Record<string, ArtifactEntity[]>>({})
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null)
   const [recentOpenedPaths, setRecentOpenedPaths] = useState<string[]>([])
@@ -872,6 +873,7 @@ export default function App() {
     if (!dir) {
       if (workspaceRequestRef.current === requestId) {
         setWorkspaceFiles([])
+        setWorkspaceError(null)
       }
       return []
     }
@@ -883,11 +885,13 @@ export default function App() {
 
     if (!response?.success || !Array.isArray(response.data)) {
       setWorkspaceFiles([])
+      setWorkspaceError(response?.error || `Could not read workspace: ${dir}`)
       return []
     }
 
     const files = sortWorkspaceFiles(response.data as WorkspaceFileEntry[])
     setWorkspaceFiles(files)
+    setWorkspaceError(null)
     return files
   }, [])
 
@@ -1982,6 +1986,7 @@ export default function App() {
             workspaceFiles={workspaceView.files}
             workspaceDirectories={workspaceView.directories}
             workspaceChildrenByDir={workspaceChildrenByDir}
+            workspaceError={workspaceError}
             recentResults={resultsForPanel}
             runtimeStatus={activeRuntimeStatus}
             runActivity={activeRunActivity}

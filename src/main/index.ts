@@ -76,6 +76,7 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 const fileWatchers = new Map<string, import('fs').FSWatcher>()
 const userPickedDirectories = new Set<string>()
+const lastKnownSessionCwds: Record<string, string> = {}
 
 type RuntimeStatusPayload = {
   type: 'status'
@@ -241,10 +242,17 @@ function resolveRuntimeWorkingDirectory(path?: string): string {
   return resolveRuntimeDirectory(path, resolveWorkingDirectory() || resolveDefaultSessionDirectory())
 }
 
+function rememberSessionWorkspace(sessionPath: string | null | undefined, cwd: string | null | undefined): void {
+  if (!sessionPath || !cwd) return
+  lastKnownSessionCwds[sessionPath] = cwd
+}
+
 function getAllowedFileRoots(): string[] {
+  const sessionRoots = Object.values(lastKnownSessionCwds)
   return [
     resolveWorkingDirectory(),
     resolveDefaultSessionDirectory(),
+    ...sessionRoots,
     ...Array.from(userPickedDirectories),
   ].filter((root): root is string => Boolean(root))
 }
@@ -364,6 +372,7 @@ ipcMain.handle(
     let sessionDetail
     try {
       sessionDetail = payload.sessionPath ? await openPiSession(payload.sessionPath) : await createPiSession(cwd)
+      rememberSessionWorkspace(sessionDetail.sessionPath, sessionDetail.cwd)
     } catch (error) {
       return {
         success: false,
@@ -758,7 +767,11 @@ ipcMain.handle(IPC_CHANNELS.CONFIG_SET, async (_event, key: string, value: unkno
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
-  return { success: true, data: await listPiSessions() }
+  const sessions = await listPiSessions()
+  for (const session of sessions) {
+    rememberSessionWorkspace(session.path, session.cwd)
+  }
+  return { success: true, data: sessions }
 })
 
 ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, payload?: { cwd?: string }) => {
@@ -770,6 +783,7 @@ ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, payload?: { cwd?: str
 
     mkdirSync(targetDir, { recursive: true })
     const session = await createPiSession(targetDir)
+    rememberSessionWorkspace(session.sessionPath, session.cwd)
     saveActiveSessionId(session.sessionId, session.sessionPath)
 
     return {
@@ -818,6 +832,7 @@ ipcMain.handle(IPC_CHANNELS.SESSION_SEARCH, async (_event, query: string) => {
 
 ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, sessionPath: string) => {
   const session = await openPiSession(sessionPath)
+  rememberSessionWorkspace(session.sessionPath, session.cwd)
   saveActiveSessionId(session.sessionId, session.sessionPath)
   return { success: true, data: session }
 })
@@ -837,6 +852,7 @@ ipcMain.handle(
         modelKey: payload.modelId,
         thinkingLevel: payload.thinkingLevel,
       })
+      rememberSessionWorkspace(session.sessionPath, session.cwd)
       return { success: true, data: session }
     } catch (error: unknown) {
       return {
@@ -855,6 +871,7 @@ async function resolveResourceRequestCwd(payload?: { cwd?: string | null; sessio
   if (payload?.sessionPath) {
     try {
       const session = await openPiSession(payload.sessionPath)
+      rememberSessionWorkspace(session.sessionPath, session.cwd)
       return session.cwd || payload.cwd || null
     } catch {
       return payload.cwd || null
@@ -998,8 +1015,7 @@ ipcMain.handle(IPC_CHANNELS.SKILLS_SEARCH, async (_event, payload: { query: stri
 
 ipcMain.handle(IPC_CHANNELS.SKILLS_INSTALL, async (_event, payload) => {
   try {
-    await installSkill(payload)
-    return { success: true }
+    return { success: true, data: await installSkill(payload) }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to install skill' }
   }

@@ -832,6 +832,46 @@ describe('PreviewPanel', () => {
     expect(screen.getByText(/Hello HTML/)).toBeTruthy()
   })
 
+  it('allows html preview interactions and forwards link clicks to the host window', () => {
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      shell: {
+        openExternal: vi.fn(async () => ({ success: true })),
+      },
+    } as Window['piDesktop']
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={300}
+        onResize={() => {}}
+        previewFile={{
+          path: 'D:/PI/app/report.html',
+          name: 'report.html',
+          ext: '.html',
+          type: 'text',
+          content: '<html><body><a href="https://example.com/docs">Docs</a><button onclick="document.body.dataset.clicked = \'yes\'">Run</button></body></html>',
+        }}
+        onClosePreview={() => {}}
+        onOpenExternal={() => {}}
+      />,
+    )
+
+    const frame = screen.getByTitle('report.html') as HTMLIFrameElement
+    expect(frame.getAttribute('sandbox')).toContain('allow-scripts')
+    expect(frame.getAttribute('srcdoc')).toContain('data-pi-html-preview-scrollbar')
+    expect(frame.getAttribute('srcdoc')).toContain('pi-html-preview-link')
+
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { source: 'pi-html-preview-link', href: 'https://example.com/docs' },
+      }))
+    })
+
+    expect(window.piDesktop.shell.openExternal).toHaveBeenCalledWith('https://example.com/docs')
+  })
+
   it('opens bare domain markdown links as https urls', () => {
     window.piDesktop = {
       ...(window.piDesktop || {}),

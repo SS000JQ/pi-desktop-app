@@ -4,6 +4,7 @@ import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   getSkillSettings,
+  installSkill,
   searchSkills,
   setAdditionalSkillPaths,
   setDisabledSkill,
@@ -112,5 +113,85 @@ describe('skills manager', () => {
         url: 'https://skills.sh/pdf-tools',
       },
     ])
+  })
+
+  it('falls back to npx skills find when skills.sh search fails', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500 })
+
+    await expect(searchSkills({
+      query: 'pdf',
+      fetchImpl: fetchMock as any,
+      runNpxImpl: async () => ({
+        stdout: [
+          'owner/repo@pdf  12K installs',
+          'https://skills.sh/owner/repo/pdf',
+        ].join('\n'),
+        stderr: '',
+      }),
+    })).resolves.toEqual([
+      {
+        packageName: 'owner/repo@pdf',
+        name: 'pdf',
+        installs: '12K installs',
+        url: 'https://skills.sh/owner/repo/pdf',
+      },
+    ])
+  })
+
+  it('installs a global skill through npx skills add for the Pi agent', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+
+    await installSkill({
+      packageName: 'owner/repo@pdf',
+      scope: 'global',
+      runNpxImpl: async (args, options) => {
+        calls.push({ args, cwd: options.cwd })
+        return { stdout: 'Installation complete', stderr: '' }
+      },
+    })
+
+    expect(calls).toEqual([
+      {
+        args: ['skills', 'add', 'owner/repo@pdf', '-y', '--agent', 'pi', '-g'],
+        cwd: undefined,
+      },
+    ])
+  })
+
+  it('installs a project skill in the selected workspace', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+
+    await installSkill({
+      packageName: 'owner/repo@testing',
+      scope: 'project',
+      cwd: 'D:/PI/app',
+      runNpxImpl: async (args, options) => {
+        calls.push({ args, cwd: options.cwd })
+        return { stdout: 'Installed 1 skill', stderr: '' }
+      },
+    })
+
+    expect(calls).toEqual([
+      {
+        args: ['skills', 'add', 'owner/repo@testing', '-y', '--agent', 'pi'],
+        cwd: 'D:/PI/app',
+      },
+    ])
+  })
+
+  it('rejects project skill installs without a cwd', async () => {
+    await expect(installSkill({
+      packageName: 'owner/repo@testing',
+      scope: 'project',
+      runNpxImpl: async () => ({ stdout: 'Installation complete', stderr: '' }),
+    })).rejects.toThrow(/workspace is required/i)
+  })
+
+  it('returns cleaned install output and rejects failed installs', async () => {
+    await expect(installSkill({
+      packageName: 'owner/repo@bad',
+      scope: 'global',
+      runNpxImpl: async () => ({ stdout: '\u001b[31mNo matching skill\u001b[0m', stderr: '' }),
+    })).rejects.toThrow(/No matching skill/i)
   })
 })

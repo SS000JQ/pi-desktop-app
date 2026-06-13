@@ -46,6 +46,7 @@ interface PreviewPanelProps {
   workspaceFiles?: WorkspaceFileEntry[]
   workspaceDirectories?: WorkspaceFileEntry[]
   workspaceChildrenByDir?: Record<string, WorkspaceFileEntry[]>
+  workspaceError?: string | null
   recentResults?: ResultItem[]
   runtimeStatus?: RuntimeStatus | null
   runActivity?: RunActivity | null
@@ -238,16 +239,39 @@ function buildHtmlSrcDoc(html: string, filePath: string): string {
   const baseHref = getDirectoryFileUrl(filePath)
   const baseTag = `<base href="${baseHref}">`
   const metaTag = '<meta charset="utf-8">'
+  const previewStyle = `<style data-pi-html-preview-scrollbar>
+:root { color-scheme: light; scrollbar-color: rgba(15,23,42,0.30) rgba(248,250,252,0.78); }
+html, body { scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(248,250,252,0.78); }
+::-webkit-scrollbar-thumb {
+  background: rgba(15,23,42,0.24);
+  border: 2px solid rgba(248,250,252,0.78);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.38); }
+</style>`
+  const bridgeScript = `<script>
+(() => {
+  document.addEventListener('click', (event) => {
+    const link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+    if (!link) return;
+    event.preventDefault();
+    window.parent.postMessage({ source: 'pi-html-preview-link', href: link.href }, '*');
+  }, true);
+})();
+</script>`
+  const headContent = `${metaTag}${baseTag}${previewStyle}${bridgeScript}`
 
   if (/<html[\s>]/i.test(html)) {
     if (/<head[\s>]/i.test(html)) {
-      return html.replace(/<head(\s*[^>]*)>/i, `<head$1>${metaTag}${baseTag}`)
+      return html.replace(/<head(\s*[^>]*)>/i, `<head$1>${headContent}`)
     }
 
-    return html.replace(/<html(\s*[^>]*)>/i, `<html$1><head>${metaTag}${baseTag}</head>`)
+    return html.replace(/<html(\s*[^>]*)>/i, `<html$1><head>${headContent}</head>`)
   }
 
-  return `<!doctype html><html><head>${metaTag}${baseTag}</head><body>${html}</body></html>`
+  return `<!doctype html><html><head>${headContent}</head><body>${html}</body></html>`
 }
 
 function getRenderErrorMessage(error: unknown, fallback: string): string {
@@ -407,12 +431,14 @@ function WorkspaceSection({
   files,
   directories,
   expandedDirectories,
+  error,
   onSelectFile,
   onToggleDirectory,
 }: {
   files: WorkspaceFileEntry[]
   directories: WorkspaceFileEntry[]
   expandedDirectories: Record<string, WorkspaceFileEntry[]>
+  error?: string | null
   onSelectFile?: (path: string) => void
   onToggleDirectory?: (path: string) => void
 }) {
@@ -455,6 +481,10 @@ function WorkspaceSection({
 
   return (
     <div className="pv-stack">
+      {error && (
+        <div className="pv-empty-note pv-empty-inline">{error}</div>
+      )}
+
       {files.length > 0 && (
         <div className="pv-group">
           <div className="pv-group-label">Files</div>
@@ -476,7 +506,7 @@ function WorkspaceSection({
         </div>
       )}
 
-      {files.length === 0 && directories.length === 0 && (
+      {!error && files.length === 0 && directories.length === 0 && (
         <div className="pv-empty-note">No files found in the current workspace yet.</div>
       )}
     </div>
@@ -545,6 +575,7 @@ export default function PreviewPanel({
   workspaceFiles = [],
   workspaceDirectories = [],
   workspaceChildrenByDir = {},
+  workspaceError = null,
   recentResults = [],
   runtimeStatus,
   runActivity,
@@ -821,6 +852,17 @@ export default function PreviewPanel({
     window.addEventListener('message', handlePptxViewerMessage)
     return () => window.removeEventListener('message', handlePptxViewerMessage)
   }, [previewFile])
+
+  useEffect(() => {
+    const handleHtmlPreviewMessage = (event: MessageEvent) => {
+      const payload = event.data as { source?: string; href?: string } | undefined
+      if (!payload || payload.source !== 'pi-html-preview-link' || !payload.href) return
+      void window.piDesktop.shell.openExternal(payload.href)
+    }
+
+    window.addEventListener('message', handleHtmlPreviewMessage)
+    return () => window.removeEventListener('message', handleHtmlPreviewMessage)
+  }, [])
 
   useEffect(() => {
     if (!previewFile || previewFile.type !== 'pdf') {
@@ -1393,7 +1435,7 @@ export default function PreviewPanel({
         <iframe
           className="pv-html-frame"
           title={previewFile.name}
-          sandbox="allow-same-origin"
+          sandbox="allow-scripts allow-same-origin"
           referrerPolicy="no-referrer"
           srcDoc={buildHtmlSrcDoc(previewFile.content, previewFile.path)}
         />
@@ -1892,6 +1934,7 @@ export default function PreviewPanel({
                 files={workspaceFiles}
                 directories={workspaceDirectories}
                 expandedDirectories={workspaceChildrenByDir}
+                error={workspaceError}
                 onSelectFile={onSelectFile}
                 onToggleDirectory={onToggleWorkspaceDirectory}
               />

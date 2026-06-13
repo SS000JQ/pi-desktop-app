@@ -81,8 +81,11 @@ describe('Skills', () => {
             },
           ],
         }),
-        install: vi.fn().mockResolvedValue({ success: true }),
+        install: vi.fn().mockResolvedValue({ success: true, data: { output: 'Installation complete' } }),
         setModelInvocation: vi.fn().mockResolvedValue({ success: true }),
+      },
+      piRuntime: {
+        reloadResources: vi.fn().mockResolvedValue({ success: true }),
       },
     } as typeof window.piDesktop
   })
@@ -180,8 +183,81 @@ describe('Skills', () => {
     fireEvent.click(screen.getByText('Search'))
 
     expect(await screen.findByText('owner/repo@pdf')).toBeTruthy()
-    expect(screen.getByText(/Install from search is coming later/i)).toBeTruthy()
-    expect(screen.queryByText('路')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    await waitFor(() => {
+      expect(window.piDesktop.skills.install).toHaveBeenCalledWith({
+        packageName: 'owner/repo@pdf',
+        scope: 'global',
+        cwd: 'D:/work/project',
+      })
+    })
+    expect((await screen.findByRole('status')).textContent).toMatch(/Installed owner\/repo@pdf/i)
+  })
+
+  it('installs searched skills into the selected project scope', async () => {
+    render(<Skills currentDir="D:/work/project" sessionPath="C:/Users/test/.pi/sessions/one.jsonl" onClose={() => {}} />)
+
+    await screen.findByText('/skill:pdf')
+    fireEvent.click(screen.getByRole('button', { name: 'Project' }))
+    fireEvent.change(screen.getByPlaceholderText(/Search skills/), { target: { value: 'pdf' } })
+    fireEvent.click(screen.getByText('Search'))
+    expect(await screen.findByText('owner/repo@pdf')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+
+    await waitFor(() => {
+      expect(window.piDesktop.skills.install).toHaveBeenCalledWith({
+        packageName: 'owner/repo@pdf',
+        scope: 'project',
+        cwd: 'D:/work/project',
+      })
+    })
+    expect(window.piDesktop.piRuntime?.reloadResources).toHaveBeenCalledWith({
+      sessionPath: 'C:/Users/test/.pi/sessions/one.jsonl',
+    })
+  })
+
+  it('shows install errors without clearing search results', async () => {
+    ;(window.piDesktop.skills.install as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'No matching skill',
+    })
+
+    render(<Skills currentDir="D:/work/project" onClose={() => {}} />)
+
+    await screen.findByText('/skill:pdf')
+    fireEvent.change(screen.getByPlaceholderText(/Search skills/), { target: { value: 'pdf' } })
+    fireEvent.click(screen.getByText('Search'))
+    expect(await screen.findByText('owner/repo@pdf')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+
+    expect(await screen.findByText('No matching skill')).toBeTruthy()
+    expect(screen.getByText('owner/repo@pdf')).toBeTruthy()
+  })
+
+  it('renders marketplace results inside a dedicated scroll region', async () => {
+    ;(window.piDesktop.skills.search as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: true,
+      data: Array.from({ length: 24 }, (_, index) => ({
+        packageName: `owner/repo@skill-${index}`,
+        name: `skill-${index}`,
+        installs: `${index + 1}K installs`,
+        url: `https://skills.sh/owner/repo/skill-${index}`,
+      })),
+    })
+
+    render(<Skills currentDir="D:/work/project" onClose={() => {}} />)
+
+    await screen.findByText('/skill:pdf')
+    fireEvent.change(screen.getByPlaceholderText(/Search skills/), { target: { value: 'search' } })
+    fireEvent.click(screen.getByText('Search'))
+
+    const firstResult = await screen.findByText('owner/repo@skill-0')
+    const resultRegion = firstResult.closest('.skills-results')
+    expect(resultRegion).toBeTruthy()
+    expect(firstResult.closest('.skills-modal')).toBeTruthy()
+    expect(resultRegion?.querySelectorAll('.skills-result-card')).toHaveLength(24)
   })
 
   it('manages additional skill paths from suggested external agent directories', async () => {

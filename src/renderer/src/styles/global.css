@@ -1882,13 +1882,13 @@ body {
 [data-theme="mint-docs"] .pv-docx-wrap {
   background:
     radial-gradient(circle at top, rgba(200,246,249,0.52), transparent 58%),
-    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(242,238,231,0.95));
+    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,250,252,0.96));
 }
 
 [data-theme="mint-docs"] .pv-docx-root .pv-docx-stage-wrapper {
   background:
     radial-gradient(circle at top, rgba(255,255,255,0.96), transparent 56%),
-    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,245,239,0.98)) !important;
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98)) !important;
   border-color: rgba(15,23,42,0.08);
 }
 
@@ -2117,7 +2117,7 @@ body {
 [data-theme="mint-docs"] .custom-part,
 [data-theme="mint-docs"] .tc {
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(245,241,235,0.95));
+    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,250,252,0.96));
   color: rgba(48,55,71,0.72);
 }
 
@@ -2138,7 +2138,7 @@ body {
 [data-theme="mint-docs"] .tc.error {
   border-left-color: #c2410c;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(255,241,236,0.95));
+    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(255,247,244,0.96));
 }
 
 [data-theme="mint-docs"] .tcn,
@@ -3461,6 +3461,205 @@ body {
   min-width: 52px;
 }
 
+.skills-modal {
+  max-width: calc(100vw - 32px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.skills-search-panel {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd);
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 94px;
+  max-height: min(64vh, 680px);
+  overflow: hidden;
+}
+
+.skills-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.skills-search-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.skills-search-button,
+.skills-install-button {
+  border: 1px solid var(--card-border);
+  background: var(--panel-bg);
+  color: var(--text2);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.skills-search-button {
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.skills-search-button:disabled,
+.skills-install-button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.skills-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.skills-scope-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.skills-scope-toggle {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+
+.skills-scope-toggle button {
+  border: 0;
+  background: var(--panel-bg);
+  color: var(--text2);
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.skills-scope-toggle button + button {
+  border-left: 1px solid var(--card-border);
+}
+
+.skills-scope-toggle button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-bg));
+  color: var(--text);
+  font-weight: 600;
+}
+
+.skills-scope-toggle button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.skills-install-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.skills-manager-notice {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+  background: color-mix(in srgb, var(--success) 14%, var(--bg-chat) 86%);
+  border-radius: 6px;
+  padding: 7px 9px;
+  overflow-wrap: anywhere;
+}
+
+.skills-results {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  max-height: min(48vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.skills-result-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: var(--panel-bg);
+}
+
+.skills-result-body {
+  min-width: 0;
+}
+
+.skills-result-name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-result-meta {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.skills-result-link {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.skills-result-link:hover {
+  text-decoration: underline;
+}
+
+.skills-install-button {
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+
+.skills-install-button[data-state="installed"] {
+  background: color-mix(in srgb, var(--success) 14%, var(--panel-bg));
+  color: var(--success);
+}
+
+.skills-install-button[data-state="installing"] {
+  color: var(--accent);
+}
+
+.skills-resources-scroll {
+  flex: 1;
+  min-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 0;
+}
+
 
 
 .pv-result-main,
@@ -4620,6 +4819,59 @@ body {
   margin: 0 0 0.82em;
 }
 
+[data-theme="mint-docs"] .chat,
+[data-theme="mint-docs"] .msgs,
+[data-theme="mint-docs"] .msg-empty,
+[data-theme="mint-docs"] .prev,
+[data-theme="mint-docs"] .prev.preview-mode,
+[data-theme="mint-docs"] .pv-body,
+[data-theme="mint-docs"] .pv-workbench-body,
+[data-theme="mint-docs"] .pv-pptx-preview-body {
+  background: var(--bg-chat);
+  background-image: none;
+}
+
+[data-theme="mint-docs"] .pv-canvas-shell,
+[data-theme="mint-docs"] .pv-pptx-canvas-shell,
+[data-theme="mint-docs"] .pv-image-stage,
+[data-theme="mint-docs"] .pv-docx-wrap,
+[data-theme="mint-docs"] .pv-docx-root .pv-docx-stage-wrapper {
+  background: #f8fafc !important;
+  background-image: none !important;
+  border-color: rgba(15,23,42,0.08);
+  box-shadow: none;
+}
+
+[data-theme="mint-docs"] .pv-doc-canvas,
+[data-theme="mint-docs"] .pv-pptx-canvas,
+[data-theme="mint-docs"] .pv-image-canvas,
+[data-theme="mint-docs"] .pv-pptx-frame,
+[data-theme="mint-docs"] .pv-docx-root .pv-docx-page {
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15,23,42,0.08);
+}
+
+[data-theme="mint-docs"] .pv-viewer-status,
+[data-theme="mint-docs"] .pv-pptx-status,
+[data-theme="mint-docs"] .pv-viewer-loading,
+[data-theme="mint-docs"] .pv-pptx-loading,
+[data-theme="mint-docs"] .pv-sheet-tab,
+[data-theme="mint-docs"] .pv-img,
+[data-theme="mint-docs"] .pv-md blockquote {
+  color: rgba(48,55,71,0.68);
+}
+
+[data-theme="mint-docs"] .pv-sheet-tab {
+  border-color: rgba(15,23,42,0.10);
+  background: #ffffff;
+}
+
+[data-theme="mint-docs"] .pv-sheet-tab.active {
+  border-color: rgba(12,15,22,0.18);
+  background: #eef8f9;
+  color: rgba(12,15,22,0.92);
+}
+
 .process-timeline {
   gap: 6px;
   margin: 7px 0 9px;
@@ -4783,4 +5035,271 @@ body {
 .msg-stream .dot {
   width: 6px;
   height: 6px;
+}
+
+/* Final Mint Docs contrast pass: keep light surfaces crisp after late dark-theme defaults. */
+[data-theme="mint-docs"] {
+  --text: rgba(12,15,22,0.92);
+  --text2: rgba(48,55,71,0.76);
+  --text3: rgba(48,55,71,0.62);
+  --panel-bg: #ffffff;
+  --card-border: rgba(15,23,42,0.10);
+}
+
+[data-theme="mint-docs"] .right,
+[data-theme="mint-docs"] .prev,
+[data-theme="mint-docs"] .modal-box,
+[data-theme="mint-docs"] .cmd-list,
+[data-theme="mint-docs"] .env-card,
+[data-theme="mint-docs"] .theme-preset-card,
+[data-theme="mint-docs"] .runtime-thinking-panel {
+  color: rgba(12,15,22,0.90);
+}
+
+[data-theme="mint-docs"] .ml,
+[data-theme="mint-docs"] .msg-role.user,
+[data-theme="mint-docs"] .msg-role.assistant,
+[data-theme="mint-docs"] .msg-final-actions button,
+[data-theme="mint-docs"] .mb-actions button,
+[data-theme="mint-docs"] .msg-stream,
+[data-theme="mint-docs"] .runtime-status-context,
+[data-theme="mint-docs"] .runtime-status-detail,
+[data-theme="mint-docs"] .runtime-status-chip,
+[data-theme="mint-docs"] .runtime-thinking-toggle,
+[data-theme="mint-docs"] .runtime-status-dismiss {
+  color: rgba(48,55,71,0.76);
+}
+
+[data-theme="mint-docs"] .msg.assistant .answer-card,
+[data-theme="mint-docs"] .msg.system .answer-card,
+[data-theme="mint-docs"] .msg.assistant .answer-card p,
+[data-theme="mint-docs"] .msg.assistant .answer-card li,
+[data-theme="mint-docs"] .msg.system .answer-card p,
+[data-theme="mint-docs"] .msg.system .answer-card li,
+[data-theme="mint-docs"] .msg.user .mb,
+[data-theme="mint-docs"] .msg.right .mb {
+  color: rgba(12,15,22,0.88);
+}
+
+[data-theme="mint-docs"] .pv-name,
+[data-theme="mint-docs"] .pv-result-title,
+[data-theme="mint-docs"] .pv-context-title,
+[data-theme="mint-docs"] .pv-result-step-label,
+[data-theme="mint-docs"] .pv-result-file,
+[data-theme="mint-docs"] .ft,
+[data-theme="mint-docs"] .art,
+[data-theme="mint-docs"] .t .l.d,
+[data-theme="mint-docs"] .t .l.r,
+[data-theme="mint-docs"] .cmd-name,
+[data-theme="mint-docs"] .env-title,
+[data-theme="mint-docs"] .env-row-title,
+[data-theme="mint-docs"] .skill-name,
+[data-theme="mint-docs"] .tools-name {
+  color: rgba(12,15,22,0.90);
+}
+
+[data-theme="mint-docs"] .pv-empty-note,
+[data-theme="mint-docs"] .pv-workspace-path,
+[data-theme="mint-docs"] .pv-group-label,
+[data-theme="mint-docs"] .pv-result-action,
+[data-theme="mint-docs"] .pv-result-time,
+[data-theme="mint-docs"] .pv-result-note,
+[data-theme="mint-docs"] .pv-result-step-detail,
+[data-theme="mint-docs"] .pv-viewer-status,
+[data-theme="mint-docs"] .pv-pptx-status,
+[data-theme="mint-docs"] .pv-viewer-loading,
+[data-theme="mint-docs"] .pv-pptx-loading,
+[data-theme="mint-docs"] .pv-office-copy,
+[data-theme="mint-docs"] .pv-img,
+[data-theme="mint-docs"] .cmd-desc,
+[data-theme="mint-docs"] .cmd-empty,
+[data-theme="mint-docs"] .cmd-group,
+[data-theme="mint-docs"] .env-row-summary,
+[data-theme="mint-docs"] .env-row-detail,
+[data-theme="mint-docs"] .env-subtitle,
+[data-theme="mint-docs"] .env-empty,
+[data-theme="mint-docs"] .skill-description,
+[data-theme="mint-docs"] .skill-source,
+[data-theme="mint-docs"] .skill-meta,
+[data-theme="mint-docs"] .tools-desc,
+[data-theme="mint-docs"] .tools-source,
+[data-theme="mint-docs"] .topbar-menu-empty,
+[data-theme="mint-docs"] .runtime-status-context,
+[data-theme="mint-docs"] .tc-status,
+[data-theme="mint-docs"] .tc-duration,
+[data-theme="mint-docs"] .tc-chevron,
+[data-theme="mint-docs"] .tc-details {
+  color: rgba(48,55,71,0.74);
+}
+
+[data-theme="mint-docs"] .env-row,
+[data-theme="mint-docs"] .skill-card,
+[data-theme="mint-docs"] .skill-group,
+[data-theme="mint-docs"] .skills-result-card,
+[data-theme="mint-docs"] .skills-search-input,
+[data-theme="mint-docs"] .skills-search-button,
+[data-theme="mint-docs"] .skills-install-button,
+[data-theme="mint-docs"] .skills-scope-toggle,
+[data-theme="mint-docs"] .skills-scope-toggle button {
+  background: #ffffff;
+  border-color: rgba(15,23,42,0.10);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset;
+}
+
+[data-theme="mint-docs"] .skills-search-input,
+[data-theme="mint-docs"] .skills-result-name {
+  color: rgba(12,15,22,0.92);
+}
+
+[data-theme="mint-docs"] .skills-search-input::placeholder,
+[data-theme="mint-docs"] .skills-scope-label,
+[data-theme="mint-docs"] .skills-result-meta,
+[data-theme="mint-docs"] .skills-search-button,
+[data-theme="mint-docs"] .skills-install-button {
+  color: rgba(48,55,71,0.76);
+}
+
+[data-theme="mint-docs"] .skills-install-path {
+  color: rgba(48,55,71,0.62);
+}
+
+[data-theme="mint-docs"] .skills-scope-toggle button[aria-pressed="true"] {
+  background: rgba(200,246,249,0.34);
+  color: rgba(12,15,22,0.92);
+}
+
+[data-theme="mint-docs"] .skills-install-button[data-state="installed"] {
+  background: rgba(16,133,110,0.10);
+  color: #087443;
+}
+
+[data-theme="mint-docs"] .skills-manager-notice {
+  color: rgba(12,15,22,0.90);
+  background: rgba(16,133,110,0.08);
+  border-color: rgba(16,133,110,0.22);
+}
+
+[data-theme="mint-docs"] .env-row.ok {
+  border-color: rgba(16,133,110,0.22);
+}
+
+[data-theme="mint-docs"] .env-row.warn {
+  border-color: rgba(180,83,9,0.24);
+}
+
+[data-theme="mint-docs"] .env-row.error {
+  border-color: rgba(194,65,12,0.24);
+}
+
+[data-theme="mint-docs"] .topbar-menu,
+[data-theme="mint-docs"] .topbar-path-menu {
+  background: rgba(255,255,255,0.98);
+  border-color: rgba(15,23,42,0.10);
+  box-shadow: 0 18px 38px rgba(15,23,42,0.10);
+}
+
+[data-theme="mint-docs"] .topbar-path-btn,
+[data-theme="mint-docs"] .topbar-menu-item {
+  color: rgba(48,55,71,0.76);
+}
+
+[data-theme="mint-docs"] .topbar-menu-item:hover,
+[data-theme="mint-docs"] .topbar-menu-item.active {
+  background: rgba(200,246,249,0.34);
+  color: rgba(12,15,22,0.92);
+}
+
+[data-theme="mint-docs"] .hljs {
+  color: rgba(12,15,22,0.88);
+  background: transparent;
+}
+
+[data-theme="mint-docs"] .hljs-keyword,
+[data-theme="mint-docs"] .hljs-selector-tag,
+[data-theme="mint-docs"] .hljs-literal {
+  color: #b42318;
+}
+
+[data-theme="mint-docs"] .hljs-string,
+[data-theme="mint-docs"] .hljs-regexp,
+[data-theme="mint-docs"] .hljs-symbol {
+  color: #087443;
+}
+
+[data-theme="mint-docs"] .hljs-number,
+[data-theme="mint-docs"] .hljs-attr,
+[data-theme="mint-docs"] .hljs-variable {
+  color: #175cd3;
+}
+
+[data-theme="mint-docs"] .hljs-title,
+[data-theme="mint-docs"] .hljs-section,
+[data-theme="mint-docs"] .hljs-name {
+  color: #344054;
+}
+
+[data-theme="mint-docs"] .hljs-built_in,
+[data-theme="mint-docs"] .hljs-type,
+[data-theme="mint-docs"] .hljs-class {
+  color: #9a6700;
+}
+
+[data-theme="mint-docs"] .hljs-comment,
+[data-theme="mint-docs"] .hljs-quote {
+  color: rgba(71,84,103,0.74);
+  font-style: italic;
+}
+
+[data-theme="mint-docs"] ::-webkit-scrollbar-track {
+  background: rgba(248,250,252,0.78);
+}
+
+[data-theme="mint-docs"] ::-webkit-scrollbar-thumb {
+  background: rgba(15,23,42,0.22);
+  border: 1px solid rgba(248,250,252,0.78);
+}
+
+[data-theme="mint-docs"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15,23,42,0.34);
+}
+
+/* Final answer surface pass: assistant prose should blend into the chat canvas. */
+.msg.assistant .mb.left,
+.msg.system .mb.left,
+.msg.assistant .msg-parts,
+.msg.system .msg-parts,
+.msg.assistant .answer-card,
+.msg.system .answer-card {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.msg.assistant .answer-card > :not(pre):not(table):not(blockquote),
+.msg.system .answer-card > :not(pre):not(table):not(blockquote) {
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.msg.assistant .answer-card pre,
+.msg.system .answer-card pre {
+  background: color-mix(in srgb, var(--bg-chat) 96%, var(--text) 3%) !important;
+}
+
+.msg.assistant .answer-card code:not(pre code),
+.msg.system .answer-card code:not(pre code) {
+  background: color-mix(in srgb, var(--bg-chat) 94%, var(--text) 4%) !important;
+}
+
+.msg.assistant .tc,
+.msg.system .tc,
+.msg.assistant .thinking-part,
+.msg.system .thinking-part,
+.msg.assistant .tool-result-part,
+.msg.system .tool-result-part,
+.msg.assistant .custom-part,
+.msg.system .custom-part {
+  box-shadow: none !important;
 }
