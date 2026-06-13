@@ -51,7 +51,9 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
           <>
             {!hasToolCallParts ? renderProcessTimeline(toolCalls, message.anchors?.toolSummary) : null}
             {message.content ? (
-              isUser ? <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div> : <AnswerCard text={message.content} />
+              isUser
+                ? <UserMessageContent message={message} />
+                : <AnswerCard text={message.content} />
             ) : null}
           </>
         )}
@@ -71,6 +73,50 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
       )}
     </div>
   )
+}
+
+function UserMessageContent({ message }: { message: Message }) {
+  const parsedPrompt = parseAttachmentPrompt(message.content)
+  const displayText = message.displayContent ?? parsedPrompt?.request ?? message.content
+  const attachments = message.attachments?.length ? message.attachments : parsedPrompt?.attachments || []
+  return (
+    <div className="user-message-stack">
+      {attachments.length > 0 ? (
+        <div className="user-attachment-card" aria-label="Message attachments">
+          <div className="user-attachment-title">{attachments.length} attachment{attachments.length === 1 ? '' : 's'}</div>
+          <div className="user-attachment-list">
+            {attachments.map((path) => {
+              const name = path.split(/[\\/]/).pop() || path
+              return (
+                <div key={path} className="user-attachment-item" title={path}>
+                  {name}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+      {displayText ? <div className="user-request-card">{displayText}</div> : null}
+    </div>
+  )
+}
+
+function parseAttachmentPrompt(content: string): { attachments: string[]; request: string } | null {
+  const normalized = content.replace(/\r\n/g, '\n')
+  if (!normalized.startsWith('Attached files:\n')) return null
+  const marker = '\n\nUser request:\n'
+  const markerIndex = normalized.indexOf(marker)
+  if (markerIndex < 0) return null
+  const attachmentBlock = normalized.slice('Attached files:\n'.length, markerIndex)
+  const request = normalized.slice(markerIndex + marker.length)
+  const attachments = attachmentBlock
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim())
+    .filter(Boolean)
+  if (attachments.length === 0) return null
+  return { attachments, request }
 }
 
 function insertLegacyToolCallParts(parts: MessagePart[], toolCalls: ToolCall[]): MessagePart[] {

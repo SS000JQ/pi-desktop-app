@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import InputBar from '../../src/renderer/src/components/InputBar'
 
 describe('InputBar', () => {
@@ -9,7 +9,7 @@ describe('InputBar', () => {
     const input = screen.getByPlaceholderText(/Ask Pi/)
     fireEvent.change(input, { target: { value: 'hello' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onSend).toHaveBeenCalledWith('hello')
+    expect(onSend).toHaveBeenCalledWith('hello', expect.objectContaining({ displayText: 'hello', attachments: [] }))
   })
 
   it('does not call onSendMessage when empty', () => {
@@ -145,7 +145,7 @@ describe('InputBar', () => {
     fireEvent.change(input, { target: { value: '/skill:pdf summarize this' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    expect(onSend).toHaveBeenCalledWith('/skill:pdf summarize this')
+    expect(onSend).toHaveBeenCalledWith('/skill:pdf summarize this', expect.objectContaining({ displayText: '/skill:pdf summarize this', attachments: [] }))
     expect(onCommand).not.toHaveBeenCalled()
   })
 
@@ -209,5 +209,157 @@ describe('InputBar', () => {
     expect(screen.getByText('Not implemented in Pi Desktop yet')).toBeTruthy()
     expect(onSend).not.toHaveBeenCalled()
     expect(onCommand).not.toHaveBeenCalled()
+  })
+
+  it('opens the file picker and sends selected file paths with the prompt', async () => {
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      files: {
+        ...(window.piDesktop?.files || {}),
+        pickFiles: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            { name: 'report.pdf', path: 'D:/work/report.pdf', size: 1200 },
+            { name: 'slides.pptx', path: 'D:/work/slides.pptx', size: 2400 },
+          ],
+        }),
+      },
+    } as typeof window.piDesktop
+    const onSend = vi.fn()
+
+    render(<InputBar onSendMessage={onSend} isStreaming={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Attach files' }))
+
+    expect(await screen.findByText('report.pdf')).toBeTruthy()
+    expect(screen.getByText('slides.pptx')).toBeTruthy()
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask Pi/), { target: { value: 'summarize these' } })
+    fireEvent.keyDown(screen.getByPlaceholderText(/Ask Pi/), { key: 'Enter' })
+
+    expect(onSend).toHaveBeenCalledWith([
+      'Attached files:',
+      '- D:/work/report.pdf',
+      '- D:/work/slides.pptx',
+      '',
+      'User request:',
+      'summarize these',
+    ].join('\n'), expect.objectContaining({
+      displayText: 'summarize these',
+      attachments: expect.arrayContaining([
+        expect.objectContaining({ name: 'report.pdf', path: 'D:/work/report.pdf' }),
+        expect.objectContaining({ name: 'slides.pptx', path: 'D:/work/slides.pptx' }),
+      ]),
+    }))
+  })
+
+  it('imports external dropped files into workspace attachments before sending', async () => {
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      files: {
+        ...(window.piDesktop?.files || {}),
+        getPathForFile: vi.fn((file: File) => (file.name === 'notes.md' ? 'D:/work/notes.md' : '')),
+        importAttachments: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            { name: 'notes.md', path: 'D:/workspace/.pi-desktop/attachments/notes.md', size: 5 },
+          ],
+        }),
+      },
+    } as typeof window.piDesktop
+    const onSend = vi.fn()
+    const onWorkspaceRefresh = vi.fn()
+    render(
+      <InputBar
+        onSendMessage={onSend}
+        isStreaming={false}
+        currentWorkspace="D:/workspace"
+        onWorkspaceRefresh={onWorkspaceRefresh}
+      />,
+    )
+
+    const dropTarget = screen.getByTestId('input-drop-target')
+    const file = new File(['hello'], 'notes.md', { type: 'text/markdown' })
+
+    fireEvent.drop(dropTarget, {
+      dataTransfer: {
+        files: [file, file],
+      },
+    })
+
+    expect(await screen.findByText('notes.md')).toBeTruthy()
+    expect(screen.getAllByText('notes.md')).toHaveLength(1)
+    expect(window.piDesktop.files.importAttachments).toHaveBeenCalledWith({
+      workspaceDir: 'D:/workspace',
+      paths: ['D:/work/notes.md'],
+    })
+    expect(onWorkspaceRefresh).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask Pi/), { target: { value: 'read this' } })
+    fireEvent.keyDown(screen.getByPlaceholderText(/Ask Pi/), { key: 'Enter' })
+
+    expect(onSend).toHaveBeenCalledWith([
+      'Attached files:',
+      '- D:/workspace/.pi-desktop/attachments/notes.md',
+      '',
+      'User request:',
+      'read this',
+    ].join('\n'), expect.objectContaining({
+      displayText: 'read this',
+      attachments: [expect.objectContaining({ name: 'notes.md', path: 'D:/workspace/.pi-desktop/attachments/notes.md' })],
+    }))
+  })
+
+  it('rejects dropped files without a real native path instead of creating fake attachments', async () => {
+    const importAttachments = vi.fn()
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      files: {
+        ...(window.piDesktop?.files || {}),
+        getPathForFile: vi.fn(() => ''),
+        importAttachments,
+      },
+    } as typeof window.piDesktop
+    const onSend = vi.fn()
+    render(<InputBar onSendMessage={onSend} isStreaming={false} currentWorkspace="D:/workspace" />)
+
+    const dropTarget = screen.getByTestId('input-drop-target')
+    const file = new File(['hello'], '941956e06ceabe84ea8af67a087c9b99.jpg', { type: 'image/jpeg' })
+
+    fireEvent.drop(dropTarget, {
+      dataTransfer: {
+        files: [file],
+      },
+    })
+
+    expect(importAttachments).not.toHaveBeenCalled()
+    expect(await screen.findByText('This drop source did not provide a real file path. Please use Files or drag from Explorer.')).toBeTruthy()
+    expect(screen.queryByText('941956e06ceabe84ea8af67a087c9b99.jpg')).toBeNull()
+  })
+
+  it('attaches files dragged from the workspace panel', async () => {
+    const onSend = vi.fn()
+    render(<InputBar onSendMessage={onSend} isStreaming={false} />)
+
+    const dropTarget = screen.getByTestId('input-drop-target')
+    fireEvent.drop(dropTarget, {
+      dataTransfer: {
+        files: [],
+        getData: (format: string) => (
+          format === 'application/x-pi-desktop-file'
+            ? JSON.stringify({ path: 'D:/work/generated.md', name: 'generated.md' })
+            : ''
+        ),
+      },
+    })
+
+    expect(await screen.findByText('generated.md')).toBeTruthy()
+  })
+
+  it('removes the paste button from the input actions', () => {
+    render(<InputBar onSendMessage={() => {}} isStreaming={false} />)
+
+    expect(screen.getByRole('button', { name: 'Attach files' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Paste/i })).toBeNull()
   })
 })

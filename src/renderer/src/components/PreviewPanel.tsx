@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
   type ReactNode,
 } from 'react'
 import hljs from 'highlight.js'
@@ -57,6 +58,7 @@ interface PreviewPanelProps {
   onSelectFile?: (path: string) => void
   onSelectResult?: (path: string) => void
   onToggleWorkspaceDirectory?: (path: string) => void
+  onWorkspaceRefresh?: () => void
   onClosePreview?: () => void
   onOpenExternal?: (path: string) => void
   onOpenFolder?: (path: string) => void
@@ -434,6 +436,8 @@ function WorkspaceSection({
   error,
   onSelectFile,
   onToggleDirectory,
+  currentWorkspace,
+  onWorkspaceRefresh,
 }: {
   files: WorkspaceFileEntry[]
   directories: WorkspaceFileEntry[]
@@ -441,7 +445,58 @@ function WorkspaceSection({
   error?: string | null
   onSelectFile?: (path: string) => void
   onToggleDirectory?: (path: string) => void
+  currentWorkspace?: string
+  onWorkspaceRefresh?: () => void
 }) {
+  const [dropNotice, setDropNotice] = useState<string | null>(null)
+  const [isDraggingWorkspace, setIsDraggingWorkspace] = useState(false)
+
+  const handleFileDragStart = (event: DragEvent<HTMLElement>, entry: WorkspaceFileEntry) => {
+    if (entry.isDir) return
+    event.dataTransfer.effectAllowed = 'copy'
+    event.dataTransfer.setData('application/x-pi-desktop-file', JSON.stringify({
+      path: entry.path,
+      name: entry.name,
+    }))
+    event.dataTransfer.setData('text/plain', entry.path)
+  }
+
+  const handleWorkspaceDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDraggingWorkspace(false)
+    const droppedFiles = Array.from(event.dataTransfer.files || [])
+    const paths = droppedFiles
+      .map((file) => window.piDesktop.files.getPathForFile?.(file) || (file as File & { path?: string }).path || '')
+      .filter((path, index) => {
+        const fileName = droppedFiles[index]?.name || ''
+        if (!path || path === fileName) return false
+        return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith('\\\\') || path.startsWith('/')
+      })
+      .filter(Boolean)
+    if (paths.length === 0 && droppedFiles.length > 0) {
+      setDropNotice('This drop source did not provide a real file path. Please use Files or drag from Explorer.')
+      return
+    }
+    if (paths.length === 0) return
+    if (!currentWorkspace) {
+      setDropNotice('Choose a workspace before importing files.')
+      return
+    }
+    void (async () => {
+      const response = await window.piDesktop.files.importToWorkspace({
+        workspaceDir: currentWorkspace,
+        paths,
+      })
+      if (!response.success) {
+        setDropNotice(response.error || 'Failed to import files to workspace.')
+        return
+      }
+      const importedCount = Array.isArray(response.data) ? response.data.length : paths.length
+      setDropNotice(`Imported ${importedCount} file${importedCount === 1 ? '' : 's'} to workspace.`)
+      onWorkspaceRefresh?.()
+    })()
+  }
+
   const renderEntries = (entries: WorkspaceFileEntry[], depth = 0): ReactNode =>
     entries.map((entry) => {
       const expanded = entry.isDir && Boolean(expandedDirectories[entry.path])
@@ -449,7 +504,12 @@ function WorkspaceSection({
 
       return (
         <div key={entry.path} className="pv-dir-wrap">
-          <div className="ft" title={entry.path}>
+          <div
+            className={`ft ${entry.isDir ? '' : 'ft-draggable'}`}
+            title={entry.isDir ? entry.path : `${entry.path}\nDrag to chat`}
+            draggable={!entry.isDir}
+            onDragStart={(event) => handleFileDragStart(event, entry)}
+          >
             <button
               className="pv-file-button"
               onClick={() => {
@@ -480,7 +540,24 @@ function WorkspaceSection({
     })
 
   return (
-    <div className="pv-stack">
+    <div
+      className={`pv-stack workspace-drop-zone ${isDraggingWorkspace ? 'is-dragging' : ''}`}
+      data-testid="workspace-drop-target"
+      onDragOver={(event) => {
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setIsDraggingWorkspace(true)
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setIsDraggingWorkspace(false)
+        }
+      }}
+      onDrop={handleWorkspaceDrop}
+    >
+      {dropNotice && (
+        <div className="pv-empty-note pv-empty-inline">{dropNotice}</div>
+      )}
       {error && (
         <div className="pv-empty-note pv-empty-inline">{error}</div>
       )}
@@ -489,7 +566,13 @@ function WorkspaceSection({
         <div className="pv-group">
           <div className="pv-group-label">Files</div>
           {files.map((entry) => (
-            <div key={entry.path} className="ft" title={entry.path}>
+            <div
+              key={entry.path}
+              className="ft ft-draggable"
+              title={`${entry.path}\nDrag to chat`}
+              draggable
+              onDragStart={(event) => handleFileDragStart(event, entry)}
+            >
               <button className="pv-file-button" onClick={() => onSelectFile?.(entry.path)}>
                 <span className="n">{entry.name}</span>
               </button>
@@ -586,6 +669,7 @@ export default function PreviewPanel({
   onSelectFile,
   onSelectResult,
   onToggleWorkspaceDirectory,
+  onWorkspaceRefresh,
   onClosePreview,
   onOpenExternal,
   onOpenFolder,
@@ -1937,6 +2021,8 @@ export default function PreviewPanel({
                 error={workspaceError}
                 onSelectFile={onSelectFile}
                 onToggleDirectory={onToggleWorkspaceDirectory}
+                currentWorkspace={currentWorkspace}
+                onWorkspaceRefresh={onWorkspaceRefresh}
               />
             </SectionShell>
 

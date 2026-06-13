@@ -4725,9 +4725,10 @@ body {
 
 .msg.user .mb,
 .msg.right .mb {
-  max-width: min(74%, 620px);
-  background: color-mix(in srgb, var(--accent) 13%, var(--bg-chat) 87%);
-  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  max-width: min(78%, 680px);
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
   box-shadow: none;
 }
 
@@ -5302,4 +5303,166 @@ body {
 .msg.assistant .custom-part,
 .msg.system .custom-part {
   box-shadow: none !important;
+}
+
+.cchip {
+  max-width: min(280px, 100%);
+}
+
+.cchip-icon {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.cchip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ft-draggable {
+  cursor: grab;
+}
+
+.ft-draggable:active {
+  cursor: grabbing;
+}
+
+.user-message-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(560px, 100%);
+}
+
+.user-attachment-card,
+.user-request-card {
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 8px;
+}
+
+.user-attachment-card {
+  width: min(360px, 100%);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--bg-chat) 92%, var(--accent) 5%);
+}
+
+.user-attachment-title {
+  font-size: 11px;
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text) 74%, var(--accent) 18%);
+  margin-bottom: 5px;
+}
+
+.user-attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-attachment-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text) 82%, var(--muted) 18%);
+}
+
+.user-request-card {
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, var(--bg-chat) 87%);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-drop-zone {
+  border-radius: 8px;
+  transition: background 140ms ease, outline-color 140ms ease;
+}
+
+.workspace-drop-zone.is-dragging {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--bg-chat) 93%, var(--accent) 4%);
+}
+
+@keyframes pi-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-soft-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.left,
+.prev,
+.chat,
+.msg-rail {
+  transition:
+    width 180ms ease,
+    max-width 180ms ease,
+    padding 180ms ease,
+    transform 180ms ease,
+    opacity 160ms ease;
+}
+
+.msg {
+  animation: pi-message-in 180ms ease both;
+}
+
+.user-attachment-card,
+.cchip,
+.cmd-list,
+.pv-result-card,
+.pv-office-card {
+  animation: pi-soft-pop 140ms ease both;
+}
+
+.ft,
+.pv-context-button,
+.inb,
+.l-session-row {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 120ms ease;
+}
+
+.ft:hover,
+.pv-context-button:hover,
+.l-session-row:hover {
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }

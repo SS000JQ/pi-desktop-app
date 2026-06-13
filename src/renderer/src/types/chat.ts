@@ -172,6 +172,7 @@ export interface Message {
   }
   toolCalls?: ToolCall[]
   attachments?: string[]
+  displayContent?: string
   isStreaming?: boolean
   artifacts?: string[]
   rawContent?: Array<Record<string, unknown>>
@@ -202,6 +203,15 @@ export interface WorkspaceFileEntry {
   isDir: boolean
   size: number
   modifiedAt: string
+}
+
+export interface ChatAttachment {
+  id: string
+  name: string
+  path: string
+  type?: string
+  size?: number
+  source: 'picker' | 'drop' | 'workspace'
 }
 
 export type ResultItemKind = 'created' | 'updated' | 'exported' | 'viewed' | 'failed'

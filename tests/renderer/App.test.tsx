@@ -3254,6 +3254,246 @@ describe('App', () => {
     expect(screen.queryByText('First final answer')).toBeNull()
   })
 
+  it('does not keep completed runtime status visible after switching to another idle session', async () => {
+    let agentListener: ((event: any) => void) | undefined
+    const firstPath = 'C:/Users/test/.pi/agent/sessions/first/session.jsonl'
+    const secondPath = 'C:/Users/test/.pi/agent/sessions/second/session.jsonl'
+    const now = new Date().toISOString()
+
+    window.piDesktop = createPiDesktopMock({
+      chat: {
+        send: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            sessionId: 'session-1',
+            sessionPath: firstPath,
+            createdNewSession: false,
+            runId: 'run-first',
+          },
+        }),
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'session-1',
+              path: firstPath,
+              cwd: 'D:/PI/first',
+              title: 'First Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 1,
+              source: 'pi',
+              createdAt: now,
+              updatedAt: now,
+            },
+            {
+              id: 'session-2',
+              path: secondPath,
+              cwd: 'D:/PI/second',
+              title: 'Second Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 1,
+              source: 'pi',
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
+        }),
+        getActive: vi.fn().mockResolvedValue({ success: true, data: firstPath }),
+        switch: vi.fn(async (sessionPath: string) => ({
+          success: true,
+          data: {
+            sessionId: sessionPath === firstPath ? 'session-1' : 'session-2',
+            sessionPath,
+            cwd: sessionPath === firstPath ? 'D:/PI/first' : 'D:/PI/second',
+            title: sessionPath === firstPath ? 'First Session' : 'Second Session',
+            model: 'openai/gpt-4o-mini',
+            thinkingLevel: 'medium',
+            messages: [
+              {
+                role: 'assistant',
+                content: sessionPath === firstPath ? 'First session answer' : 'Second session answer',
+                timestamp: Date.now(),
+              },
+            ],
+            tokenCount: 0,
+          },
+        })),
+      },
+      onAgentEvent: vi.fn((callback) => {
+        agentListener = callback
+        return () => {}
+      }),
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('First Session')).toBeTruthy()
+    const input = await screen.findByPlaceholderText(/Ask Pi/)
+    fireEvent.change(input, { target: { value: 'finish quickly' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(window.piDesktop.chat.send).toHaveBeenCalled()
+    })
+
+    await act(async () => {
+      agentListener?.({
+        type: 'done',
+        runId: 'run-first',
+        session: {
+          sessionId: 'session-1',
+          sessionPath: firstPath,
+          cwd: 'D:/PI/first',
+          title: 'First Session',
+          model: 'openai/gpt-4o-mini',
+          thinkingLevel: 'medium',
+          tokenCount: 0,
+          messages: [
+            { role: 'user', content: 'finish quickly', timestamp: Date.now() - 100 },
+            { role: 'assistant', content: 'First final answer', timestamp: Date.now() },
+          ],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Completed')
+    })
+
+    fireEvent.click(screen.getByText('Second Session'))
+    expect(await screen.findByText('Second session answer')).toBeTruthy()
+
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).toBeNull()
+    })
+  })
+
+  it('keeps the selected idle session editable while another session is still running', async () => {
+    let resolveFirstSend: (value: unknown) => void = () => {}
+    const firstPath = 'C:/Users/test/.pi/agent/sessions/first/session.jsonl'
+    const secondPath = 'C:/Users/test/.pi/agent/sessions/second/session.jsonl'
+    const now = new Date().toISOString()
+    const sendMock = vi.fn()
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirstSend = resolve }))
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          sessionId: 'session-2',
+          sessionPath: secondPath,
+          createdNewSession: false,
+          runId: 'run-second',
+        },
+      })
+
+    window.piDesktop = createPiDesktopMock({
+      chat: {
+        send: sendMock,
+        abort: vi.fn().mockResolvedValue({ success: true }),
+      },
+      session: {
+        ...createPiDesktopMock().session,
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'session-1',
+              path: firstPath,
+              cwd: 'D:/PI/first',
+              title: 'First Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 1,
+              source: 'pi',
+              createdAt: now,
+              updatedAt: now,
+            },
+            {
+              id: 'session-2',
+              path: secondPath,
+              cwd: 'D:/PI/second',
+              title: 'Second Session',
+              model: 'openai/gpt-4o-mini',
+              tokenCount: 0,
+              messageCount: 1,
+              source: 'pi',
+              createdAt: now,
+              updatedAt: new Date(Date.now() - 1000).toISOString(),
+            },
+          ],
+        }),
+        getActive: vi.fn().mockResolvedValue({ success: true, data: firstPath }),
+        switch: vi.fn(async (sessionPath: string) => ({
+          success: true,
+          data: {
+            sessionId: sessionPath === firstPath ? 'session-1' : 'session-2',
+            sessionPath,
+            cwd: sessionPath === firstPath ? 'D:/PI/first' : 'D:/PI/second',
+            title: sessionPath === firstPath ? 'First Session' : 'Second Session',
+            model: 'openai/gpt-4o-mini',
+            thinkingLevel: 'medium',
+            messages: [
+              {
+                role: 'assistant',
+                content: sessionPath === firstPath ? 'First session answer' : 'Second session answer',
+                timestamp: Date.now(),
+              },
+            ],
+            tokenCount: 0,
+          },
+        })),
+      },
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('First Session')).toBeTruthy()
+    const input = await screen.findByPlaceholderText(/Ask Pi/)
+    fireEvent.change(input, { target: { value: 'run long task' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(sendMock).toHaveBeenCalledTimes(1)
+    })
+
+    fireEvent.click(screen.getByText('Second Session'))
+    expect(await screen.findByText('Second session answer')).toBeTruthy()
+    const secondInput = await screen.findByPlaceholderText(/Ask Pi/)
+    await waitFor(() => {
+      expect((secondInput as HTMLInputElement).disabled).toBe(false)
+    })
+
+    fireEvent.change(secondInput, { target: { value: 'ask in second session' } })
+    fireEvent.keyDown(secondInput, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(sendMock).toHaveBeenCalledTimes(2)
+    })
+    expect(sendMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      text: 'ask in second session',
+      sessionPath: secondPath,
+    }))
+
+    await act(async () => {
+      resolveFirstSend({
+        success: true,
+        data: {
+          sessionId: 'session-1',
+          sessionPath: firstPath,
+          createdNewSession: false,
+          runId: 'run-first',
+        },
+      })
+      await Promise.resolve()
+    })
+  })
+
   it('marks the shell when both side panels are collapsed so the chat rail can widen', async () => {
     window.piDesktop = createPiDesktopMock()
 

@@ -13,6 +13,7 @@ import Tools from './screens/Tools'
 import { applyThemePreset, type ThemePresetId } from './lib/themes'
 import type {
   ArtifactEntity,
+  ChatAttachment,
   ConnectorSummaryEntry,
   FilePreviewData,
   Message,
@@ -720,6 +721,7 @@ export default function App() {
   const [rightPanelWidth, setRightPanelWidth] = useState(360)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [runningSessionKeys, setRunningSessionKeys] = useState<Record<string, boolean>>({})
   const [providers, setProviders] = useState<ProviderSummary[]>([])
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [currentModel, setCurrentModel] = useState('')
@@ -765,6 +767,7 @@ export default function App() {
   const previewRequestRef = useRef(0)
   const skipNextSessionReloadRef = useRef<string | null>(null)
   const isStreamingRef = useRef(false)
+  const runningSessionKeysRef = useRef<Record<string, boolean>>({})
 
   const hasRunnableProvider = useCallback((providerList: ProviderSummary[]) => {
     return providerList.some((provider) => provider.hasAuth && provider.models.length > 0)
@@ -781,6 +784,7 @@ export default function App() {
   const sessionWorkspaceDir = activeSessionPath && activeSession ? activeSession.cwd : ''
   const visibleWorkspaceDir = sessionWorkspaceDir || effectiveCurrentDir || workspaceFilesRoot
   const activeArtifactKey = activeSessionPath || activeSessionId
+  const activeSessionKey = getMessageSessionKey(activeSessionPath, activeSessionId)
   const activeArtifacts = useMemo(() => {
     if (!activeArtifactKey) return []
     return artifactsBySession[activeArtifactKey] || []
@@ -810,11 +814,25 @@ export default function App() {
     return runActivity
   }, [activeSessionId, activeSessionPath, runActivity])
   const isActiveSessionStreaming = Boolean(
-    isStreaming
-    && activeRuntimeStatus
-    && activeRuntimeStatus.status !== 'completed'
-    && activeRuntimeStatus.status !== 'failed',
+    activeSessionKey
+      ? runningSessionKeys[activeSessionKey]
+      : isStreaming
+        && activeRuntimeStatus
+        && activeRuntimeStatus.status !== 'completed'
+        && activeRuntimeStatus.status !== 'failed',
   )
+
+  const setSessionRunning = useCallback((sessionKey: string | null | undefined, isRunning: boolean) => {
+    if (!sessionKey) return
+    runningSessionKeysRef.current = {
+      ...runningSessionKeysRef.current,
+      [sessionKey]: isRunning,
+    }
+    if (!isRunning) {
+      delete runningSessionKeysRef.current[sessionKey]
+    }
+    setRunningSessionKeys({ ...runningSessionKeysRef.current })
+  }, [])
 
   const onAssistantMessage = useCallback((message: Message) => {
     setMessages((previous) => {
@@ -848,11 +866,13 @@ export default function App() {
   const onStreamStart = useCallback(() => {
     isStreamingRef.current = true
     setIsStreaming(true)
-  }, [])
+    setSessionRunning(activeRunSessionKeyRef.current, true)
+  }, [setSessionRunning])
   const onStreamEnd = useCallback(() => {
     isStreamingRef.current = false
     setIsStreaming(false)
-  }, [])
+    setSessionRunning(activeRunSessionKeyRef.current, false)
+  }, [setSessionRunning])
 
   const showRuntimeError = useCallback(
     (error: string) => {
@@ -1355,6 +1375,8 @@ export default function App() {
       sessionRequestRef.current += 1
       skipNextSessionReloadRef.current = detail.sessionPath
       const visibleActivePath = userSelectedSessionPathRef.current || activeSessionPath || activeSessionPathRef.current
+      const syncedSessionKey = getMessageSessionKey(detail.sessionPath, detail.sessionId)
+      setSessionRunning(syncedSessionKey, false)
       const shouldActivate =
         !visibleActivePath
         || normalizePath(visibleActivePath) === normalizePath(detail.sessionPath)
@@ -1365,6 +1387,19 @@ export default function App() {
       })
       void (async () => {
         await loadSessions()
+        if (
+          visibleActivePath
+          && detail.sessionPath
+          && normalizePath(visibleActivePath) !== normalizePath(detail.sessionPath)
+          && activeSessionPathRef.current
+          && normalizePath(activeSessionPathRef.current) !== normalizePath(visibleActivePath)
+        ) {
+          const preservedSession = sessions.find((session) => normalizePath(session.path) === normalizePath(visibleActivePath))
+          setActiveSessionId(preservedSession?.id || activeSessionIdRef.current)
+          setActiveSessionPath(visibleActivePath)
+          activeSessionPathRef.current = visibleActivePath
+          userSelectedSessionPathRef.current = visibleActivePath
+        }
         syncSessionDetail(detail, {
           activate: shouldActivate,
           updateWorkspace: false,
@@ -1486,8 +1521,8 @@ export default function App() {
   }, [activeArtifactKey, artifactsBySession])
 
   const handleSendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim() || isStreaming || !currentModel) return
+    async (text: string, metadata?: { displayText?: string; attachments?: ChatAttachment[] }) => {
+      if (!text.trim() || isActiveSessionStreaming || !currentModel) return
 
       const startedAt = Date.now()
       const runSessionKey = getMessageSessionKey(activeSessionPath, activeSessionId) || `pending:${startedAt}`
@@ -1531,6 +1566,8 @@ export default function App() {
           id: `msg-${Date.now()}`,
           role: 'user',
           content: text,
+          displayContent: metadata?.displayText,
+          attachments: metadata?.attachments?.map((attachment) => attachment.path),
           timestamp: Date.now(),
           sessionId: activeSessionId || undefined,
           sessionPath: activeSessionPath || undefined,
@@ -1551,14 +1588,19 @@ export default function App() {
         const data = response.data as { sessionId: string; sessionPath: string; createdNewSession: boolean; runId: string }
         const resolvedSessionKey = getMessageSessionKey(data.sessionPath, data.sessionId)
         if (resolvedSessionKey && activeRunSessionKeyRef.current && activeRunSessionKeyRef.current !== resolvedSessionKey) {
+          const previousRunSessionKey = activeRunSessionKeyRef.current
           const pendingMessages = transientMessagesBySessionRef.current[activeRunSessionKeyRef.current] || []
           transientMessagesBySessionRef.current[resolvedSessionKey] = pendingMessages.map((message) => ({
             ...message,
             sessionId: message.sessionId || data.sessionId,
             sessionPath: message.sessionPath || data.sessionPath,
           }))
-          delete transientMessagesBySessionRef.current[activeRunSessionKeyRef.current]
+          delete transientMessagesBySessionRef.current[previousRunSessionKey]
           activeRunSessionKeyRef.current = resolvedSessionKey
+          if (runningSessionKeysRef.current[previousRunSessionKey]) {
+            setSessionRunning(previousRunSessionKey, false)
+            setSessionRunning(resolvedSessionKey, true)
+          }
           setMessages((previous) => previous.map((message) => ({
             ...message,
             sessionId: message.sessionId || data.sessionId,
@@ -1575,7 +1617,7 @@ export default function App() {
         }
       }
     },
-    [activeSessionId, activeSessionPath, currentModel, isStreaming, loadArtifacts, loadSessions, loadSlashCommands, onStreamStart, sendMessage],
+    [activeSessionId, activeSessionPath, currentModel, isActiveSessionStreaming, loadArtifacts, loadSessions, loadSlashCommands, onStreamStart, sendMessage, setSessionRunning],
   )
 
   const handleArtifactAction = useCallback((action: 'improve' | 'regenerate' | 'summarize' | 'new_task', path: string) => {
@@ -1972,10 +2014,15 @@ export default function App() {
             onSendMessage={handleSendMessage}
             onCommand={handleComposerCommand}
             isStreaming={isActiveSessionStreaming}
-            isInputDisabled={isStreaming}
+            isInputDisabled={isActiveSessionStreaming}
             runtimeStatus={activeRuntimeStatus}
             slashCommands={slashCommands}
             onSetMessages={setMessages}
+            currentWorkspace={visibleWorkspaceDir}
+            onWorkspaceRefresh={() => {
+              if (visibleWorkspaceDir) void refreshWorkspaceTree(visibleWorkspaceDir)
+            }}
+            sessionKey={activeSessionKey}
           />
           <PreviewPanel
             collapsed={rightPanelCollapsed}
@@ -1998,6 +2045,9 @@ export default function App() {
             onSelectResult={handleSelectArtifact}
             onSelectFile={(path) => { void handleOpenPreviewFile(path) }}
             onToggleWorkspaceDirectory={(path) => { void handleBrowseWorkspaceDirectory(path) }}
+            onWorkspaceRefresh={() => {
+              if (visibleWorkspaceDir) void refreshWorkspaceTree(visibleWorkspaceDir)
+            }}
             onClosePreview={() => {
               setPreviewFile(null)
               setPreviewOpenError(null)

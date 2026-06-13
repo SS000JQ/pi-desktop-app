@@ -34,7 +34,7 @@ Recommended for most users:
 
 This downloads the latest setup installer to your Downloads folder. You can also download it directly:
 
-[Download Pi-Desktop-Setup-0.2.2.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.2/Pi-Desktop-Setup-0.2.2.exe)
+[Download Pi-Desktop-Setup-0.2.4.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.4/Pi-Desktop-Setup-0.2.4.exe)
 
 ### Portable Build
 
@@ -46,12 +46,12 @@ Use this if you want to run Pi Desktop without a system-wide install:
 
 Direct download:
 
-[Download Pi-Desktop-Portable-0.2.2.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.2/Pi-Desktop-Portable-0.2.2.exe)
+[Download Pi-Desktop-Portable-0.2.4.exe](https://github.com/SS000JQ/pi-desktop-app/releases/download/v0.2.4/Pi-Desktop-Portable-0.2.4.exe)
 
 ### Download A Specific Version
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1))) -Version v0.2.2
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/SS000JQ/pi-desktop-app/codex/preview-session-robustness/scripts/install.ps1))) -Version v0.2.4
 ```
 
 ### From Source
@@ -75,6 +75,16 @@ Use the setup installer if you want a normal Windows installation. Use the porta
 
 The packaged desktop app includes the Pi runtime libraries it needs. You do not need to install an external Pi CLI just to launch the app.
 
+## Important Notes
+
+- Pi Desktop is currently focused on Windows desktop use.
+- Configure at least one model provider before starting real agent work. The chat input stays limited until a usable provider and model are available.
+- File access is intentionally scoped to your selected workspace, default folder, and folders you explicitly choose. This protects users from accidental broad filesystem access.
+- Dragging files from Windows File Explorer into chat copies them into the workspace attachment folder: `<workspace>/.pi-desktop/attachments/`.
+- Dragging files into the Workspace panel imports them into the current workspace root.
+- Some apps, such as chat clients or browsers, may not expose a real local file path when dragging images. If a drag source cannot provide a path, use the `Files` button or save the file locally first.
+- Git is optional for basic chat and file preview, but recommended if you want Pi to inspect diffs, create branches, commit changes, or push to GitHub.
+
 ## What It Can Do
 
 ### Agent Sessions
@@ -83,10 +93,13 @@ The packaged desktop app includes the Pi runtime libraries it needs. You do not 
 - Continue existing sessions.
 - Choose whether a session uses the app's default folder or another workspace.
 - See runtime status while the agent is working.
+- Switch between sessions without losing the selected conversation while another session is still running.
 
 ### Workspace And File Preview
 
 - Browse files produced or edited during a session.
+- Attach files through the `Files` button, by dragging from Explorer into chat, or by dragging workspace files from the right panel into chat.
+- Import external files into the Workspace panel by dragging them onto the Workspace section.
 - Preview common generated outputs without leaving the app.
 - PDF preview support is packaged with the desktop build, including PDF.js worker assets, fonts, CMaps, and WASM resources.
 - Office-style preview support covers common Word, PowerPoint, and spreadsheet flows used by Pi-generated artifacts.
@@ -146,11 +159,19 @@ Configure an AI provider, API key, and model in Settings. Pi needs at least one 
 
 ### PDF Preview Does Not Work
 
-Use the latest release build. Version `0.2.2` packages the PDF.js worker, fonts, CMaps, and WASM resources so PDF preview works in the installed desktop app, not only in source development.
+Use the latest release build. Version `0.2.4` packages the PDF.js worker, fonts, CMaps, and WASM resources so PDF preview works in the installed desktop app, not only in source development.
 
 ### Links Do Not Open
 
-Use the latest release build. Version `0.2.2` routes external links through the desktop shell with safer URL handling and improves bare domain links in Markdown previews.
+Use the latest release build. Version `0.2.4` routes external links through the desktop shell with safer URL handling and improves bare domain links in Markdown previews.
+
+### Dragged Files Do Not Attach
+
+Drag files from Windows File Explorer when possible. Pi Desktop uses Electron's native file-path API for Explorer drops. Some apps only provide an image blob or filename during drag-and-drop; in that case, save the file locally or use the `Files` button.
+
+### A Different Session Is Still Running
+
+You can open another session while one session is running. The input is disabled only for the currently viewed running session, not globally for every session.
 
 ### Generated Files Are Not Where You Expected
 
@@ -194,14 +215,14 @@ Release artifacts are written to `release/`.
 
 ## Release Quality
 
-The `0.2.2` release was built after validating:
+The `0.2.4` release was built after validating:
 
-- Release asset packaging with `npm run verify:release`.
 - TypeScript checks with `npm run typecheck`.
 - Automated tests with `npm test`.
-- Windows installer and portable builds with `npm run dist:win`.
+- Production build with `npm run build`.
+- Release artifact checks with `npm run verify:release`.
 
-The release includes hardening for packaged PDF preview, packaged PPTX preview routing, external link handling, diagnostics export, file IPC boundaries, and large workspace/file guardrails.
+The release includes hardening for packaged PDF/PPTX preview, external link handling, diagnostics export, file IPC boundaries, session isolation, drag-and-drop attachments, workspace imports, and user-facing attachment cards.
 
 ## Project Status
 

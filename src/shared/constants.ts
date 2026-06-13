@@ -36,6 +36,9 @@ export const IPC_CHANNELS = {
   SKILLS_GET_SETTINGS: 'skills:getSettings',
   SKILLS_SET_ADDITIONAL_PATHS: 'skills:setAdditionalPaths',
   SKILLS_SET_DISABLED: 'skills:setDisabled',
+  FILES_PICK_FILES: 'files:pickFiles',
+  FILES_IMPORT_ATTACHMENTS: 'files:importAttachments',
+  FILES_IMPORT_TO_WORKSPACE: 'files:importToWorkspace',
   SHELL_OPEN_EXTERNAL: 'shell:openExternal',
 } as const
 

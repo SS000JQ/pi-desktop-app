@@ -18,6 +18,33 @@ describe('MessageRow', () => {
     expect(screen.getByText('Hello')).toBeTruthy()
   })
 
+  it('splits persisted attachment prompts into a compact attachment card and request card', () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          id: '1b',
+          role: 'user',
+          content: [
+            'Attached files:',
+            '- D:/PI/app/.pi-desktop/attachments/very-long-file-name-that-should-not-fill-the-chat.jpg',
+            '- D:/PI/app/.pi-desktop/attachments/notes.md',
+            '',
+            'User request:',
+            '这是啥',
+          ].join('\n'),
+          timestamp: 0,
+        }}
+      />,
+    )
+
+    expect(container.querySelector('.user-attachment-card')).toBeTruthy()
+    expect(container.querySelector('.user-request-card')?.textContent).toBe('这是啥')
+    expect(screen.getByText('2 attachments')).toBeTruthy()
+    expect(screen.getByText('very-long-file-name-that-should-not-fill-the-chat.jpg')).toBeTruthy()
+    expect(screen.queryByText(/Attached files:/)).toBeNull()
+    expect(screen.queryByText(/User request:/)).toBeNull()
+  })
+
   it('renders assistant message with Pi label', () => {
     render(<MessageRow message={{ id: '2', role: 'assistant', content: 'Hi there', timestamp: 0, toolCalls: [] }} />)
     expect(screen.getByText('Pi')).toBeTruthy()

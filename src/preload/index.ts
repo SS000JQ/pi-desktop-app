@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC_CHANNELS } from '../shared/constants'
 import type { PiDesktopApi } from './api'
 
@@ -78,6 +78,10 @@ const api: PiDesktopApi = {
     save: (filePath, content) => ipcRenderer.invoke('files:save', filePath, content),
     open: (filePath) => ipcRenderer.invoke('files:open', filePath),
     pickDirectory: (startPath) => ipcRenderer.invoke('files:pickDirectory', startPath),
+    pickFiles: (startPath) => ipcRenderer.invoke(IPC_CHANNELS.FILES_PICK_FILES, startPath),
+    getPathForFile: (file) => webUtils.getPathForFile(file),
+    importAttachments: (payload) => ipcRenderer.invoke(IPC_CHANNELS.FILES_IMPORT_ATTACHMENTS, payload),
+    importToWorkspace: (payload) => ipcRenderer.invoke(IPC_CHANNELS.FILES_IMPORT_TO_WORKSPACE, payload),
   },
   artifacts: {
     list: (sessionId) => ipcRenderer.invoke('artifacts:list', sessionId),

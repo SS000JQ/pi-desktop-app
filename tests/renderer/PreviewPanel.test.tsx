@@ -233,6 +233,127 @@ describe('PreviewPanel', () => {
     expect(screen.getByText('Web search')).toBeTruthy()
   })
 
+  it('marks workspace files as draggable attachments for the chat input', () => {
+    const setData = vi.fn()
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={360}
+        onResize={() => {}}
+        currentWorkspace="D:/PI/app"
+        workspaceFiles={[
+          {
+            name: 'report.md',
+            path: 'D:/PI/app/report.md',
+            isDir: false,
+            size: 100,
+            modifiedAt: new Date().toISOString(),
+          },
+        ]}
+      />,
+    )
+
+    const fileRow = screen.getByRole('button', { name: 'report.md' }).closest('.ft')
+    expect(fileRow?.getAttribute('draggable')).toBe('true')
+
+    fireEvent.dragStart(fileRow!, {
+      dataTransfer: {
+        effectAllowed: '',
+        setData,
+      },
+    })
+
+    expect(setData).toHaveBeenCalledWith(
+      'application/x-pi-desktop-file',
+      JSON.stringify({ path: 'D:/PI/app/report.md', name: 'report.md' }),
+    )
+    expect(setData).toHaveBeenCalledWith('text/plain', 'D:/PI/app/report.md')
+  })
+
+  it('imports external dropped files into the workspace root', async () => {
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      files: {
+        ...(window.piDesktop?.files || {}),
+        getPathForFile: vi.fn((droppedFile: File) => (
+          droppedFile.name === 'from-wechat.png'
+            ? 'C:/Users/test/AppData/Temp/from-wechat.png'
+            : ''
+        )),
+        importToWorkspace: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            { name: 'from-wechat.png', path: 'D:/PI/app/from-wechat.png', size: 1200 },
+          ],
+        }),
+      },
+    } as typeof window.piDesktop
+    const onWorkspaceRefresh = vi.fn()
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={360}
+        onResize={() => {}}
+        currentWorkspace="D:/PI/app"
+        onWorkspaceRefresh={onWorkspaceRefresh}
+      />,
+    )
+
+    const file = new File(['png'], 'from-wechat.png', { type: 'image/png' })
+
+    fireEvent.drop(screen.getByTestId('workspace-drop-target'), {
+      dataTransfer: {
+        files: [file],
+      },
+    })
+
+    await waitFor(() => {
+      expect(window.piDesktop.files.importToWorkspace).toHaveBeenCalledWith({
+        workspaceDir: 'D:/PI/app',
+        paths: ['C:/Users/test/AppData/Temp/from-wechat.png'],
+      })
+    })
+    expect(onWorkspaceRefresh).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText('Imported 1 file to workspace.')).toBeTruthy()
+  })
+
+  it('does not import native drops that only provide a filename without a real path', async () => {
+    const importToWorkspace = vi.fn()
+    window.piDesktop = {
+      ...(window.piDesktop || {}),
+      files: {
+        ...(window.piDesktop?.files || {}),
+        getPathForFile: vi.fn(() => ''),
+        importToWorkspace,
+      },
+    } as typeof window.piDesktop
+
+    render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={360}
+        onResize={() => {}}
+        currentWorkspace="D:/PI/app"
+      />,
+    )
+
+    const file = new File(['png'], '941956e06ceabe84ea8af67a087c9b99.jpg', { type: 'image/jpeg' })
+
+    fireEvent.drop(screen.getByTestId('workspace-drop-target'), {
+      dataTransfer: {
+        files: [file],
+      },
+    })
+
+    expect(importToWorkspace).not.toHaveBeenCalled()
+    expect(await screen.findByText('This drop source did not provide a real file path. Please use Files or drag from Explorer.')).toBeTruthy()
+  })
+
   it('allows document previews to be resized wider for reading slides and PDFs', () => {
     const onResize = vi.fn()
     Object.defineProperty(window, 'innerWidth', {

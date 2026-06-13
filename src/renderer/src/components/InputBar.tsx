@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import ContextChips from './ContextChips'
 import DropZone from './DropZone'
-import type { SlashCommand } from '../types/chat'
+import type { ChatAttachment, SlashCommand } from '../types/chat'
 
 interface InputBarProps {
-  onSendMessage: (text: string) => void
+  onSendMessage: (text: string, metadata?: { displayText?: string; attachments?: ChatAttachment[] }) => void
   isStreaming: boolean
   onCommand?: (command: string) => void
   slashCommands?: SlashCommand[]
+  currentWorkspace?: string
+  onWorkspaceRefresh?: () => void
+  sessionKey?: string | null
 }
 
 const FALLBACK_SLASH_COMMANDS: SlashCommand[] = [
@@ -199,9 +202,17 @@ function groupForCommand(command: SlashCommand): string {
   }
 }
 
-export default function InputBar({ onSendMessage, isStreaming, onCommand, slashCommands = FALLBACK_SLASH_COMMANDS }: InputBarProps) {
+export default function InputBar({
+  onSendMessage,
+  isStreaming,
+  onCommand,
+  slashCommands = FALLBACK_SLASH_COMMANDS,
+  currentWorkspace = '',
+  onWorkspaceRefresh,
+  sessionKey = null,
+}: InputBarProps) {
   const [text, setText] = useState('')
-  const [attachments, setAttachments] = useState<{ name: string }[]>([])
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [showCommands, setShowCommands] = useState(false)
   const [commandFilter, setCommandFilter] = useState('')
   const [selectedCmdIdx, setSelectedCmdIdx] = useState(0)
@@ -209,6 +220,31 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
   const [commandNotice, setCommandNotice] = useState<string | null>(null)
   const [expandedCommandGroups, setExpandedCommandGroups] = useState<Record<string, boolean>>({})
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const addAttachments = (files: ChatAttachment[]) => {
+    setAttachments((previous) => {
+      const seen = new Set(previous.map((file) => file.path.toLowerCase()))
+      const next = [...previous]
+      for (const file of files) {
+        const key = file.path.toLowerCase()
+        if (!file.path || seen.has(key)) continue
+        seen.add(key)
+        next.push(file)
+      }
+      return next
+    })
+  }
+
+  const formatMessageWithAttachments = (body: string): string => {
+    if (attachments.length === 0) return body
+    return [
+      'Attached files:',
+      ...attachments.map((file) => `- ${file.path}`),
+      '',
+      'User request:',
+      body,
+    ].join('\n')
+  }
 
   const effectiveSlashCommands = slashCommands.length > 0 ? slashCommands : FALLBACK_SLASH_COMMANDS
   const filteredCommands = effectiveSlashCommands.filter((command) => command.command.toLowerCase().includes(commandFilter.toLowerCase()))
@@ -244,8 +280,12 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
       setCommandNotice(null)
     }
 
-    onSendMessage(text)
+    onSendMessage(formatMessageWithAttachments(text), {
+      displayText: text,
+      attachments,
+    })
     setText('')
+    setAttachments([])
   }
 
   const chooseCommand = (command: SlashCommand) => {
@@ -365,6 +405,12 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
   }, [commandFilter, slashCommands])
 
   useEffect(() => {
+    setAttachments([])
+    setCommandNotice(null)
+    setIsDragging(false)
+  }, [sessionKey])
+
+  useEffect(() => {
     const inputEl = inputRef.current
     if (!inputEl) return
 
@@ -375,7 +421,7 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
       for (const item of Array.from(items)) {
         if (item.type.startsWith('image/')) {
           event.preventDefault()
-          setAttachments((previous) => [...previous, { name: `Screenshot ${previous.length + 1}.png` }])
+          setCommandNotice('Image paste will be available after file attachment support saves pasted images.')
           break
         }
       }
@@ -385,43 +431,128 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
     return () => inputEl.removeEventListener('paste', handlePaste)
   }, [])
 
-  useEffect(() => {
-    const handleDragOver = (event: DragEvent) => {
-      event.preventDefault()
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
-      setIsDragging(true)
+  const readWorkspaceDrop = (dataTransfer: DataTransfer): ChatAttachment[] => {
+    if (typeof dataTransfer.getData !== 'function') return []
+    const raw = dataTransfer.getData('application/x-pi-desktop-file')
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw) as { path?: string; name?: string }
+      if (!parsed.path) return []
+      return [{
+        id: `workspace:${parsed.path}`,
+        name: parsed.name || parsed.path.split(/[\\/]/).pop() || parsed.path,
+        path: parsed.path,
+        source: 'workspace',
+      }]
+    } catch {
+      return []
     }
-    const handleDragLeave = (event: DragEvent) => {
-      const target = event.relatedTarget as Node | null
-      if (!target || !document.querySelector('.inpw')?.contains(target)) {
-        setIsDragging(false)
+  }
+
+  const isUsableNativePath = (path: string, fileName: string): boolean => {
+    if (!path || path === fileName) return false
+    return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith('\\\\') || path.startsWith('/')
+  }
+
+  const readNativeDrop = (fileList: FileList | File[] | null | undefined): { attachments: ChatAttachment[]; rejected: number } => {
+    if (!fileList) return { attachments: [], rejected: 0 }
+    const attachments: ChatAttachment[] = []
+    let rejected = 0
+    Array.from(fileList).forEach((file) => {
+      const path = window.piDesktop.files.getPathForFile?.(file) || (file as File & { path?: string }).path || ''
+      if (!isUsableNativePath(path, file.name)) {
+        rejected += 1
+        return
       }
-    }
-    const handleDrop = (event: DragEvent) => {
-      event.preventDefault()
+      attachments.push({
+        id: `drop:${path}`,
+        name: file.name || path.split(/[\\/]/).pop() || path,
+        path,
+        type: file.type || undefined,
+        size: file.size,
+        source: 'drop' as const,
+      })
+    })
+    return { attachments, rejected }
+  }
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
       setIsDragging(false)
-      const files = event.dataTransfer?.files
-      if (files && files.length > 0) {
-        const newFiles = Array.from(files).map((file) => ({ name: file.name }))
-        setAttachments((previous) => [...previous, ...newFiles])
-      }
     }
+  }
 
-    const el = document.querySelector('.inpw') as HTMLElement | null
-    if (!el) return
-
-    el.addEventListener('dragover', handleDragOver)
-    el.addEventListener('dragleave', handleDragLeave)
-    el.addEventListener('drop', handleDrop)
-    return () => {
-      el.removeEventListener('dragover', handleDragOver)
-      el.removeEventListener('dragleave', handleDragLeave)
-      el.removeEventListener('drop', handleDrop)
+  const importDroppedFiles = async (files: ChatAttachment[]) => {
+    if (files.length === 0) return
+    const uniqueFiles = files.filter((file, index, allFiles) =>
+      allFiles.findIndex((entry) => entry.path.toLowerCase() === file.path.toLowerCase()) === index,
+    )
+    if (!currentWorkspace) {
+      setCommandNotice('Choose a workspace before dropping external files.')
+      return
     }
-  }, [])
+    const response = await window.piDesktop.files.importAttachments({
+      workspaceDir: currentWorkspace,
+      paths: uniqueFiles.map((file) => file.path),
+    })
+    if (!response.success) {
+      setCommandNotice(response.error || 'Failed to import dropped files.')
+      return
+    }
+    const imported = Array.isArray(response.data) ? response.data : []
+    addAttachments(imported.map((file) => ({
+      id: `attachment:${file.path}`,
+      name: file.name,
+      path: file.path,
+      size: file.size,
+      source: 'drop',
+    })))
+    setCommandNotice(null)
+    onWorkspaceRefresh?.()
+  }
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDragging(false)
+    const workspaceFiles = readWorkspaceDrop(event.dataTransfer)
+    const nativeDrop = readNativeDrop(event.dataTransfer.files)
+    addAttachments(workspaceFiles)
+    if (nativeDrop.rejected > 0) {
+      setCommandNotice('This drop source did not provide a real file path. Please use Files or drag from Explorer.')
+    }
+    void importDroppedFiles(nativeDrop.attachments)
+  }
+
+  const handlePickFiles = async () => {
+    const response = await window.piDesktop.files.pickFiles()
+    if (!response.success) {
+      setCommandNotice(response.error || 'Failed to choose files.')
+      return
+    }
+    const selected = Array.isArray(response.data) ? response.data : []
+    addAttachments(selected.map((file) => ({
+      id: `picker:${file.path}`,
+      name: file.name,
+      path: file.path,
+      size: file.size,
+      source: 'picker',
+    })))
+  }
 
   return (
-    <div className="inpw">
+    <div
+      className="inpw"
+      data-testid="input-drop-target"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <DropZone visible={isDragging} />
       {attachments.length > 0 && (
         <div className="cc" style={{ marginBottom: '6px' }}>
@@ -475,8 +606,7 @@ export default function InputBar({ onSendMessage, isStreaming, onCommand, slashC
           disabled={isStreaming}
         />
         <div className="ina">
-          <button title="Attach files" className="inb">Files</button>
-          <button title="Paste screenshot" className="inb">Paste</button>
+          <button type="button" aria-label="Attach files" title="Attach files" className="inb" onClick={() => void handlePickFiles()}>Files</button>
           <span className="ikh">Enter</span>
           <button
             onClick={handleSend}

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, nativeImage, dialog } from 'electron'
-import { join, extname } from 'path'
+import { basename, dirname, extname, join } from 'path'
 import { pathToFileURL } from 'url'
-import { readFileSync, statSync, writeFileSync, watch, existsSync, mkdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { homedir } from 'os'
@@ -191,11 +191,27 @@ function createWindow(): void {
     mainWindow = null
   })
 
+  registerEditableContextMenu(mainWindow)
+
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+function registerEditableContextMenu(window: BrowserWindow): void {
+  window.webContents.on('context-menu', (_event, params) => {
+    if (!params.isEditable) return
+    const menu = Menu.buildFromTemplate([
+      { role: 'cut', enabled: params.editFlags.canCut },
+      { role: 'copy', enabled: params.editFlags.canCopy },
+      { role: 'paste', enabled: params.editFlags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll', enabled: params.editFlags.canSelectAll },
+    ])
+    menu.popup({ window })
+  })
 }
 
 function createTray(): void {
@@ -261,6 +277,40 @@ function assertAllowedFilePath(path: string): void {
   if (!isPathInsideAllowedRoots(path, getAllowedFileRoots())) {
     throw new Error('File access is limited to your workspace, default folder, or folders you selected.')
   }
+}
+
+function ensureUniqueDestinationPath(dir: string, fileName: string): string {
+  const extension = extname(fileName)
+  const baseName = extension ? fileName.slice(0, -extension.length) : fileName
+  let candidate = join(dir, fileName)
+  let index = 1
+  while (existsSync(candidate)) {
+    candidate = join(dir, `${baseName} (${index})${extension}`)
+    index += 1
+  }
+  return candidate
+}
+
+function copyFilesIntoDirectory(paths: string[], destinationDir: string, options: { rejectDirectories: boolean }): Array<{ name: string; path: string; size: number }> {
+  mkdirSync(destinationDir, { recursive: true })
+  return paths.map((sourcePath) => {
+    userPickedDirectories.add(dirname(sourcePath))
+    const sourceStat = statSync(sourcePath)
+    if (sourceStat.isDirectory()) {
+      if (options.rejectDirectories) {
+        throw new Error('Folder drag-in is not supported yet. Please zip the folder or choose individual files.')
+      }
+      throw new Error('Cannot import a folder as a chat attachment yet.')
+    }
+    const destinationPath = ensureUniqueDestinationPath(destinationDir, basename(sourcePath))
+    copyFileSync(sourcePath, destinationPath)
+    const copiedStat = statSync(destinationPath)
+    return {
+      name: basename(destinationPath),
+      path: destinationPath,
+      size: copiedStat.size,
+    }
+  })
 }
 
 ipcMain.handle('providers:catalog', async () => {
@@ -1154,6 +1204,60 @@ ipcMain.handle('files:pickDirectory', async (_event, startPath?: string) => {
 
   userPickedDirectories.add(result.filePaths[0])
   return { success: true, data: result.filePaths[0] }
+})
+
+ipcMain.handle(IPC_CHANNELS.FILES_PICK_FILES, async (_event, startPath?: string) => {
+  const dialogOptions = {
+    title: 'Attach files',
+    defaultPath: startPath && existsSync(startPath) ? startPath : undefined,
+    properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+  }
+
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions)
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: true, data: [] }
+  }
+
+  const files = result.filePaths.map((filePath) => {
+    userPickedDirectories.add(dirname(filePath))
+    const stat = statSync(filePath)
+    return {
+      name: filePath.split(/[\\/]/).pop() || filePath,
+      path: filePath,
+      size: stat.size,
+    }
+  })
+  return { success: true, data: files }
+})
+
+ipcMain.handle(IPC_CHANNELS.FILES_IMPORT_ATTACHMENTS, async (_event, payload: { workspaceDir?: string; paths?: string[] }) => {
+  try {
+    const workspaceDir = payload?.workspaceDir || ''
+    const paths = Array.isArray(payload?.paths) ? payload.paths.filter((path): path is string => typeof path === 'string' && path.length > 0) : []
+    if (!workspaceDir) return { success: false, error: 'Choose a workspace before importing attachments.' }
+    assertAllowedFilePath(workspaceDir)
+    const destinationDir = join(workspaceDir, '.pi-desktop', 'attachments')
+    const imported = copyFilesIntoDirectory(paths, destinationDir, { rejectDirectories: true })
+    return { success: true, data: imported }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.FILES_IMPORT_TO_WORKSPACE, async (_event, payload: { workspaceDir?: string; paths?: string[] }) => {
+  try {
+    const workspaceDir = payload?.workspaceDir || ''
+    const paths = Array.isArray(payload?.paths) ? payload.paths.filter((path): path is string => typeof path === 'string' && path.length > 0) : []
+    if (!workspaceDir) return { success: false, error: 'Choose a workspace before importing files.' }
+    assertAllowedFilePath(workspaceDir)
+    const imported = copyFilesIntoDirectory(paths, workspaceDir, { rejectDirectories: true })
+    return { success: true, data: imported }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
 })
 
 ipcMain.handle('files:watch', async (_event, filePath: string) => {

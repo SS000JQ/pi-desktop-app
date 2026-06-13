@@ -151,6 +151,12 @@ export interface SkillSettingsResult {
   suggestedSkillPaths: string[]
 }
 
+export interface ImportedFileResult {
+  name: string
+  path: string
+  size: number
+}
+
 export interface ProviderUpsertInput {
   providerId: string
   displayName: string
@@ -403,6 +409,10 @@ export interface PiDesktopApi {
     save: (filePath: string, content: string) => Promise<IpcResponse>
     open: (filePath: string) => Promise<IpcResponse>
     pickDirectory: (startPath?: string) => Promise<IpcResponse<string | null>>
+    pickFiles: (startPath?: string) => Promise<IpcResponse<Array<{ name: string; path: string; size: number }>>>
+    getPathForFile: (file: File) => string
+    importAttachments: (payload: { workspaceDir: string; paths: string[] }) => Promise<IpcResponse<ImportedFileResult[]>>
+    importToWorkspace: (payload: { workspaceDir: string; paths: string[] }) => Promise<IpcResponse<ImportedFileResult[]>>
   }
   artifacts: {
     list: (sessionKey?: string) => Promise<IpcResponse<ArtifactEntity[]>>

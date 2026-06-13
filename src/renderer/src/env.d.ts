@@ -337,6 +337,10 @@ interface PiDesktopApi {
     save: (filePath: string, content: string) => Promise<IpcResponse>
     open: (filePath: string) => Promise<IpcResponse>
     pickDirectory: (startPath?: string) => Promise<IpcResponse<string | null>>
+    pickFiles: (startPath?: string) => Promise<IpcResponse<Array<{ name: string; path: string; size: number }>>>
+    getPathForFile: (file: File) => string
+    importAttachments: (payload: { workspaceDir: string; paths: string[] }) => Promise<IpcResponse<Array<{ name: string; path: string; size: number }>>>
+    importToWorkspace: (payload: { workspaceDir: string; paths: string[] }) => Promise<IpcResponse<Array<{ name: string; path: string; size: number }>>>
   }
   artifacts: {
     list: (sessionKey?: string) => Promise<IpcResponse<ArtifactEntity[]>>
