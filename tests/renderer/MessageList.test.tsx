@@ -14,6 +14,24 @@ function makeMessage(id: string, content: string): Message {
 }
 
 describe('MessageList', () => {
+  it('renders messages inside a centered reading rail', () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          { id: 'u1', role: 'user', content: 'Hello', timestamp: Date.now() },
+          makeMessage('a1', 'Hi there'),
+        ]}
+        isStreaming={false}
+        onRegenerate={() => {}}
+        onEditMessage={() => {}}
+      />,
+    )
+
+    const rail = container.querySelector('.msg-rail')
+    expect(rail).toBeTruthy()
+    expect(rail?.querySelectorAll('.msg').length).toBe(2)
+  })
+
   it('does not show a generic thinking placeholder when the active assistant message has process details', () => {
     render(
       <MessageList

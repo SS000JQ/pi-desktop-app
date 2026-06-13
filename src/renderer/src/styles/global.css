@@ -2,6 +2,8 @@
 
 :root,
 [data-theme="classic"] {
+  --chat-rail-width: 860px;
+  --chat-rail-gutter: 32px;
   --bg-app: #1a1919;
   --bg-chat: #151414;
   --bg-hover: rgba(255,255,255,0.04);
@@ -26,6 +28,12 @@
   --answer-card-bg: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
   --answer-code-bg: rgba(3,7,12,0.64);
   --accent-soft: rgba(0,122,255,0.14);
+  --tool-ok: #22c55e;
+  --tool-ok-border: rgba(34,197,94,0.28);
+  --tool-ok-bg: rgba(34,197,94,0.045);
+  --tool-error: #f87171;
+  --tool-error-border: rgba(248,113,113,0.44);
+  --tool-error-bg: rgba(248,113,113,0.055);
 }
 
 [data-theme="pi-native"] {
@@ -4432,18 +4440,59 @@ body {
 
 /* Chat polish final overrides: keep agent output calm, live, and close to the page surface. */
 .msgs {
+  align-items: center;
   gap: 18px;
+  padding-inline: max(16px, calc(var(--chat-rail-gutter) / 2));
+}
+
+.msg-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(var(--chat-rail-width), 100%);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.msg,
+.msg.left,
+.msg.right,
+.msg.assistant,
+.msg.user,
+.msg.system {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+}
+
+.msg.user,
+.msg.right {
+  align-items: flex-end;
 }
 
 .msg.assistant,
+.msg.left,
 .msg.system {
-  max-width: min(820px, 88%);
+  align-items: stretch;
+}
+
+.msg.user .ml,
+.msg.right .ml {
+  justify-content: flex-end;
+}
+
+.msg.user .mb,
+.msg.right .mb {
+  max-width: min(74%, 620px);
 }
 
 .msg.assistant .mb,
 .msg.system .mb {
+  padding: 0;
   background: transparent;
+  border: 0;
   border-color: transparent;
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -4453,8 +4502,9 @@ body {
 [data-theme="pi-native"] .msg.system .answer-card,
 [data-theme="mint-docs"] .msg.assistant .answer-card,
 [data-theme="mint-docs"] .msg.system .answer-card {
-  padding: 2px 2px 2px 0;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
   color: color-mix(in srgb, var(--text) 88%, transparent);
@@ -4469,14 +4519,25 @@ body {
 
 .msg.assistant .answer-card pre,
 .msg.system .answer-card pre {
-  border-color: color-mix(in srgb, var(--text) 8%, transparent);
-  background: color-mix(in srgb, var(--bg-chat) 86%, var(--text) 5%);
+  border-color: color-mix(in srgb, var(--text) 9%, transparent);
+  background: color-mix(in srgb, var(--bg-chat) 91%, var(--text) 5%);
   box-shadow: none;
 }
 
 .msg.assistant .answer-card code,
 .msg.system .answer-card code {
-  background: color-mix(in srgb, var(--bg-chat) 82%, var(--text) 7%);
+  background: color-mix(in srgb, var(--bg-chat) 89%, var(--text) 6%);
+}
+
+.msg.assistant .answer-card blockquote,
+.msg.system .answer-card blockquote {
+  border-left-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
+.msg.assistant .answer-card table,
+.msg.system .answer-card table {
+  background: transparent;
 }
 
 .process-timeline {
@@ -4509,11 +4570,12 @@ body {
 [data-theme="pi-native"] .msg.system .tc,
 [data-theme="mint-docs"] .msg.assistant .tc,
 [data-theme="mint-docs"] .msg.system .tc {
-  padding: 6px 9px;
-  border: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
-  border-left: 2px solid color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--tool-ok-border);
+  border-left: 1px solid var(--tool-ok-border);
   border-radius: 7px;
-  background: color-mix(in srgb, var(--bg-chat) 91%, var(--text) 4%);
+  background: var(--tool-ok-bg);
   box-shadow: none;
   color: color-mix(in srgb, var(--text) 40%, transparent);
 }
@@ -4524,8 +4586,8 @@ body {
 [data-theme="pi-native"] .msg.system .tc.running,
 [data-theme="mint-docs"] .msg.assistant .tc.running,
 [data-theme="mint-docs"] .msg.system .tc.running {
-  border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--bg-chat) 91%, var(--accent) 6%);
+  border-color: color-mix(in srgb, var(--tool-ok) 42%, transparent);
+  background: color-mix(in srgb, var(--tool-ok-bg) 78%, var(--bg-chat) 22%);
 }
 
 .msg.assistant .tc.done,
@@ -4534,7 +4596,7 @@ body {
 [data-theme="pi-native"] .msg.system .tc.done,
 [data-theme="mint-docs"] .msg.assistant .tc.done,
 [data-theme="mint-docs"] .msg.system .tc.done {
-  border-left-color: var(--success);
+  border-color: var(--tool-ok-border);
 }
 
 .msg.assistant .tc.error,
@@ -4543,17 +4605,67 @@ body {
 [data-theme="pi-native"] .msg.system .tc.error,
 [data-theme="mint-docs"] .msg.assistant .tc.error,
 [data-theme="mint-docs"] .msg.system .tc.error {
-  border-left-color: rgba(255,94,94,0.72);
-  background: color-mix(in srgb, var(--bg-chat) 91%, rgba(255,94,94,0.18) 9%);
+  border-color: var(--tool-error-border);
+  background: var(--tool-error-bg);
+}
+
+.tc-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
 .tc-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   gap: 5px;
   color: color-mix(in srgb, var(--text) 42%, transparent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .tc-duration {
   color: color-mix(in srgb, var(--text) 34%, transparent);
+}
+
+.tc-chevron {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--text) 32%, transparent);
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 150ms ease;
+}
+
+.tc-chevron.open {
+  transform: rotate(180deg);
+}
+
+.tc-details {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--tool-ok) 20%, transparent);
+  background: color-mix(in srgb, var(--bg-chat) 90%, var(--tool-ok) 3%);
+  color: color-mix(in srgb, var(--text) 56%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+
+.tc.error .tc-details {
+  border-top-color: color-mix(in srgb, var(--tool-error) 25%, transparent);
+  background: color-mix(in srgb, var(--bg-chat) 91%, var(--tool-error) 4%);
 }
 
 .runtime-status {

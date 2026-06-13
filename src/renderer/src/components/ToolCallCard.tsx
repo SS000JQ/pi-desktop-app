@@ -7,6 +7,7 @@ interface ToolCallCardProps {
 
 export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [isExpanded, setIsExpanded] = useState(false)
   const stateClass = toolCall.status === 'running'
     ? 'running'
     : toolCall.status === 'error'
@@ -38,7 +39,12 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
 
   return (
     <div className={`process-card tool-card tc ${stateClass}`}>
-      <div className="tc-main">
+      <button
+        type="button"
+        className="tc-header"
+        onClick={() => setIsExpanded((value) => !value)}
+        aria-label={`${isExpanded ? 'Hide' : 'Show'} ${toolCall.name} details`}
+      >
         <span className="tcn">{toolCall.name}</span>
         <span className="tcs" title={hasLongArgs ? toolCall.args : undefined}>{argsPreview}</span>
         <span className="tc-status">
@@ -46,12 +52,10 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
           {statusText}
           {durationText && <span className="tc-duration">{durationText}</span>}
         </span>
-      </div>
-      {hasLongArgs && (
-        <details className="tool-args-details">
-          <summary>details</summary>
-          <pre>{toolCall.args}</pre>
-        </details>
+        <span className={isExpanded ? 'tc-chevron open' : 'tc-chevron'} aria-hidden="true">⌄</span>
+      </button>
+      {isExpanded && (
+        <pre className="tc-details">{toolCall.args}</pre>
       )}
     </div>
   )

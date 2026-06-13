@@ -43,6 +43,14 @@ describe('MessageRow', () => {
     expect(screen.getByText('const answer = 42')).toBeTruthy()
   })
 
+  it('adds role classes so chat polish styles target the correct message surface', () => {
+    const { container, rerender } = render(<MessageRow message={{ id: 'role-a', role: 'assistant', content: 'Answer', timestamp: 0 }} />)
+    expect(container.querySelector('.msg.assistant.left')).toBeTruthy()
+
+    rerender(<MessageRow message={{ id: 'role-u', role: 'user', content: 'Question', timestamp: 0 }} />)
+    expect(container.querySelector('.msg.user.right')).toBeTruthy()
+  })
+
   it('opens markdown links through the desktop shell api', () => {
     render(<MessageRow message={{ id: '2c', role: 'assistant', content: '[Docs](https://example.com/docs)', timestamp: 0, toolCalls: [] }} />)
 

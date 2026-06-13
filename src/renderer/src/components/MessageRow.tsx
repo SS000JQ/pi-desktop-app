@@ -21,7 +21,7 @@ export default function MessageRow({ message, onRegenerate, onEdit }: MessageRow
     : parts
 
   return (
-    <div className={`msg ${isUser ? 'right' : 'left'}`}>
+    <div className={`msg ${isUser ? 'right user' : 'left assistant'}`}>
       <div className="ml">
         <span className={isUser ? 'msg-role user' : 'msg-role assistant'}>
           {isUser ? 'You' : 'Pi'}

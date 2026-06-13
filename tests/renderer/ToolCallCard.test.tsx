@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import ToolCallCard from '../../src/renderer/src/components/ToolCallCard'
 
@@ -30,5 +30,19 @@ describe('ToolCallCard', () => {
     const { container } = render(<ToolCallCard toolCall={{ id: '3', name: 'read_file', args: '("/x")', status: 'error' }} />)
     expect(container.textContent).toContain('error')
     expect(container.querySelector('.tc.error')).toBeTruthy()
+  })
+
+  it('uses a command-bar header and expands long details on demand', () => {
+    const longArgs = JSON.stringify({ content: 'x'.repeat(160), path: 'README.md' })
+    const { container } = render(<ToolCallCard toolCall={{ id: '4', name: 'write', args: longArgs, status: 'done', duration: '2s' }} />)
+
+    expect(container.querySelector('.tc-header')).toBeTruthy()
+    expect(container.querySelector('.tc-details')).toBeNull()
+    expect(screen.getByRole('button', { name: /show write details/i })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /show write details/i }))
+
+    expect(container.querySelector('.tc-details')).toBeTruthy()
+    expect(screen.getByText(longArgs)).toBeTruthy()
   })
 })

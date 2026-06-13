@@ -78,21 +78,23 @@ export default function MessageList({ messages, isStreaming, onRegenerate, onEdi
 
   return (
     <div className="msgs" ref={scrollerRef} onScroll={handleScroll}>
-      {messages.map(msg => (
-        <MessageRow
-          key={msg.id}
-          message={msg}
-          onRegenerate={!isStreaming && msg.role === 'assistant' ? () => onRegenerate?.(msg.id) : undefined}
-          onEdit={msg.role === 'user' ? () => onEditMessage?.(msg.id) : undefined}
-        />
-      ))}
-      {isStreaming && !hasVisibleStreamingProcess && (
-        <div className="msg-stream">
-          <span className="stream-dot" />
-          Pi is thinking...
-        </div>
-      )}
-      <div ref={bottomRef} />
+      <div className="msg-rail">
+        {messages.map(msg => (
+          <MessageRow
+            key={msg.id}
+            message={msg}
+            onRegenerate={!isStreaming && msg.role === 'assistant' ? () => onRegenerate?.(msg.id) : undefined}
+            onEdit={msg.role === 'user' ? () => onEditMessage?.(msg.id) : undefined}
+          />
+        ))}
+        {isStreaming && !hasVisibleStreamingProcess && (
+          <div className="msg-stream">
+            <span className="stream-dot" />
+            Pi is thinking...
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
       {isUserReviewing && unreadUpdateCount > 0 && (
         <button type="button" className="jump-latest" onClick={jumpToLatest}>
           New output · Jump to latest
