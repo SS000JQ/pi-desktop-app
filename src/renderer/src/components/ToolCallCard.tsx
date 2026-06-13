@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { ToolCall } from '../types/chat'
 
 interface ToolCallCardProps {
@@ -5,6 +6,7 @@ interface ToolCallCardProps {
 }
 
 export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const stateClass = toolCall.status === 'running'
     ? 'running'
     : toolCall.status === 'error'
@@ -13,19 +15,37 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const argsPreview = compactArgs(toolCall.args)
   const hasLongArgs = argsPreview !== toolCall.args
 
-  const indicator = toolCall.status === 'done' ? (
-    <><span className="dot g" /> Done</>
-  ) : toolCall.status === 'running' ? (
-    <><span className="dot b" /> Running...</>
-  ) : (
-    <><span className="dot r" /> Error</>
-  )
+  useEffect(() => {
+    if (toolCall.status !== 'running' || toolCall.duration) {
+      setElapsedSeconds(0)
+      return undefined
+    }
+
+    const startedAt = Date.now()
+    const interval = window.setInterval(() => {
+      setElapsedSeconds(Math.max(1, Math.round((Date.now() - startedAt) / 1000)))
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [toolCall.duration, toolCall.id, toolCall.status])
+
+  const statusText = toolCall.status === 'done'
+    ? 'done'
+    : toolCall.status === 'running'
+      ? 'running'
+      : 'error'
+  const durationText = toolCall.duration || (elapsedSeconds > 0 ? `${elapsedSeconds}s` : '')
 
   return (
     <div className={`process-card tool-card tc ${stateClass}`}>
-      <div>
-        <span className="tcn">{toolCall.name}</span>{' '}
-        <span className="tcs" title={hasLongArgs ? toolCall.args : undefined}>({argsPreview})</span>
+      <div className="tc-main">
+        <span className="tcn">{toolCall.name}</span>
+        <span className="tcs" title={hasLongArgs ? toolCall.args : undefined}>{argsPreview}</span>
+        <span className="tc-status">
+          <span className={`dot ${toolCall.status === 'done' ? 'g' : toolCall.status === 'running' ? 'b' : 'r'}`} />
+          {statusText}
+          {durationText && <span className="tc-duration">{durationText}</span>}
+        </span>
       </div>
       {hasLongArgs && (
         <details className="tool-args-details">
@@ -33,15 +53,12 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
           <pre>{toolCall.args}</pre>
         </details>
       )}
-      <div className="tcs" style={{ marginTop: '2px' }}>
-        {indicator} {toolCall.duration && <>· {toolCall.duration}</>}
-      </div>
     </div>
   )
 }
 
 function compactArgs(args: string): string {
   const singleLine = args.replace(/\s+/g, ' ').trim()
-  if (singleLine.length <= 96) return singleLine
-  return `${singleLine.slice(0, 93)}...`
+  if (singleLine.length <= 120) return singleLine
+  return `${singleLine.slice(0, 117)}...`
 }

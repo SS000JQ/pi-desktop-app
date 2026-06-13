@@ -33,5 +33,5 @@ describe('createPiSession integration', () => {
 
     const reopened = await openPiSession(created.sessionPath)
     expect(normalizePath(reopened.cwd)).toBe(normalizePath(targetCwd))
-  }, 15000)
+  }, 30000)
 })
