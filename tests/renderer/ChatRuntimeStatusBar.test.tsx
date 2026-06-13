@@ -52,6 +52,62 @@ describe('ChatRuntimeStatusBar', () => {
     expect(screen.queryByText(/thinking live/i)).toBeNull()
   })
 
+  it('lets the user dismiss the current runtime status', () => {
+    render(
+      <ChatRuntimeStatusBar
+        status={{
+          status: 'processing',
+          statusLabel: 'Processing',
+          lastAction: 'Using tools',
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+          isWaitingForUser: false,
+          runId: 'run-1',
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss runtime status/i }))
+
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('shows the status again when a new run starts after being dismissed', () => {
+    const { rerender } = render(
+      <ChatRuntimeStatusBar
+        status={{
+          status: 'processing',
+          statusLabel: 'Processing',
+          lastAction: 'Using tools',
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+          isWaitingForUser: false,
+          runId: 'run-1',
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss runtime status/i }))
+    expect(screen.queryByRole('status')).toBeNull()
+
+    rerender(
+      <ChatRuntimeStatusBar
+        status={{
+          status: 'processing',
+          statusLabel: 'Processing',
+          lastAction: 'Reading files',
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+          isWaitingForUser: false,
+          runId: 'run-2',
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('status')).toBeTruthy()
+    expect(screen.getByText(/reading files/i)).toBeTruthy()
+  })
+
   it('freezes the displayed elapsed time after the run completes', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-06-10T10:00:05.000Z'))

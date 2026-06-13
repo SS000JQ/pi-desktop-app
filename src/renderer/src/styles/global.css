@@ -4,30 +4,30 @@
 [data-theme="classic"] {
   --chat-rail-width: 860px;
   --chat-rail-gutter: 32px;
-  --bg-app: #1a1919;
-  --bg-chat: #151414;
-  --bg-hover: rgba(255,255,255,0.04);
-  --bg-active: rgba(255,255,255,0.06);
-  --bd: rgba(255,255,255,0.04);
-  --bd-hover: rgba(255,255,255,0.10);
-  --text: rgba(255,255,255,0.70);
-  --text2: rgba(255,255,255,0.25);
-  --text3: rgba(255,255,255,0.12);
-  --accent: #007aff;
-  --success: rgba(48,209,88,0.4);
+  --bg-app: #181c1b;
+  --bg-chat: #111615;
+  --bg-hover: rgba(238,255,249,0.045);
+  --bg-active: rgba(238,255,249,0.07);
+  --bd: rgba(238,255,249,0.055);
+  --bd-hover: rgba(238,255,249,0.13);
+  --text: rgba(239,250,247,0.82);
+  --text2: rgba(210,230,224,0.38);
+  --text3: rgba(210,230,224,0.18);
+  --accent: #2ddc86;
+  --success: rgba(45,220,134,0.46);
   --font-ui: 'JetBrains Mono', monospace;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
   --font-reading: 'JetBrains Mono', monospace;
   --font: var(--font-ui);
-  --card-border: rgba(255,255,255,0.065);
-  --panel-bg: rgba(255,255,255,0.025);
-  --panel-bg-strong: rgba(255,255,255,0.04);
-  --preview-stage-bg: radial-gradient(circle at top, rgba(255,255,255,0.05), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-  --process-card-bg: linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012));
-  --thinking-card-bg: linear-gradient(180deg, rgba(88,166,255,0.055), rgba(255,255,255,0.016));
-  --answer-card-bg: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
-  --answer-code-bg: rgba(3,7,12,0.64);
-  --accent-soft: rgba(0,122,255,0.14);
+  --card-border: rgba(238,255,249,0.075);
+  --panel-bg: rgba(238,255,249,0.026);
+  --panel-bg-strong: rgba(238,255,249,0.044);
+  --preview-stage-bg: radial-gradient(circle at top, rgba(45,220,134,0.08), transparent 55%), linear-gradient(180deg, rgba(238,255,249,0.025), rgba(238,255,249,0.006));
+  --process-card-bg: linear-gradient(180deg, rgba(238,255,249,0.026), rgba(238,255,249,0.01));
+  --thinking-card-bg: linear-gradient(180deg, rgba(45,220,134,0.045), rgba(238,255,249,0.012));
+  --answer-card-bg: transparent;
+  --answer-code-bg: rgba(5,10,10,0.72);
+  --accent-soft: rgba(45,220,134,0.13);
   --tool-ok: #22c55e;
   --tool-ok-border: rgba(34,197,94,0.28);
   --tool-ok-bg: rgba(34,197,94,0.045);
@@ -36,30 +36,43 @@
   --tool-error-bg: rgba(248,113,113,0.055);
 }
 
+.app-shell.left-panel-collapsed {
+  --chat-rail-width: 920px;
+}
+
+.app-shell.right-panel-collapsed {
+  --chat-rail-width: 920px;
+}
+
+.app-shell.both-panels-collapsed {
+  --chat-rail-width: 1080px;
+  --chat-rail-gutter: 44px;
+}
+
 [data-theme="pi-native"] {
-  --bg-app: #030604;
-  --bg-chat: #050906;
-  --bg-hover: rgba(53,240,141,0.07);
-  --bg-active: rgba(53,240,141,0.11);
-  --bd: rgba(111,255,184,0.075);
-  --bd-hover: rgba(111,255,184,0.2);
-  --text: rgba(236,255,244,0.9);
-  --text2: rgba(188,231,207,0.46);
-  --text3: rgba(188,231,207,0.22);
+  --bg-app: #0d1411;
+  --bg-chat: #09110e;
+  --bg-hover: rgba(78,245,164,0.065);
+  --bg-active: rgba(78,245,164,0.105);
+  --bd: rgba(160,255,210,0.09);
+  --bd-hover: rgba(160,255,210,0.2);
+  --text: rgba(238,255,247,0.92);
+  --text2: rgba(202,238,220,0.5);
+  --text3: rgba(202,238,220,0.24);
   --accent: #35f08d;
   --success: rgba(53,240,141,0.62);
   --font-ui: 'Space Grotesk', 'IBM Plex Sans', 'Microsoft YaHei UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
   --font-reading: 'IBM Plex Sans', 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
   --font: var(--font-ui);
-  --card-border: rgba(111,255,184,0.14);
-  --panel-bg: linear-gradient(180deg, rgba(53,240,141,0.046), rgba(255,255,255,0.012));
-  --panel-bg-strong: linear-gradient(180deg, rgba(53,240,141,0.075), rgba(255,255,255,0.018));
-  --preview-stage-bg: radial-gradient(circle at top, rgba(53,240,141,0.13), transparent 58%), linear-gradient(180deg, rgba(53,240,141,0.035), rgba(255,255,255,0.01));
-  --process-card-bg: linear-gradient(180deg, rgba(53,240,141,0.075), rgba(255,255,255,0.012));
-  --thinking-card-bg: linear-gradient(180deg, rgba(53,240,141,0.105), rgba(255,255,255,0.014));
-  --answer-card-bg: linear-gradient(180deg, rgba(53,240,141,0.072), rgba(255,255,255,0.02));
-  --answer-code-bg: rgba(0,15,8,0.82);
+  --card-border: rgba(160,255,210,0.13);
+  --panel-bg: linear-gradient(180deg, rgba(78,245,164,0.038), rgba(255,255,255,0.01));
+  --panel-bg-strong: linear-gradient(180deg, rgba(78,245,164,0.062), rgba(255,255,255,0.014));
+  --preview-stage-bg: radial-gradient(circle at top, rgba(78,245,164,0.1), transparent 58%), linear-gradient(180deg, rgba(78,245,164,0.026), rgba(255,255,255,0.008));
+  --process-card-bg: linear-gradient(180deg, rgba(78,245,164,0.048), rgba(255,255,255,0.01));
+  --thinking-card-bg: linear-gradient(180deg, rgba(78,245,164,0.064), rgba(255,255,255,0.012));
+  --answer-card-bg: transparent;
+  --answer-code-bg: rgba(3,18,12,0.78);
   --accent-soft: rgba(53,240,141,0.18);
 }
 
@@ -569,15 +582,41 @@ body {
 }
 
 .runtime-status-main,
-.runtime-status-meta {
+.runtime-status-meta,
+.runtime-status-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.runtime-status-meta {
+.runtime-status-actions {
   margin-left: auto;
+  justify-content: flex-end;
+}
+
+.runtime-status-meta {
+  flex-wrap: wrap;
+}
+
+.runtime-status-dismiss {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.025);
+  color: rgba(255,255,255,0.42);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.runtime-status-dismiss:hover,
+.runtime-status-dismiss:focus-visible {
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.72);
 }
 
 .runtime-status-dot {
@@ -4484,6 +4523,9 @@ body {
 .msg.user .mb,
 .msg.right .mb {
   max-width: min(74%, 620px);
+  background: color-mix(in srgb, var(--accent) 13%, var(--bg-chat) 87%);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: none;
 }
 
 .msg.assistant .mb,
@@ -4540,6 +4582,32 @@ body {
   background: transparent;
 }
 
+.msg.assistant .mb.left,
+.msg.system .mb.left,
+.msg.assistant .msg-parts,
+.msg.system .msg-parts,
+.msg.assistant .answer-card,
+.msg.system .answer-card,
+.msg.assistant .answer-card > *,
+.msg.system .answer-card > * {
+  background: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.msg.assistant .answer-card,
+.msg.system .answer-card {
+  max-width: 100%;
+  line-height: 1.68;
+  color: color-mix(in srgb, var(--text) 90%, transparent);
+}
+
+.msg.assistant .answer-card p,
+.msg.system .answer-card p {
+  margin: 0 0 0.82em;
+}
+
 .process-timeline {
   gap: 6px;
   margin: 7px 0 9px;
@@ -4560,8 +4628,8 @@ body {
 [data-theme="pi-native"] .msg.system .thinking-part,
 [data-theme="mint-docs"] .msg.assistant .thinking-part,
 [data-theme="mint-docs"] .msg.system .thinking-part {
-  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
-  background: color-mix(in srgb, var(--bg-chat) 90%, var(--accent) 4%);
+  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--bg-chat) 94%, var(--accent) 3%);
 }
 
 .msg.assistant .tc,
@@ -4670,7 +4738,7 @@ body {
 
 .runtime-status {
   border-bottom-color: color-mix(in srgb, var(--text) 7%, transparent);
-  background: color-mix(in srgb, var(--bg-chat) 94%, var(--accent) 3%);
+  background: color-mix(in srgb, var(--bg-chat) 97%, var(--accent) 2%);
   box-shadow: none;
 }
 
@@ -4680,7 +4748,8 @@ body {
 }
 
 .runtime-status-chip,
-.runtime-thinking-toggle {
+.runtime-thinking-toggle,
+.runtime-status-dismiss {
   border-color: color-mix(in srgb, var(--text) 8%, transparent);
   background: color-mix(in srgb, var(--bg-chat) 90%, var(--text) 4%);
 }

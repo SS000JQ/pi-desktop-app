@@ -233,6 +233,38 @@ describe('PreviewPanel', () => {
     expect(screen.getByText('Web search')).toBeTruthy()
   })
 
+  it('allows document previews to be resized wider for reading slides and PDFs', () => {
+    const onResize = vi.fn()
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1800,
+    })
+
+    const { container } = render(
+      <PreviewPanel
+        collapsed={false}
+        onToggleCollapse={() => {}}
+        panelWidth={720}
+        onResize={onResize}
+        currentWorkspace="D:/PI/app"
+        workspaceFiles={[]}
+        workspaceDirectories={[]}
+        previewFile={{
+          name: 'deck.pptx',
+          path: 'D:/PI/app/deck.pptx',
+          ext: '.pptx',
+          type: 'pptx',
+          content: 'data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,AAAA',
+        }}
+      />,
+    )
+
+    fireEvent.mouseDown(container.querySelector('.resize-h') as HTMLElement)
+    fireEvent.mouseMove(window, { clientX: 360 })
+
+    expect(onResize).toHaveBeenCalledWith(1380)
+  })
+
   it('renders a markdown preview from real file content', async () => {
     render(
       <PreviewPanel

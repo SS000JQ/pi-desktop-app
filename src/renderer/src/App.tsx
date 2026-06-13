@@ -1901,7 +1901,14 @@ export default function App() {
 
   return (
     <>
-      <div className="app-shell">
+      <div
+        className={[
+          'app-shell',
+          leftPanelCollapsed ? 'left-panel-collapsed' : '',
+          rightPanelCollapsed ? 'right-panel-collapsed' : '',
+          leftPanelCollapsed && rightPanelCollapsed ? 'both-panels-collapsed' : '',
+        ].filter(Boolean).join(' ')}
+      >
         <TopBar
           currentDir={visibleWorkspaceDir}
           directoryOptions={directoryOptions}

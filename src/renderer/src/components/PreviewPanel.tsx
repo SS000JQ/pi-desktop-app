@@ -623,7 +623,10 @@ export default function PreviewPanel({
     const handleMouseMove = (event: MouseEvent) => {
       if (!isDraggingRight.current) return
       const minWidth = previewFile ? 520 : 320
-      const maxWidth = previewFile ? 960 : 620
+      const availableWidth = Math.max(window.innerWidth || 0, minWidth)
+      const maxWidth = previewFile
+        ? Math.max(960, Math.min(availableWidth - 420, Math.floor(availableWidth * 0.78)))
+        : Math.min(620, Math.max(320, availableWidth - 520))
       const newWidth = Math.min(Math.max(window.innerWidth - event.clientX, minWidth), maxWidth)
       onResize(newWidth)
     }

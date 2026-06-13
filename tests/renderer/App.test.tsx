@@ -3142,4 +3142,21 @@ describe('App', () => {
     expect(screen.getByText('Second session answer')).toBeTruthy()
     expect(screen.queryByText('First final answer')).toBeNull()
   })
+
+  it('marks the shell when both side panels are collapsed so the chat rail can widen', async () => {
+    window.piDesktop = createPiDesktopMock()
+
+    const { container } = render(<App />)
+
+    expect(await screen.findByText('Real Pi Session')).toBeTruthy()
+    const shell = container.querySelector('.app-shell') as HTMLElement
+    expect(shell.classList.contains('both-panels-collapsed')).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(shell.classList.contains('left-panel-collapsed')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide panel' }))
+    expect(shell.classList.contains('right-panel-collapsed')).toBe(true)
+    expect(shell.classList.contains('both-panels-collapsed')).toBe(true)
+  })
 })

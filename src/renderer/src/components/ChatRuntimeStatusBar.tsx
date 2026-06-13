@@ -34,6 +34,8 @@ export default function ChatRuntimeStatusBar({ status }: ChatRuntimeStatusBarPro
   const [elapsedLabel, setElapsedLabel] = useState(() => formatElapsed(status))
   const [recentUpdateLabel, setRecentUpdateLabel] = useState(() => formatRecentUpdate(status?.lastEventAt))
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false)
+  const [dismissedStatusKey, setDismissedStatusKey] = useState<string | null>(null)
+  const statusKey = status?.runId || `${status?.startedAt || 0}:${status?.status || 'idle'}:${status?.sessionPath || ''}`
 
   useEffect(() => {
     setElapsedLabel(formatElapsed(status))
@@ -54,6 +56,10 @@ export default function ChatRuntimeStatusBar({ status }: ChatRuntimeStatusBarPro
   }, [status?.runId])
 
   if (!status || status.status === 'idle') {
+    return null
+  }
+
+  if (dismissedStatusKey === statusKey && !status.isWaitingForUser && status.status !== 'failed') {
     return null
   }
 
@@ -84,15 +90,26 @@ export default function ChatRuntimeStatusBar({ status }: ChatRuntimeStatusBarPro
           <span className="runtime-status-label">{status.statusLabel}</span>
           <span className="runtime-status-time">{elapsedLabel}</span>
         </div>
-        <div className="runtime-status-meta">
-          {status.isWaitingForUser && <span className="runtime-status-chip">Needs confirmation</span>}
-          {status.isStalled && !status.isWaitingForUser && <span className="runtime-status-chip">Still running</span>}
-          {status.activeToolName && (
-            <span className="runtime-status-chip">
-              {status.activeToolState === 'running' ? 'Tool' : 'Last tool'}: {status.activeToolName}
-            </span>
-          )}
-          <span className="runtime-status-chip">{recentUpdateLabel}</span>
+        <div className="runtime-status-actions">
+          <div className="runtime-status-meta">
+            {status.isWaitingForUser && <span className="runtime-status-chip">Needs confirmation</span>}
+            {status.isStalled && !status.isWaitingForUser && <span className="runtime-status-chip">Still running</span>}
+            {status.activeToolName && (
+              <span className="runtime-status-chip">
+                {status.activeToolState === 'running' ? 'Tool' : 'Last tool'}: {status.activeToolName}
+              </span>
+            )}
+            <span className="runtime-status-chip">{recentUpdateLabel}</span>
+          </div>
+          <button
+            type="button"
+            className="runtime-status-dismiss"
+            onClick={() => setDismissedStatusKey(statusKey)}
+            aria-label="Dismiss runtime status"
+            title="Dismiss runtime status"
+          >
+            x
+          </button>
         </div>
       </div>
       {detail && (
