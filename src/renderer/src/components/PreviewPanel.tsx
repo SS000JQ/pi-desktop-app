@@ -568,6 +568,7 @@ export default function PreviewPanel({
     context: false,
   })
   const isDraggingRight = useRef(false)
+  const [isResizeDragging, setIsResizeDragging] = useState(false)
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null)
   const previewBodyRef = useRef<HTMLDivElement | null>(null)
   const savedWorkbenchScrollRef = useRef(0)
@@ -620,6 +621,11 @@ export default function PreviewPanel({
   const spreadsheetContent = previewFile?.type === 'xlsx' ? previewFile.content : null
 
   useEffect(() => {
+    const stopResizeDrag = () => {
+      isDraggingRight.current = false
+      setIsResizeDragging(false)
+    }
+
     const handleMouseMove = (event: MouseEvent) => {
       if (!isDraggingRight.current) return
       const minWidth = previewFile ? 520 : 320
@@ -631,15 +637,15 @@ export default function PreviewPanel({
       onResize(newWidth)
     }
 
-    const handleMouseUp = () => {
-      isDraggingRight.current = false
-    }
-
     window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('mouseup', stopResizeDrag)
+    window.addEventListener('blur', stopResizeDrag)
+    document.addEventListener('mouseleave', stopResizeDrag)
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('mouseup', stopResizeDrag)
+      window.removeEventListener('blur', stopResizeDrag)
+      document.removeEventListener('mouseleave', stopResizeDrag)
     }
   }, [onResize, previewFile])
 
@@ -1753,8 +1759,10 @@ export default function PreviewPanel({
         onMouseDown={(event) => {
           event.preventDefault()
           isDraggingRight.current = true
+          setIsResizeDragging(true)
         }}
       />
+      {isResizeDragging && <div className="resize-capture" aria-hidden="true" />}
 
       <div className="cs">
         <div className="pv-tb">

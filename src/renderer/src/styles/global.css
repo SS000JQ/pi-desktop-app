@@ -104,8 +104,8 @@
 }
 
 [data-theme="mint-docs"] {
-  --bg-app: #f4f1eb;
-  --bg-chat: #fcfbf8;
+  --bg-app: #f6f8fb;
+  --bg-chat: #ffffff;
   --bg-hover: rgba(8,8,12,0.045);
   --bg-active: rgba(8,8,12,0.072);
   --bd: rgba(15,23,42,0.10);
@@ -120,13 +120,13 @@
   --font-reading: 'IBM Plex Sans', 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
   --font: var(--font-ui);
   --card-border: rgba(15,23,42,0.09);
-  --panel-bg: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(248,246,241,0.95));
-  --panel-bg-strong: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,243,238,0.98));
-  --preview-stage-bg: radial-gradient(circle at top, rgba(200,246,249,0.58), transparent 54%), linear-gradient(180deg, rgba(255,255,255,0.99), rgba(243,240,234,0.95));
-  --process-card-bg: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,243,238,0.95));
-  --thinking-card-bg: linear-gradient(135deg, rgba(252,76,2,0.08), rgba(240,74,110,0.05) 44%, rgba(200,246,249,0.42));
-  --answer-card-bg: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(249,247,243,0.96));
-  --answer-code-bg: rgba(242,239,233,0.96);
+  --panel-bg: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,251,253,0.96));
+  --panel-bg-strong: linear-gradient(180deg, rgba(255,255,255,1), rgba(246,249,252,0.98));
+  --preview-stage-bg: radial-gradient(circle at top, rgba(230,247,249,0.52), transparent 54%), linear-gradient(180deg, rgba(255,255,255,0.99), rgba(247,250,252,0.96));
+  --process-card-bg: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,251,253,0.96));
+  --thinking-card-bg: linear-gradient(135deg, rgba(236,248,249,0.82), rgba(255,255,255,0.96));
+  --answer-card-bg: transparent;
+  --answer-code-bg: rgba(248,250,252,0.96);
   --accent-soft: rgba(200,246,249,0.56);
 }
 
@@ -565,6 +565,13 @@ body {
   background: transparent; transition: background 120ms;
 }
 .resize-h:hover::after { background: rgba(0,122,255,0.3); }
+.resize-capture {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  cursor: col-resize;
+  background: transparent;
+}
 
 /* ── Chat area ── */
 .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-chat); }
@@ -1784,9 +1791,8 @@ body {
 
 [data-theme="mint-docs"] .app-shell {
   background:
-    radial-gradient(circle at 12% 0%, rgba(200,246,249,0.72), transparent 26%),
-    radial-gradient(circle at 100% 10%, rgba(255,222,198,0.68), transparent 22%),
-    linear-gradient(180deg, #f7f4ee 0%, #f3efe7 100%);
+    radial-gradient(circle at 12% 0%, rgba(229,247,249,0.62), transparent 26%),
+    linear-gradient(180deg, #f8fafc 0%, #f3f6f9 100%);
 }
 
 [data-theme="mint-docs"] .left,
@@ -1808,8 +1814,8 @@ body {
 
 [data-theme="mint-docs"] .prev {
   background:
-    radial-gradient(circle at 50% 0%, rgba(200,246,249,0.34), transparent 28%),
-    linear-gradient(180deg, #fcfbf8 0%, #f6f2eb 100%);
+    radial-gradient(circle at 50% 0%, rgba(229,247,249,0.28), transparent 28%),
+    linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
 }
 
 [data-theme="mint-docs"] .pv-workbench-body,
@@ -1831,11 +1837,11 @@ body {
 [data-theme="mint-docs"] .cmd-list,
 [data-theme="mint-docs"] .runtime-thinking-preview,
 [data-theme="mint-docs"] .theme-preset-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,243,237,0.94));
+  background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,251,253,0.96));
   border-color: rgba(15,23,42,0.09);
   box-shadow:
     0 1px 0 rgba(255,255,255,0.82) inset,
-    0 18px 42px rgba(91,76,55,0.08);
+    0 18px 42px rgba(15,23,42,0.06);
 }
 
 [data-theme="mint-docs"] .c-sec.is-collapsed,
@@ -1853,9 +1859,7 @@ body {
 [data-theme="mint-docs"] .thinking-preview {
   color: rgba(12,15,22,0.82);
   border-color: rgba(15,23,42,0.09);
-  box-shadow:
-    0 1px 0 rgba(255,255,255,0.92) inset,
-    0 16px 38px rgba(91,76,55,0.08);
+  box-shadow: none;
 }
 
 [data-theme="mint-docs"] .thinking-part {
@@ -1868,7 +1872,7 @@ body {
 [data-theme="mint-docs"] .pv-pptx-frame,
 [data-theme="mint-docs"] .pv-docx-root .pv-docx-stage-wrapper {
   box-shadow:
-    0 14px 34px rgba(91,76,55,0.10),
+    0 14px 34px rgba(15,23,42,0.08),
     0 2px 0 rgba(255,255,255,0.96) inset;
 }
 
@@ -2149,21 +2153,21 @@ body {
 }
 
 [data-theme="mint-docs"] .tool-args-details pre {
-  background: rgba(242,239,233,0.9);
+  background: rgba(248,250,252,0.94);
   border: 1px solid rgba(15,23,42,0.08);
   border-radius: 8px;
   padding: 8px 10px;
 }
 
 [data-theme="mint-docs"] .answer-card {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,1), rgba(248,245,240,0.98));
+  background: transparent;
+  box-shadow: none;
 }
 
 [data-theme="mint-docs"] .l-context-menu {
   border-color: rgba(15,23,42,0.10);
   background: rgba(255,255,255,0.96);
-  box-shadow: 0 18px 38px rgba(91,76,55,0.10);
+  box-shadow: 0 18px 38px rgba(15,23,42,0.08);
 }
 
 [data-theme="mint-docs"] .l-context-menu button {
@@ -3082,7 +3086,7 @@ body {
 [data-theme="mint-docs"] .pv-md table {
   border-color: rgba(15,23,42,0.12);
   background: rgba(255,255,255,0.9);
-  box-shadow: 0 12px 28px rgba(91,76,55,0.05);
+  box-shadow: 0 12px 28px rgba(15,23,42,0.05);
 }
 
 [data-theme="mint-docs"] .pv-md th,
@@ -4589,7 +4593,15 @@ body {
 .msg.assistant .answer-card,
 .msg.system .answer-card,
 .msg.assistant .answer-card > *,
-.msg.system .answer-card > * {
+.msg.system .answer-card > *,
+[data-theme="mint-docs"] .msg.assistant .mb.left,
+[data-theme="mint-docs"] .msg.system .mb.left,
+[data-theme="mint-docs"] .msg.assistant .msg-parts,
+[data-theme="mint-docs"] .msg.system .msg-parts,
+[data-theme="mint-docs"] .msg.assistant .answer-card,
+[data-theme="mint-docs"] .msg.system .answer-card,
+[data-theme="mint-docs"] .msg.assistant .answer-card > *,
+[data-theme="mint-docs"] .msg.system .answer-card > * {
   background: transparent;
   background-image: none;
   border-color: transparent;
